@@ -20,6 +20,15 @@ const dmSans = DM_Sans({
 export const metadata: Metadata = {
   title: "Marka",
   description: "Marketplace inmobiliario",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+  },
+};
+
+export const viewport = {
+  themeColor: "#FBF9F6",
 };
 
 export default function RootLayout({
