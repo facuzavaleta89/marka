@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/dashboard/Sidebar";
-import type { PlanUsage } from "@/types";
+import { getPlanUsage } from "@/lib/utils/getPlanUsage";
 
 export default async function DashboardLayout({
   children,
@@ -23,27 +23,7 @@ export default async function DashboardLayout({
 
   if (!agent) redirect("/login");
 
-  const { data: subscription } = await supabase
-    .from("subscriptions")
-    .select("plan, property_limit")
-    .eq("agency_id", agent.agency_id)
-    .single();
-
-  const { count } = await supabase
-    .from("properties")
-    .select("*", { count: "exact", head: true })
-    .eq("agent_id", user.id)
-    .in("status", ["active", "paused"]);
-
-  const usedCount = count ?? 0;
-  const limit = subscription?.property_limit ?? 5;
-
-  const planUsage: PlanUsage = {
-    plan: (subscription?.plan ?? "free") as PlanUsage["plan"],
-    used: usedCount,
-    limit,
-    canCreate: usedCount < limit,
-  };
+  const planUsage = await getPlanUsage(supabase, agent.agency_id);
 
   // Supabase devuelve agency como array cuando se usa join; normalizamos
   const agencyRaw = agent.agency;

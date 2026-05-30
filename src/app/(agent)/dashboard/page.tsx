@@ -3,24 +3,12 @@ import { createClient } from "@/lib/supabase/server";
 import { LayoutDashboard, Building2, Eye, Layers } from "lucide-react";
 import { StatsCard } from "@/components/dashboard/StatsCard";
 import { formatPrice } from "@/lib/utils/formatPrice";
+import { getPlanUsage } from "@/lib/utils/getPlanUsage";
+import {
+  PROPERTY_TYPE_LABELS,
+  PROPERTY_STATUS_LABELS,
+} from "@/lib/utils/labels";
 import type { Currency, PropertyStatus, PropertyType } from "@/types";
-
-const PROPERTY_TYPE_LABEL: Record<PropertyType, string> = {
-  casa: "Casa",
-  departamento: "Departamento",
-  terreno: "Terreno",
-  local: "Local",
-  oficina: "Oficina",
-  campo: "Campo",
-  cochera: "Cochera",
-};
-
-const STATUS_LABEL: Record<PropertyStatus, string> = {
-  active: "Activa",
-  paused: "Pausada",
-  sold: "Vendida",
-  rented: "Alquilada",
-};
 
 const STATUS_COLOR: Record<PropertyStatus, string> = {
   active: "text-success",
@@ -37,6 +25,13 @@ export default async function DashboardPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
+  const { data: agent } = await supabase
+    .from("agents")
+    .select("agency_id")
+    .eq("id", user.id)
+    .single();
+  if (!agent) redirect("/login");
+
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
@@ -45,8 +40,7 @@ export default async function DashboardPage() {
     { count: leadsCount },
     { data: allProperties },
     { data: recentProperties },
-    { data: subscription },
-    { count: usedCount },
+    planUsage,
   ] = await Promise.all([
     supabase
       .from("properties")
@@ -72,24 +66,7 @@ export default async function DashboardPage() {
       .order("created_at", { ascending: false })
       .limit(3),
 
-    supabase
-      .from("subscriptions")
-      .select("plan, property_limit")
-      .eq("agency_id",
-        (await supabase
-          .from("agents")
-          .select("agency_id")
-          .eq("id", user.id)
-          .single()
-        ).data?.agency_id ?? ""
-      )
-      .single(),
-
-    supabase
-      .from("properties")
-      .select("*", { count: "exact", head: true })
-      .eq("agent_id", user.id)
-      .in("status", ["active", "paused"]),
+    getPlanUsage(supabase, agent.agency_id),
   ]);
 
   const totalViews = (allProperties ?? []).reduce(
@@ -97,8 +74,8 @@ export default async function DashboardPage() {
     0
   );
 
-  const propertyLimit = subscription?.property_limit ?? 5;
-  const used = usedCount ?? 0;
+  const propertyLimit = planUsage.limit;
+  const used = planUsage.used;
   const available = propertyLimit - used;
 
   return (
@@ -178,7 +155,7 @@ export default async function DashboardPage() {
                     </td>
                     <td className="px-6 py-4 hidden sm:table-cell">
                       <span className="font-sans text-sm text-graphite">
-                        {PROPERTY_TYPE_LABEL[p.property_type as PropertyType]}
+                        {PROPERTY_TYPE_LABELS[p.property_type as PropertyType]}
                       </span>
                     </td>
                     <td className="px-6 py-4">
@@ -190,7 +167,7 @@ export default async function DashboardPage() {
                       <span
                         className={`font-sans text-sm ${STATUS_COLOR[p.status as PropertyStatus]}`}
                       >
-                        {STATUS_LABEL[p.status as PropertyStatus]}
+                        {PROPERTY_STATUS_LABELS[p.status as PropertyStatus]}
                       </span>
                     </td>
                   </tr>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
+import { MapContainer, TileLayer, Marker } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -9,6 +9,10 @@ interface LocationPickerProps {
   value: { lat: number; lng: number };
   onChange: (coords: { lat: number; lng: number }) => void;
   cityCenter: { lat: number; lng: number };
+  /** Se llama la primera vez que el agente arrastra el pin */
+  onMoved?: () => void;
+  /** true = el contenedor del mapa muestra borde de error (pin sin colocar) */
+  error?: boolean;
 }
 
 // Pin SVG terracota con ancla en la punta inferior
@@ -17,25 +21,19 @@ const PIN_HTML = `<svg width="28" height="36" viewBox="0 0 28 36" fill="none" xm
   <circle cx="14" cy="14" r="5.5" fill="white"/>
 </svg>`;
 
-// Componente interno que captura eventos del mapa
-function DragHandler({
-  onChange,
-}: {
-  onChange: (coords: { lat: number; lng: number }) => void;
-}) {
-  useMapEvents({});
-  return null;
-}
-
 export default function LocationPicker({
   value,
   onChange,
   cityCenter,
+  onMoved,
+  error,
 }: LocationPickerProps) {
   const [position, setPosition] = useState<[number, number]>([
     value.lat,
     value.lng,
   ]);
+  // Indica si el agente ya arrastró el pin al menos una vez
+  const [hasBeenMoved, setHasBeenMoved] = useState(false);
 
   const pinIcon = useMemo(
     () =>
@@ -53,6 +51,11 @@ export default function LocationPicker({
     const rounded = { lat: parseFloat(lat.toFixed(7)), lng: parseFloat(lng.toFixed(7)) };
     setPosition([rounded.lat, rounded.lng]);
     onChange(rounded);
+    // Avisar al padre solo la primera vez que se mueve el pin
+    if (!hasBeenMoved) {
+      setHasBeenMoved(true);
+      onMoved?.();
+    }
   };
 
   return (
@@ -61,7 +64,12 @@ export default function LocationPicker({
         Arrastrá el pin hasta la ubicación exacta del inmueble
       </p>
 
-      <div className="rounded-md overflow-hidden border border-stone shadow-sm" style={{ height: 280 }}>
+      <div
+        className={`rounded-md overflow-hidden border shadow-sm ${
+          error ? "border-error" : "border-stone"
+        }`}
+        style={{ height: 280 }}
+      >
         <MapContainer
           center={[cityCenter.lat, cityCenter.lng]}
           zoom={15}
@@ -72,7 +80,6 @@ export default function LocationPicker({
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
-          <DragHandler onChange={onChange} />
           <Marker
             position={position}
             icon={pinIcon}

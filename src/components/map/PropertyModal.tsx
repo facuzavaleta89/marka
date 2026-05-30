@@ -10,28 +10,13 @@ import { useMapFilters } from "@/store/mapFiltersStore";
 import { useFavorites } from "@/lib/hooks/useFavorites";
 import { generateWaUrl } from "@/lib/utils/waMessage";
 import { formatPrice } from "@/lib/utils/formatPrice";
+import {
+  PROPERTY_TYPE_LABELS,
+  OPERATION_TYPE_LABELS,
+  AMENITY_LABELS,
+} from "@/lib/utils/labels";
 import { cn } from "@/lib/utils";
-import type { Property, PropertyImage, Amenity } from "@/types";
-
-// ─── Constantes ───────────────────────────────────────────────
-
-const AMENITY_LABELS: Partial<Record<Amenity, string>> = {
-  pileta: "Pileta", quincho: "Quincho", parrilla: "Parrilla",
-  gym: "Gym", sum: "SUM", seguridad_24h: "Seguridad 24h",
-  portero: "Portero", laundry: "Laundry", solarium: "Solarium",
-  jardin: "Jardín", terraza: "Terraza", cochera_cubierta: "Cochera cubierta",
-  vista_al_rio: "Vista al río", vista_al_mar: "Vista al mar",
-  apto_credito: "Apto crédito", apto_profesional: "Apto profesional",
-};
-
-const OPERATION_LABEL: Record<string, string> = {
-  venta: "Venta", alquiler: "Alquiler", alquiler_temporal: "Alquiler temporal",
-};
-
-const TYPE_LABEL: Record<string, string> = {
-  casa: "Casa", departamento: "Departamento", terreno: "Terreno",
-  local: "Local", oficina: "Oficina", campo: "Campo", cochera: "Cochera",
-};
+import type { Property, PropertyImage } from "@/types";
 
 // ─── Carrusel de imágenes ─────────────────────────────────────
 
@@ -126,16 +111,31 @@ function ModalContent({
     (a, b) => a.sort_order - b.sort_order
   );
 
+  const agent = property.agent as
+    | { full_name: string; phone_wa: string }
+    | undefined;
+  const agentPhone = agent?.phone_wa ?? "";
+  const hasPhone = agentPhone.trim() !== "";
+
   useEffect(() => {
     if (showNameInput) inputRef.current?.focus();
   }, [showNameInput]);
 
   const handleSendWA = async () => {
     if (!userName.trim() || sending) return;
+
+    const url = generateWaUrl({
+      agentPhone,
+      userName: userName.trim(),
+      propertyTitle: property.title,
+      propertyAddress: property.address,
+    });
+    // Sin número configurado no registramos lead ni abrimos un link roto
+    if (!url) return;
+
     setSending(true);
 
     const supabase = createClient();
-    const agent = property.agent as { full_name: string; phone_wa: string } | undefined;
 
     // Registrar lead (la política RLS permite INSERT público)
     await supabase.from("leads").insert({
@@ -146,12 +146,6 @@ function ModalContent({
       source: "whatsapp",
     });
 
-    const url = generateWaUrl({
-      agentPhone: agent?.phone_wa ?? "",
-      userName: userName.trim(),
-      propertyTitle: property.title,
-      propertyAddress: property.address,
-    });
     window.open(url, "_blank", "noopener,noreferrer");
 
     setSending(false);
@@ -192,9 +186,9 @@ function ModalContent({
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
         {/* Tipo + operación */}
         <p className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite">
-          {TYPE_LABEL[property.property_type] ?? property.property_type}
+          {PROPERTY_TYPE_LABELS[property.property_type]}
           {" · "}
-          {OPERATION_LABEL[property.operation_type] ?? property.operation_type}
+          {OPERATION_TYPE_LABELS[property.operation_type]}
           {property.is_featured && (
             <span className="ml-2 text-terracota">★ Destacada</span>
           )}
@@ -273,7 +267,7 @@ function ModalContent({
                 key={a}
                 className="font-sans text-[11px] font-semibold uppercase tracking-wide text-graphite bg-mist rounded-sm px-2 py-0.5"
               >
-                {AMENITY_LABELS[a as Amenity] ?? a}
+                {AMENITY_LABELS[a]}
               </span>
             ))}
           </div>
@@ -282,41 +276,59 @@ function ModalContent({
 
       {/* Flujo WhatsApp — fijo en la parte inferior */}
       <div className="px-5 py-4 border-t border-stone shrink-0 space-y-2.5">
-        {/* Input de nombre (aparece con animación) */}
-        <div
-          className={cn(
-            "overflow-hidden transition-all duration-200 ease-out",
-            showNameInput ? "max-h-14 opacity-100" : "max-h-0 opacity-0"
-          )}
-        >
-          <input
-            ref={inputRef}
-            type="text"
-            value={userName}
-            onChange={(e) => setUserName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSendWA()}
-            placeholder="Tu nombre"
-            className="w-full h-10 px-3 font-sans text-sm text-black placeholder:text-stone bg-white border border-stone rounded-md outline-none focus:border-graphite focus:ring-2 focus:ring-terracota/20"
-          />
-        </div>
-
-        {!showNameInput ? (
-          <button
-            onClick={() => setShowNameInput(true)}
-            className="w-full flex items-center justify-center gap-2 h-11 font-sans text-sm font-medium text-white bg-whatsapp hover:bg-whatsapp-hover rounded-md transition-colors"
-          >
-            <MessageCircle size={18} />
-            Consultar por WhatsApp
-          </button>
+        {!hasPhone ? (
+          // El agente no configuró su número → no se puede contactar por WA
+          <div className="text-center">
+            <button
+              disabled
+              className="w-full flex items-center justify-center gap-2 h-11 font-sans text-sm font-medium text-graphite bg-stone rounded-md cursor-not-allowed"
+            >
+              <MessageCircle size={18} />
+              Consultar por WhatsApp
+            </button>
+            <p className="font-sans text-xs text-graphite mt-2">
+              Este agente no tiene número de WhatsApp configurado.
+            </p>
+          </div>
         ) : (
-          <button
-            onClick={handleSendWA}
-            disabled={!userName.trim() || sending}
-            className="w-full flex items-center justify-center gap-2 h-11 font-sans text-sm font-medium text-white bg-whatsapp hover:bg-whatsapp-hover rounded-md transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            <Send size={16} />
-            {sending ? "Enviando..." : "Enviar mensaje"}
-          </button>
+          <>
+            {/* Input de nombre (aparece con animación) */}
+            <div
+              className={cn(
+                "overflow-hidden transition-all duration-200 ease-out",
+                showNameInput ? "max-h-14 opacity-100" : "max-h-0 opacity-0"
+              )}
+            >
+              <input
+                ref={inputRef}
+                type="text"
+                value={userName}
+                onChange={(e) => setUserName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSendWA()}
+                placeholder="Tu nombre"
+                className="w-full h-10 px-3 font-sans text-sm text-black placeholder:text-stone bg-white border border-stone rounded-md outline-none focus:border-graphite focus:ring-2 focus:ring-terracota/20"
+              />
+            </div>
+
+            {!showNameInput ? (
+              <button
+                onClick={() => setShowNameInput(true)}
+                className="w-full flex items-center justify-center gap-2 h-11 font-sans text-sm font-medium text-white bg-whatsapp hover:bg-whatsapp-hover rounded-md transition-colors"
+              >
+                <MessageCircle size={18} />
+                Consultar por WhatsApp
+              </button>
+            ) : (
+              <button
+                onClick={handleSendWA}
+                disabled={!userName.trim() || sending}
+                className="w-full flex items-center justify-center gap-2 h-11 font-sans text-sm font-medium text-white bg-whatsapp hover:bg-whatsapp-hover rounded-md transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <Send size={16} />
+                {sending ? "Enviando..." : "Enviar mensaje"}
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -338,31 +350,40 @@ export function PropertyModal() {
   const close = () => setSelectedProperty(null);
 
   useEffect(() => {
-    if (!selectedPropertyId) {
-      setProperty(null);
-      setDragY(0);
-      return;
-    }
+    let cancelled = false;
 
-    setLoading(true);
-    const supabase = createClient();
+    (async () => {
+      // setState dentro del flujo async (no en el cuerpo del efecto)
+      if (!selectedPropertyId) {
+        setProperty(null);
+        setDragY(0);
+        return;
+      }
 
-    supabase
-      .from("properties")
-      .select(
-        "*, images:property_images(id, property_id, url, is_cover, sort_order, created_at), agent:agents(full_name, phone_wa, avatar_url)"
-      )
-      .eq("id", selectedPropertyId)
-      .eq("status", "active")
-      .single()
-      .then(({ data }) => {
-        if (data) setProperty(data as unknown as Property);
-        setLoading(false);
-      });
+      setLoading(true);
+      const supabase = createClient();
 
-    // Fire-and-forget: incrementar views_count
-    // Nota: requiere una política RLS de UPDATE pública o una función RPC con SECURITY DEFINER.
-    // Pendiente de implementar en el schema.
+      const { data } = await supabase
+        .from("properties")
+        .select(
+          "*, images:property_images(id, property_id, url, is_cover, sort_order, created_at), agent:agents(full_name, phone_wa, avatar_url)"
+        )
+        .eq("id", selectedPropertyId)
+        .eq("status", "active")
+        .single();
+
+      if (cancelled) return;
+      if (data) setProperty(data as unknown as Property);
+      setLoading(false);
+
+      // Fire-and-forget: incrementar views_count
+      // Nota: requiere una política RLS de UPDATE pública o una función RPC con SECURITY DEFINER.
+      // Pendiente de implementar en el schema.
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [selectedPropertyId]);
 
   const handleTouchStart = (e: React.TouchEvent) => {

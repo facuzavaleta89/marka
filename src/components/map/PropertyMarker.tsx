@@ -104,9 +104,3 @@ export function createPropertyMarker(
 
   return marker;
 }
-
-// Re-exportar como componente para consistencia de imports (no renderiza nada en el árbol React)
-export function PropertyMarker({ property }: { property: Property }) {
-  void property; // usado solo como tipo de referencia
-  return null;
-}

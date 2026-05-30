@@ -316,8 +316,19 @@ CREATE POLICY "Agent manages own property images"
 CREATE POLICY "Agent reads own leads"
   ON leads FOR SELECT USING (agent_id = auth.uid());
 
+-- Cualquiera puede generar un lead, pero property_id/agent_id/agency_id
+-- deben corresponder a una propiedad activa real (evita spam e inconsistencias).
 CREATE POLICY "Public insert lead"
-  ON leads FOR INSERT WITH CHECK (true); -- cualquiera puede generar un lead
+  ON leads FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM properties p
+      WHERE p.id = leads.property_id
+        AND p.status = 'active'
+        AND p.agent_id = leads.agent_id
+        AND p.agency_id = leads.agency_id
+    )
+  );
 
 -- ─── STORAGE BUCKET ─────────────────────────────────────────
 -- Ejecutar en Supabase → Storage → New Bucket

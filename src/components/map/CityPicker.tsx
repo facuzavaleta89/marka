@@ -2,10 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Check } from "lucide-react";
-import { useCity } from "@/lib/hooks/useCity";
+import { useCityStore } from "@/store/cityStore";
 
 export function CityPicker() {
-  const { city, cities, setCity } = useCity();
+  const city = useCityStore((s) => s.city);
+  const cities = useCityStore((s) => s.cities);
+  const setCity = useCityStore((s) => s.setCity);
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);

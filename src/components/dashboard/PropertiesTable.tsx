@@ -32,28 +32,27 @@ import {
 } from "@/components/ui/alert-dialog";
 import { formatPrice } from "@/lib/utils/formatPrice";
 import {
+  PROPERTY_TYPE_LABELS,
+  OPERATION_TYPE_LABELS,
+  PROPERTY_STATUS_LABELS,
+} from "@/lib/utils/labels";
+import {
   pausePropertyAction,
   activatePropertyAction,
   markAsSoldAction,
   markAsRentedAction,
   deletePropertyAction,
 } from "@/app/(agent)/dashboard/propiedades/actions";
-import type { Currency, PropertyStatus, PropertyType, OperationType } from "@/types";
+import type { Property, PropertyImage, PropertyStatus } from "@/types";
 
 // ─── Tipos ───────────────────────────────────────────────────
 
-type CoverImage = { url: string; is_cover: boolean; sort_order: number };
+type CoverImage = Pick<PropertyImage, "url" | "is_cover" | "sort_order">;
 
-export type PropertyRow = {
-  id: string;
-  title: string;
-  property_type: string;
-  operation_type: string;
-  price: number;
-  currency: string;
-  status: string;
-  images: CoverImage[] | null;
-};
+export type PropertyRow = Pick<
+  Property,
+  "id" | "title" | "property_type" | "operation_type" | "price" | "currency" | "status"
+> & { images: CoverImage[] | null };
 
 interface PropertiesTableProps {
   properties: PropertyRow[];
@@ -61,45 +60,22 @@ interface PropertiesTableProps {
 
 // ─── Constantes ──────────────────────────────────────────────
 
-const STATUS_CONFIG: Record<
-  PropertyStatus,
-  { label: string; className: string }
-> = {
-  active: {
-    label: "Activa",
-    className: "bg-terracota-subtle text-terracota",
-  },
-  paused: { label: "Pausada", className: "bg-mist text-graphite" },
-  sold: { label: "Vendida", className: "bg-stone text-graphite" },
-  rented: { label: "Alquilada", className: "bg-stone text-graphite" },
-};
-
-const PROPERTY_TYPE_LABEL: Record<PropertyType, string> = {
-  casa: "Casa",
-  departamento: "Depto.",
-  terreno: "Terreno",
-  local: "Local",
-  oficina: "Oficina",
-  campo: "Campo",
-  cochera: "Cochera",
-};
-
-const OPERATION_LABEL: Record<OperationType, string> = {
-  venta: "Venta",
-  alquiler: "Alquiler",
-  alquiler_temporal: "Temporal",
+// Solo el estilo del badge; las etiquetas vienen de PROPERTY_STATUS_LABELS
+const STATUS_CLASSNAME: Record<PropertyStatus, string> = {
+  active: "bg-terracota-subtle text-terracota",
+  paused: "bg-mist text-graphite",
+  sold: "bg-stone text-graphite",
+  rented: "bg-stone text-graphite",
 };
 
 // ─── Sub-componentes ──────────────────────────────────────────
 
-function StatusBadge({ status }: { status: string }) {
-  const cfg =
-    STATUS_CONFIG[status as PropertyStatus] ?? STATUS_CONFIG.paused;
+function StatusBadge({ status }: { status: PropertyStatus }) {
   return (
     <span
-      className={`inline-block font-sans text-[11px] font-semibold uppercase tracking-wide rounded-sm px-2 py-0.5 ${cfg.className}`}
+      className={`inline-block font-sans text-[11px] font-semibold uppercase tracking-wide rounded-sm px-2 py-0.5 ${STATUS_CLASSNAME[status]}`}
     >
-      {cfg.label}
+      {PROPERTY_STATUS_LABELS[status]}
     </span>
   );
 }
@@ -240,23 +216,21 @@ export function PropertiesTable({ properties }: PropertiesTableProps) {
                   {/* Tipo */}
                   <td className="px-4 py-3 whitespace-nowrap">
                     <span className="font-sans text-sm text-graphite">
-                      {PROPERTY_TYPE_LABEL[p.property_type as PropertyType] ??
-                        p.property_type}
+                      {PROPERTY_TYPE_LABELS[p.property_type]}
                     </span>
                   </td>
 
                   {/* Operación */}
                   <td className="px-4 py-3 whitespace-nowrap">
                     <span className="font-sans text-sm text-graphite">
-                      {OPERATION_LABEL[p.operation_type as OperationType] ??
-                        p.operation_type}
+                      {OPERATION_TYPE_LABELS[p.operation_type]}
                     </span>
                   </td>
 
                   {/* Precio */}
                   <td className="px-4 py-3 whitespace-nowrap">
                     <span className="font-sans text-sm font-medium text-black">
-                      {formatPrice(p.price, p.currency as Currency)}
+                      {formatPrice(p.price, p.currency)}
                     </span>
                   </td>
 
@@ -297,14 +271,11 @@ export function PropertiesTable({ properties }: PropertiesTableProps) {
                     {p.title}
                   </p>
                   <p className="font-sans text-xs text-graphite mt-0.5">
-                    {PROPERTY_TYPE_LABEL[p.property_type as PropertyType] ??
-                      p.property_type}{" "}
-                    ·{" "}
-                    {OPERATION_LABEL[p.operation_type as OperationType] ??
-                      p.operation_type}
+                    {PROPERTY_TYPE_LABELS[p.property_type]}{" "}
+                    · {OPERATION_TYPE_LABELS[p.operation_type]}
                   </p>
                   <p className="font-sans text-sm font-medium text-black mt-1">
-                    {formatPrice(p.price, p.currency as Currency)}
+                    {formatPrice(p.price, p.currency)}
                   </p>
                 </div>
                 <div className="shrink-0">
@@ -334,7 +305,7 @@ export function PropertiesTable({ properties }: PropertiesTableProps) {
             <AlertDialogTitle>¿Eliminar propiedad?</AlertDialogTitle>
             <AlertDialogDescription>
               Vas a eliminar{" "}
-              <strong className="text-black">"{toDelete?.title}"</strong>. Esta
+              <strong className="text-black">&quot;{toDelete?.title}&quot;</strong>. Esta
               acción no se puede deshacer. Se eliminarán las imágenes y los
               leads asociados.
             </AlertDialogDescription>

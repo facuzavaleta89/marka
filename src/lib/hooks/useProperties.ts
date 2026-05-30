@@ -16,15 +16,21 @@ export function useProperties(cityId: string, bounds: MapBounds | null) {
     if (!cityId) return;
 
     let cancelled = false;
-    setIsLoading(true);
 
     (async () => {
+      // setState dentro del flujo async (no en el cuerpo del efecto)
+      setIsLoading(true);
       const supabase = createClient();
 
+      // Solo los campos que necesitan el mapa y el modal (no traer description
+      // larga ni columnas innecesarias para cada pin). LEFT join en imágenes
+      // para no ocultar propiedades sin foto.
+      // Nota: debe ser un único string literal (no concatenado) para que
+      // Supabase infiera correctamente el tipo de retorno.
       let query = supabase
         .from("properties")
         .select(
-          `*, images:property_images(url, is_cover, sort_order), agent:agents(full_name, phone_wa)`
+          `id, title, slug, description, status, property_type, operation_type, price, currency, is_featured, lat, lng, address, neighborhood, city, bedrooms, bathrooms, parking_spots, area_covered_m2, amenities, year_built, agent_id, agency_id, city_id, images:property_images(url, is_cover, sort_order), agent:agents(full_name, phone_wa, avatar_url)`
         )
         .eq("city_id", cityId)
         .eq("status", "active");
@@ -85,13 +91,15 @@ export function useProperties(cityId: string, bounds: MapBounds | null) {
         return;
       }
 
-      // Filtrar a solo la imagen portada por propiedad
+      // Filtrar a solo la imagen portada por propiedad.
+      // El select es acotado (no trae todas las columnas de Property), por eso
+      // el puente por unknown: el mapa/modal solo usan los campos seleccionados.
       const normalized = (data ?? []).map((p) => ({
         ...p,
         images: (
           (p.images ?? []) as { url: string; is_cover: boolean; sort_order: number }[]
         ).filter((img) => img.is_cover),
-      })) as Property[];
+      })) as unknown as Property[];
 
       setProperties(normalized);
       setError(null);

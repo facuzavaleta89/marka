@@ -59,10 +59,14 @@ export default function PreferenciasPage() {
   const [prefs, setPrefs] = useState<Preferences>(DEFAULT_PREFERENCES);
   const [saved, setSaved] = useState(false);
 
+  // Seed desde localStorage después del mount. Es intencional hacerlo en un
+  // efecto (no en el initializer de useState) para que el render del server y
+  // el primer render del cliente coincidan y no haya mismatch de hidratación.
   useEffect(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setPrefs({ ...DEFAULT_PREFERENCES, ...JSON.parse(stored) });
       }
     } catch {

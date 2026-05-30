@@ -2,8 +2,8 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { PlanBadge } from "@/components/dashboard/PlanBadge";
-import { PropertiesTable } from "@/components/dashboard/PropertiesTable";
-import type { PlanUsage } from "@/types";
+import { PropertiesTable, type PropertyRow } from "@/components/dashboard/PropertiesTable";
+import { getPlanUsage } from "@/lib/utils/getPlanUsage";
 
 export default async function PropiedadesPage() {
   const supabase = await createClient();
@@ -18,12 +18,9 @@ export default async function PropiedadesPage() {
     .select("agency_id")
     .eq("id", user.id)
     .single();
+  if (!agent) redirect("/login");
 
-  const [
-    { data: properties },
-    { data: subscription },
-    { count: usedCount },
-  ] = await Promise.all([
+  const [{ data: properties }, planUsage] = await Promise.all([
     supabase
       .from("properties")
       .select(
@@ -32,30 +29,8 @@ export default async function PropiedadesPage() {
       .eq("agent_id", user.id)
       .order("created_at", { ascending: false }),
 
-    agent
-      ? supabase
-          .from("subscriptions")
-          .select("plan, property_limit")
-          .eq("agency_id", agent.agency_id)
-          .single()
-      : Promise.resolve({ data: null, error: null }),
-
-    supabase
-      .from("properties")
-      .select("*", { count: "exact", head: true })
-      .eq("agent_id", user.id)
-      .in("status", ["active", "paused"]),
+    getPlanUsage(supabase, agent.agency_id),
   ]);
-
-  const used = usedCount ?? 0;
-  const limit = subscription?.property_limit ?? 5;
-
-  const planUsage: PlanUsage = {
-    plan: (subscription?.plan ?? "free") as PlanUsage["plan"],
-    used,
-    limit,
-    canCreate: used < limit,
-  };
 
   return (
     <div className="p-8">
@@ -99,7 +74,7 @@ export default async function PropiedadesPage() {
         </div>
       </div>
 
-      <PropertiesTable properties={properties ?? []} />
+      <PropertiesTable properties={(properties ?? []) as PropertyRow[]} />
     </div>
   );
 }

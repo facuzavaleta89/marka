@@ -2,14 +2,13 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { SlidersHorizontal, MapIcon, List } from "lucide-react";
-import { useCity } from "@/lib/hooks/useCity";
-import { useMapFilters } from "@/store/mapFiltersStore";
+import { useCityStore } from "@/store/cityStore";
+import { useMapFilters, selectActiveFiltersCount } from "@/store/mapFiltersStore";
 import { CityPicker } from "@/components/map/CityPicker";
 import { FilterPanel } from "@/components/map/FilterPanel";
 import { PropertyModal } from "@/components/map/PropertyModal";
-import { DEFAULT_FILTERS } from "@/types";
 
 const MapView = dynamic(
   () => import("@/components/map/MapView").then((m) => ({ default: m.MapView })),
@@ -19,25 +18,18 @@ const MapView = dynamic(
   }
 );
 
-function countActiveFilters(filters: typeof DEFAULT_FILTERS): number {
-  return [
-    filters.operation_type !== null,
-    filters.property_types.length > 0,
-    filters.price_min != null || filters.price_max != null,
-    filters.area_min != null || filters.area_max != null,
-    filters.bedrooms_min != null,
-    filters.amenities.length > 0,
-    filters.only_featured,
-  ].filter(Boolean).length;
-}
-
 export default function PublicPage() {
-  const { city, isLoading } = useCity();
-  const { filters } = useMapFilters();
+  const city = useCityStore((s) => s.city);
+  const isLoading = useCityStore((s) => s.isLoading);
+  const initCity = useCityStore((s) => s.initCity);
+  const activeFilters = useMapFilters(selectActiveFiltersCount);
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const [showMap, setShowMap] = useState(true);
 
-  const activeFilters = countActiveFilters(filters);
+  // Inicializa la ciudad activa una sola vez para toda la app
+  useEffect(() => {
+    initCity();
+  }, [initCity]);
 
   // ── Estados de carga ─────────────────────────────────────────
   if (isLoading) {

@@ -45,8 +45,11 @@ export function ClusterLayer({ properties }: ClusterLayerProps) {
 
   const clusterRef = useRef<L.MarkerClusterGroup | null>(null);
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
+  // Última lista de propiedades, para que el efecto de selección la consulte.
   const propertiesRef = useRef<Property[]>(properties);
-  propertiesRef.current = properties;
+  // Firma del set de ids actualmente renderizado, para evitar recrear markers
+  // cuando el refetch devuelve las mismas propiedades (mismo array, otra identidad).
+  const renderedIdsRef = useRef<string>("");
 
   // Inicializar el cluster group una sola vez
   useEffect(() => {
@@ -66,10 +69,21 @@ export function ClusterLayer({ properties }: ClusterLayerProps) {
     };
   }, [map]);
 
-  // Recrear todos los markers cuando cambia la lista de propiedades
+  // Recrear los markers solo cuando cambió el conjunto de propiedades.
+  // Diff por id: si el refetch devuelve los mismos ids, no tocamos el mapa.
   useEffect(() => {
+    // Mantener la referencia actualizada para el efecto de selección
+    propertiesRef.current = properties;
+
     const group = clusterRef.current;
     if (!group) return;
+
+    const signature = properties
+      .map((p) => p.id)
+      .sort()
+      .join(",");
+    if (signature === renderedIdsRef.current) return; // mismas propiedades → no recrear
+    renderedIdsRef.current = signature;
 
     group.clearLayers();
     markersRef.current.clear();

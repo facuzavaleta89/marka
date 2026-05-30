@@ -23,31 +23,13 @@ import {
   updatePropertyAction,
 } from "@/app/(agent)/dashboard/propiedades/actions";
 import { cn } from "@/lib/utils";
+import { AMENITY_LABELS } from "@/lib/utils/labels";
 import type { Property, PropertyImage, Amenity } from "@/types";
 
 // LocationPicker cargado solo en el cliente (Leaflet usa window)
 const LocationPicker = dynamic(() => import("./LocationPicker"), { ssr: false });
 
 // ─── Constantes ───────────────────────────────────────────────
-
-const AMENITY_LABELS: Record<Amenity, string> = {
-  pileta: "Pileta",
-  quincho: "Quincho",
-  parrilla: "Parrilla",
-  gym: "Gym",
-  sum: "SUM",
-  seguridad_24h: "Seguridad 24h",
-  portero: "Portero",
-  laundry: "Laundry",
-  solarium: "Solarium",
-  jardin: "Jardín",
-  terraza: "Terraza",
-  cochera_cubierta: "Cochera cubierta",
-  vista_al_rio: "Vista al río",
-  vista_al_mar: "Vista al mar",
-  apto_credito: "Apto crédito",
-  apto_profesional: "Apto profesional",
-};
 
 const ALL_AMENITIES = Object.keys(AMENITY_LABELS) as Amenity[];
 
@@ -165,6 +147,9 @@ export function PropertyForm({
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // En edición el pin ya tiene una ubicación real; en alta hay que colocarlo.
+  const [pinMoved, setPinMoved] = useState(mode === "edit");
+  const [pinError, setPinError] = useState(false);
 
   // UUID estable para el modo creación — permite subir imágenes antes de guardar
   const propertyId = useMemo(
@@ -244,6 +229,12 @@ export function PropertyForm({
   };
 
   const onSubmit = async (data: FormValues) => {
+    // El agente debe colocar el pin en el mapa (no dejar el centro de la ciudad)
+    if (!pinMoved) {
+      setPinError(true);
+      return;
+    }
+
     setSubmitting(true);
     setServerError(null);
 
@@ -274,7 +265,7 @@ export function PropertyForm({
         neighborhood: data.neighborhood ?? null,
         lat: data.lat,
         lng: data.lng,
-        amenities: data.amenities,
+        amenities: data.amenities as Amenity[],
         year_built: data.year_built ?? null,
         is_featured: data.is_featured,
         images: imagePayload,
@@ -305,7 +296,7 @@ export function PropertyForm({
         neighborhood: data.neighborhood ?? null,
         lat: data.lat,
         lng: data.lng,
-        amenities: data.amenities,
+        amenities: data.amenities as Amenity[],
         year_built: data.year_built ?? null,
         is_featured: data.is_featured,
         images: imagePayload,
@@ -541,7 +532,17 @@ export function PropertyForm({
             setValue("lng", newLng);
           }}
           cityCenter={cityCenter}
+          error={pinError}
+          onMoved={() => {
+            setPinMoved(true);
+            setPinError(false);
+          }}
         />
+        {pinError && (
+          <p className="font-sans text-xs text-error">
+            Arrastrá el pin hasta la ubicación exacta del inmueble
+          </p>
+        )}
       </Section>
 
       {/* ── Amenities ── */}

@@ -1,46 +1,28 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { X } from "lucide-react";
-import { useMapFilters } from "@/store/mapFiltersStore";
+import { useMapFilters, selectActiveFiltersCount } from "@/store/mapFiltersStore";
 import { cn } from "@/lib/utils";
-import type { MapFilters, OperationType, PropertyType, Amenity } from "@/types";
-import { DEFAULT_FILTERS } from "@/types";
+import type { PropertyType, Amenity } from "@/types";
+import { PROPERTY_TYPE_LABELS, AMENITY_LABELS } from "@/lib/utils/labels";
 
 // ─── Constantes ───────────────────────────────────────────────
 
-const PROPERTY_TYPES: { value: PropertyType; label: string }[] = [
-  { value: "casa", label: "Casa" },
-  { value: "departamento", label: "Departamento" },
-  { value: "terreno", label: "Terreno" },
-  { value: "local", label: "Local" },
-  { value: "oficina", label: "Oficina" },
-  { value: "campo", label: "Campo" },
-  { value: "cochera", label: "Cochera" },
-];
+// Todos los tipos de propiedad, para los botones del filtro
+const PROPERTY_TYPE_VALUES = Object.keys(PROPERTY_TYPE_LABELS) as PropertyType[];
 
-const FEATURED_AMENITIES: { value: Amenity; label: string }[] = [
-  { value: "pileta", label: "Pileta" },
-  { value: "quincho", label: "Quincho" },
-  { value: "parrilla", label: "Parrilla" },
-  { value: "gym", label: "Gimnasio" },
-  { value: "seguridad_24h", label: "Seguridad 24h" },
-  { value: "cochera_cubierta", label: "Cochera cubierta" },
-  { value: "jardin", label: "Jardín" },
-  { value: "terraza", label: "Terraza" },
+// Subconjunto curado de amenities que se ofrece en el filtro
+const FILTER_AMENITIES: Amenity[] = [
+  "pileta",
+  "quincho",
+  "parrilla",
+  "gym",
+  "seguridad_24h",
+  "cochera_cubierta",
+  "jardin",
+  "terraza",
 ];
-
-function countActiveFilters(f: MapFilters): number {
-  return [
-    f.operation_type !== null,
-    f.property_types.length > 0,
-    f.price_min != null || f.price_max != null,
-    f.area_min != null || f.area_max != null,
-    f.bedrooms_min != null,
-    f.amenities.length > 0,
-    f.only_featured,
-  ].filter(Boolean).length;
-}
 
 // ─── Sub-componentes internos ─────────────────────────────────
 
@@ -121,7 +103,7 @@ interface FilterPanelProps {
 
 export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
   const { filters, setFilter, resetFilters } = useMapFilters();
-  const activeCount = countActiveFilters(filters);
+  const activeCount = useMapFilters(selectActiveFiltersCount);
 
   // Inputs con estado local para evitar re-render por cada tecla
   const [priceMin, setPriceMin] = useState(filters.price_min?.toString() ?? "");
@@ -129,11 +111,32 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
   const [areaMin, setAreaMin] = useState(filters.area_min?.toString() ?? "");
   const [areaMax, setAreaMax] = useState(filters.area_max?.toString() ?? "");
 
-  // Sincronizar cuando el store cambia externamente (ej: resetFilters)
-  useEffect(() => { setPriceMin(filters.price_min?.toString() ?? ""); }, [filters.price_min]);
-  useEffect(() => { setPriceMax(filters.price_max?.toString() ?? ""); }, [filters.price_max]);
-  useEffect(() => { setAreaMin(filters.area_min?.toString() ?? ""); }, [filters.area_min]);
-  useEffect(() => { setAreaMax(filters.area_max?.toString() ?? ""); }, [filters.area_max]);
+  // Resync de los inputs locales cuando el store cambia desde afuera (ej: resetFilters).
+  // Patrón "ajustar estado durante el render" (no en un efecto) para evitar
+  // renders en cascada. Tipear no toca el store, así que no se pisa lo que se escribe.
+  const [storeSnapshot, setStoreSnapshot] = useState({
+    price_min: filters.price_min,
+    price_max: filters.price_max,
+    area_min: filters.area_min,
+    area_max: filters.area_max,
+  });
+  if (
+    storeSnapshot.price_min !== filters.price_min ||
+    storeSnapshot.price_max !== filters.price_max ||
+    storeSnapshot.area_min !== filters.area_min ||
+    storeSnapshot.area_max !== filters.area_max
+  ) {
+    setStoreSnapshot({
+      price_min: filters.price_min,
+      price_max: filters.price_max,
+      area_min: filters.area_min,
+      area_max: filters.area_max,
+    });
+    setPriceMin(filters.price_min?.toString() ?? "");
+    setPriceMax(filters.price_max?.toString() ?? "");
+    setAreaMin(filters.area_min?.toString() ?? "");
+    setAreaMax(filters.area_max?.toString() ?? "");
+  }
 
   const commitPrice = (field: "price_min" | "price_max", raw: string) => {
     const n = raw === "" ? null : parseFloat(raw);
@@ -212,7 +215,7 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
         {/* Tipo de propiedad */}
         <Section title="Tipo de propiedad">
           <div className="grid grid-cols-2 gap-2">
-            {PROPERTY_TYPES.map(({ value, label }) => {
+            {PROPERTY_TYPE_VALUES.map((value) => {
               const active = filters.property_types.includes(value);
               return (
                 <button
@@ -226,7 +229,7 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
                       : "border-stone bg-white text-graphite hover:border-graphite"
                   )}
                 >
-                  {label}
+                  {PROPERTY_TYPE_LABELS[value]}
                 </button>
               );
             })}
@@ -262,13 +265,6 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
               value={priceMax}
               onChange={setPriceMax}
               placeholder="Hasta"
-            />
-          </div>
-          {/* Aplicar precio al perder el foco */}
-          <div className="hidden">
-            <input
-              onBlur={() => { commitPrice("price_min", priceMin); commitPrice("price_max", priceMax); }}
-              onKeyDown={(e) => e.key === "Enter" && (commitPrice("price_min", priceMin), commitPrice("price_max", priceMax))}
             />
           </div>
           <button
@@ -324,7 +320,7 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
         {/* Amenities */}
         <Section title="Amenities">
           <div className="grid grid-cols-2 gap-2">
-            {FEATURED_AMENITIES.map(({ value, label }) => {
+            {FILTER_AMENITIES.map((value) => {
               const active = filters.amenities.includes(value);
               return (
                 <label key={value} className="flex items-center gap-2 cursor-pointer">
@@ -334,7 +330,9 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
                     onChange={() => toggleAmenity(value)}
                     className="w-4 h-4 accent-terracota rounded"
                   />
-                  <span className="font-sans text-sm text-black">{label}</span>
+                  <span className="font-sans text-sm text-black">
+                    {AMENITY_LABELS[value]}
+                  </span>
                 </label>
               );
             })}

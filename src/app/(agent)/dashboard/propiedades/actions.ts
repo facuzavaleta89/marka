@@ -3,8 +3,15 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { generateSlug } from "@/lib/utils/generateSlug";
+import { getPlanUsage } from "@/lib/utils/getPlanUsage";
+import type { PropertyInsert } from "@/types";
 
 type ActionResult = { error: string } | undefined;
+
+// Mensaje cuando la propiedad se guardó pero el insert de imágenes falló
+// (no hacemos rollback: la propiedad ya existe y el agente puede reintentar).
+const PARTIAL_IMAGES_MSG =
+  "La propiedad se guardó pero algunas imágenes no se guardaron. Podés agregarlas desde Editar.";
 
 // ─── Tipos para alta y edición ────────────────────────────────
 
@@ -15,33 +22,21 @@ type ImageInput = {
   is_cover: boolean;
 };
 
-export type CreatePropertyInput = {
+// Campos de propiedad que provee el formulario; el server deriva el resto
+// (agent_id, agency_id, city_id, status, city, province, country).
+type PropertyFormPayload = Omit<
+  PropertyInsert,
+  "agent_id" | "agency_id" | "city_id" | "status" | "city" | "province" | "country"
+>;
+
+export type CreatePropertyInput = PropertyFormPayload & {
   id: string; // UUID pre-generado en el cliente
-  title: string;
-  description?: string | null;
-  property_type: string;
-  operation_type: string;
-  price: number;
-  currency: string;
-  price_negotiable: boolean;
-  area_total_m2?: number | null;
-  area_covered_m2?: number | null;
-  bedrooms: number;
-  bathrooms: number;
-  parking_spots: number;
-  floor_number?: number | null;
-  address: string;
-  neighborhood?: string | null;
-  lat: number;
-  lng: number;
-  amenities: string[];
-  year_built?: number | null;
-  is_featured: boolean;
   images: ImageInput[];
 };
 
-export type UpdatePropertyInput = Omit<CreatePropertyInput, "id"> & {
-  status: string;
+export type UpdatePropertyInput = PropertyFormPayload & {
+  status: PropertyInsert["status"];
+  images: ImageInput[];
 };
 
 // Verifica explícitamente que la propiedad pertenece al agente.
@@ -182,6 +177,10 @@ export async function createPropertyAction(
 
   const slug = generateSlug(data.title);
 
+  // Destacar es feature de plan pro: si el plan es free, se ignora el valor
+  const planUsage = await getPlanUsage(supabase, agent.agency_id);
+  const isFeatured = data.is_featured && planUsage.plan === "pro";
+
   const { error: insertError } = await supabase.from("properties").insert({
     id: data.id,
     agent_id: user.id,
@@ -211,7 +210,7 @@ export async function createPropertyAction(
     lng: data.lng,
     amenities: data.amenities,
     year_built: data.year_built ?? null,
-    is_featured: data.is_featured,
+    is_featured: isFeatured,
   });
 
   if (insertError) {
@@ -227,7 +226,7 @@ export async function createPropertyAction(
 
   // Insertar imágenes (si las hay)
   if (data.images.length > 0) {
-    await supabase.from("property_images").insert(
+    const { error: imagesError } = await supabase.from("property_images").insert(
       data.images.map((img) => ({
         id: img.id,
         property_id: data.id,
@@ -236,6 +235,11 @@ export async function createPropertyAction(
         sort_order: img.sort_order,
       }))
     );
+    if (imagesError) {
+      // La propiedad ya se creó; informamos la falla parcial de imágenes.
+      revalidatePath("/dashboard/propiedades");
+      return { error: PARTIAL_IMAGES_MSG };
+    }
   }
 
   revalidatePath("/dashboard/propiedades");
@@ -249,6 +253,15 @@ export async function updatePropertyAction(
 ): Promise<ActionResult> {
   const { ok, error, supabase } = await verifyOwnership(id);
   if (!ok) return { error: error! };
+
+  // Destacar es feature de plan pro: si el plan es free, se ignora el valor
+  const { data: prop } = await supabase
+    .from("properties")
+    .select("agency_id")
+    .eq("id", id)
+    .single();
+  const planUsage = prop ? await getPlanUsage(supabase, prop.agency_id) : null;
+  const isFeatured = data.is_featured && planUsage?.plan === "pro";
 
   const { error: updateError } = await supabase
     .from("properties")
@@ -273,7 +286,7 @@ export async function updatePropertyAction(
       lng: data.lng,
       amenities: data.amenities,
       year_built: data.year_built ?? null,
-      is_featured: data.is_featured,
+      is_featured: isFeatured,
       // El slug no se recalcula al editar
     })
     .eq("id", id);
@@ -288,11 +301,18 @@ export async function updatePropertyAction(
     return { error: "No se pudieron guardar los cambios" };
   }
 
-  // Reemplazar imágenes: delete + re-insert con el nuevo orden
-  await supabase.from("property_images").delete().eq("property_id", id);
+  // Reemplazar imágenes: delete + re-insert con el nuevo orden.
+  // Si el delete falla, NO insertamos (evita duplicar) y avisamos sin perder las existentes.
+  const { error: deleteError } = await supabase
+    .from("property_images")
+    .delete()
+    .eq("property_id", id);
+  if (deleteError) {
+    return { error: "No se pudieron actualizar las imágenes. Volvé a intentar." };
+  }
 
   if (data.images.length > 0) {
-    await supabase.from("property_images").insert(
+    const { error: imagesError } = await supabase.from("property_images").insert(
       data.images.map((img) => ({
         id: img.id,
         property_id: id,
@@ -301,6 +321,10 @@ export async function updatePropertyAction(
         sort_order: img.sort_order,
       }))
     );
+    if (imagesError) {
+      revalidatePath("/dashboard/propiedades");
+      return { error: PARTIAL_IMAGES_MSG };
+    }
   }
 
   revalidatePath("/dashboard/propiedades");
