@@ -6,6 +6,30 @@ import { ClusterLayer } from "./ClusterLayer";
 import { useProperties } from "@/lib/hooks/useProperties";
 import type { MapBounds } from "@/types";
 
+// ─── Configuración de tiles ───────────────────────────────────
+// CARTO Positron: baja saturación, cálido y limpio → deja que los pines
+// terracota sean los protagonistas. Gratuito y sin API key.
+// Preparado para migrar a MapTiler: si se define NEXT_PUBLIC_MAPTILER_KEY,
+// el cambio es automático (una sola fuente de verdad acá).
+const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY;
+
+const TILE_CONFIG = MAPTILER_KEY
+  ? {
+      // Estilo claro de MapTiler (cuando se agregue la key)
+      url: `https://api.maptiler.com/maps/dataviz-light/{z}/{x}/{y}{r}.png?key=${MAPTILER_KEY}`,
+      attribution:
+        '© <a href="https://www.maptiler.com/copyright/">MapTiler</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      subdomains: "abc",
+    }
+  : {
+      // CARTO Voyager (fallback por defecto, sin key): un poco más de color y
+      // calidez que Positron, sin volver al gris saturado de OSM.
+      url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+      attribution:
+        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
+      subdomains: "abcd",
+    };
+
 // ─── Tracker de bounds (componente interno) ───────────────────
 // Debounce de 400ms: solo refetcheamos cuando el usuario deja de mover el mapa,
 // para no disparar una query por cada frame de paneo/zoom.
@@ -65,8 +89,11 @@ export function MapView({ cityId, center, zoom }: MapViewProps) {
       zoomControl
     >
       <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        attribution={TILE_CONFIG.attribution}
+        url={TILE_CONFIG.url}
+        subdomains={TILE_CONFIG.subdomains}
+        detectRetina
+        maxZoom={20}
       />
       <BoundsTracker onBoundsChange={setBounds} />
       <ClusterLayer properties={properties} />

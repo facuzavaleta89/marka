@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { registerAction } from "./actions";
+import { Wordmark } from "@/components/brand/Wordmark";
 import { cn } from "@/lib/utils";
 
 const schema = z
@@ -78,8 +79,8 @@ export default function RegisterPage() {
   return (
     <div className="min-h-screen bg-paper flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
-        <h1 className="font-serif text-4xl font-bold text-black text-center mb-8">
-          Marka
+        <h1 className="text-center mb-8">
+          <Wordmark size="lg" variant="dark" />
         </h1>
 
         <div className="bg-white border border-stone rounded-lg p-8 shadow-sm">

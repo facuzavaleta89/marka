@@ -6,28 +6,28 @@ import L from "leaflet";
 import "leaflet.markercluster";
 import "leaflet.markercluster/dist/MarkerCluster.css";
 import "leaflet.markercluster/dist/MarkerCluster.Default.css";
-import { createPropertyIcon, createPropertyMarker } from "./PropertyMarker";
+import {
+  createPropertyIcon,
+  createPropertyMarker,
+  setMarkerState,
+} from "./PropertyMarker";
 import { useMapFilters } from "@/store/mapFiltersStore";
+import { useVisitedProperties } from "@/lib/hooks/useVisitedProperties";
 import type { Property } from "@/types";
 
-// ─── Ícono personalizado para los grupos de clusters ──────────
+// ─── Ícono de los grupos de clusters ──────────────────────────
+// El estilo (.marka-cluster) vive en globals.css e incluye DM Sans y el
+// anillo exterior translúcido. Acá solo se calcula tamaño y etiqueta.
 
 function createClusterIcon(cluster: L.MarkerCluster): L.DivIcon {
   const count = cluster.getChildCount();
   const size = count >= 100 ? 64 : count >= 10 ? 52 : 40;
+  const fontSize = size >= 64 ? 15 : size >= 52 ? 14 : 13;
   const label = count >= 1000 ? `${Math.floor(count / 1000)}k+` : String(count);
 
   return new L.DivIcon({
     className: "",
-    html: `<div style="
-      width:${size}px;height:${size}px;
-      background:#4E4A46;color:#FBF9F6;
-      border-radius:50%;
-      display:flex;align-items:center;justify-content:center;
-      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
-      font-size:13px;font-weight:600;
-      box-shadow:0 2px 8px rgba(0,0,0,0.2);
-      cursor:pointer;">${label}</div>`,
+    html: `<div class="marka-cluster" style="width:${size}px;height:${size}px;font-size:${fontSize}px;">${label}</div>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
   });
@@ -42,6 +42,7 @@ interface ClusterLayerProps {
 export function ClusterLayer({ properties }: ClusterLayerProps) {
   const map = useMap();
   const { selectedPropertyId, setSelectedProperty } = useMapFilters();
+  const { isVisited, markVisited } = useVisitedProperties();
 
   const clusterRef = useRef<L.MarkerClusterGroup | null>(null);
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
@@ -50,6 +51,11 @@ export function ClusterLayer({ properties }: ClusterLayerProps) {
   // Firma del set de ids actualmente renderizado, para evitar recrear markers
   // cuando el refetch devuelve las mismas propiedades (mismo array, otra identidad).
   const renderedIdsRef = useRef<string>("");
+  // Selección e ids visitados accesibles desde el closure de creación sin
+  // forzar recreación de markers cuando cambian (se aplican como estado live).
+  const selectedIdRef = useRef<string | null>(selectedPropertyId);
+  const isVisitedRef = useRef(isVisited);
+  isVisitedRef.current = isVisited;
 
   // Inicializar el cluster group una sola vez
   useEffect(() => {
@@ -88,25 +94,49 @@ export function ClusterLayer({ properties }: ClusterLayerProps) {
     group.clearLayers();
     markersRef.current.clear();
 
-    const currentSelected = selectedPropertyId;
-
     properties.forEach((property) => {
-      const isSelected = property.id === currentSelected;
-      const marker = createPropertyMarker(property, isSelected, () => {
-        setSelectedProperty(property.id);
-      });
+      const selected = property.id === selectedIdRef.current;
+      const visited = isVisitedRef.current(property.id);
+
+      const marker = createPropertyMarker(
+        property,
+        { selected, visited },
+        () => {
+          setSelectedProperty(property.id);
+          markVisited(property.id);
+          // Aplicar el tono "visitado" al instante sobre el elemento vivo
+          setMarkerState(marker, { visited: true });
+        }
+      );
+
       markersRef.current.set(property.id, marker);
       group.addLayer(marker);
     });
   }, [properties]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Excluimos selectedPropertyId intencionalmente — se actualiza en el efecto de abajo
+  // Excluimos selectedPropertyId/visited intencionalmente — se aplican como
+  // estado live en el efecto de abajo y en el onClick, sin recrear markers.
 
-  // Actualizar solo los íconos afectados cuando cambia la selección
+  // Actualizar solo el marker afectado cuando cambia la selección.
+  // Se togglea la clase sobre el elemento vivo → la transición CSS anima.
   useEffect(() => {
+    selectedIdRef.current = selectedPropertyId;
     markersRef.current.forEach((marker, id) => {
-      const property = propertiesRef.current.find((p) => p.id === id);
-      if (!property) return;
-      marker.setIcon(createPropertyIcon(property, id === selectedPropertyId));
+      const selected = id === selectedPropertyId;
+      // Para markers clusterizados (sin elemento) actualizamos el ícono base,
+      // así reflejan la selección cuando el cluster se expande.
+      if (!marker.getElement()) {
+        const property = propertiesRef.current.find((p) => p.id === id);
+        if (property) {
+          marker.setIcon(
+            createPropertyIcon(property, {
+              selected,
+              visited: isVisitedRef.current(id),
+            })
+          );
+        }
+        return;
+      }
+      setMarkerState(marker, { selected });
     });
   }, [selectedPropertyId]);
 

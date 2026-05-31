@@ -7,6 +7,7 @@ import { SlidersHorizontal, MapIcon, List } from "lucide-react";
 import { useCityStore } from "@/store/cityStore";
 import { useMapFilters, selectActiveFiltersCount } from "@/store/mapFiltersStore";
 import { CityPicker } from "@/components/map/CityPicker";
+import { Wordmark } from "@/components/brand/Wordmark";
 import { FilterPanel } from "@/components/map/FilterPanel";
 import { PropertyModal } from "@/components/map/PropertyModal";
 
@@ -59,7 +60,7 @@ export default function PublicPage() {
     <div className="flex flex-col h-screen bg-paper overflow-hidden">
       {/* ── Header ─────────────────────────────────────────────── */}
       <header className="relative h-14 flex items-center justify-between px-4 md:px-6 bg-paper border-b border-stone shrink-0 z-50">
-        <span className="font-serif text-2xl font-bold text-black">Marka</span>
+        <Wordmark size="md" variant="dark" />
 
         <CityPicker />
 
@@ -88,6 +89,14 @@ export default function PublicPage() {
               zoom={city.default_zoom}
             />
           </div>
+
+          {/* Marco editorial: hairline negro por encima de los tiles. Como overlay
+              no resta espacio interno, no desplaza el contenido ni recorta tiles,
+              y pointer-events-none deja el mapa totalmente interactivo. */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 z-[5] border border-black"
+          />
 
           {/* Vista de lista (mobile, cuando showMap es false) */}
           {!showMap && (

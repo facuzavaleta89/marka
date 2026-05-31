@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { PlanBadge } from "./PlanBadge";
+import { Wordmark } from "@/components/brand/Wordmark";
 import { logoutAction } from "@/app/(agent)/dashboard/actions";
 import type { PlanUsage } from "@/types";
 
@@ -44,8 +45,9 @@ function NavContent({
 }: SidebarProps & { pathname: string; onClose: () => void }) {
   return (
     <div className="flex flex-col h-full">
-      {/* Encabezado del agente */}
+      {/* Encabezado: marca + agente */}
       <div className="px-6 py-5 border-b border-white/10">
+        <Wordmark size="md" variant="light" className="mb-5" />
         <p className="font-sans text-xs text-stone uppercase tracking-wider">
           {agent.agency?.name ?? ""}
         </p>
