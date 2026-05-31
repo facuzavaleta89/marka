@@ -246,18 +246,24 @@ El diseño editorial prefiere bordes sobre sombras. Las sombras se usan solo en 
 
 El pin muestra el precio directamente — es el único dato que importa en el mapa.
 
+> **Nota (cambio de esquema):** el pin base pasó de **blanco** a **terracota relleno**.
+> El blanco casi no contrastaba con el mapa OSM; el terracota hace que el pin "salte"
+> sobre el fondo. Con el normal en terracota, el estado **activo** se mueve a **negro**
+> para que la selección siga siendo inequívoca. El precio va siempre en DM Sans 12px
+> Medium con `tabular-nums`, y la punta inferior hereda el color de fondo del pin.
+
 **Estado normal:**
 ```
 ┌──────────────┐
-│  USD 250k    │  ← DM Sans 12px Medium, color: black
-└──────┬───────┘  ← background: white, border: stone, shadow-md
-       ▼
+│  USD 250k    │  ← DM Sans 12px Medium, color: paper
+└──────┬───────┘  ← background: terracota (#A0522D), shadow-md
+       ▼            (punta inferior también terracota)
 ```
 
 **Estado hover:**
 ```
 ┌──────────────┐
-│  USD 250k    │  ← border: terracota
+│  USD 250k    │  ← background: terracota-hover (#8B4526), oscurecimiento sutil
 └──────┬───────┘
        ▼
 ```
@@ -265,14 +271,45 @@ El pin muestra el precio directamente — es el único dato que importa en el ma
 **Estado activo (propiedad seleccionada):**
 ```
 ┌──────────────┐
-│  USD 250k    │  ← background: terracota, texto: white
-└──────┬───────┘
+│  USD 250k    │  ← background: black (#111111), texto: paper
+└──────┬───────┘     + microtransición de escala 1.08 (120ms ease-out)
        ▼
 ```
 
 **Propiedad destacada (`is_featured: true`):**
-- Borde terracota permanente en estado normal
-- Badge `★` en la esquina superior derecha del pin
+- Mantiene el fondo terracota normal
+- Anillo/borde **paper de 2px** permanente para diferenciarla
+- Badge `★` en la esquina superior **izquierda** (fondo paper, estrella terracota)
+
+**Estado visitada (ya abierta por el visitante):**
+```
+┌──────────────┐
+│  USD 250k    │  ← background: stone (#C8C0B7), border + texto: graphite (#4E4A46)
+└──────┬───────┘     "ya la vi": apagada pero claramente un pin (fondo sólido,
+       ▼             borde definido), legible y distinta del mapa. Vía localStorage.
+```
+> El visitado usa **stone**, no paper: el paper casi blanco se confundía con un pin
+> sin estilo y se fundía con el mapa claro. Stone se lee como pin "desactivado"
+> intencional y mantiene contraste. (Se evaluó `mist` #EAE4DC, pero es demasiado
+> claro y también se funde con el mapa OSM.)
+
+**Indicador de favorito (guardado por el visitante):**
+- Corazón `♥` (lucide Heart relleno) en la esquina superior **derecha**.
+- Es una **capa encima**, no un color de fondo: convive con cualquier estado.
+- El badge hereda el fondo/borde del pin (se ve "pegado" a él) y el corazón usa
+  `--pin-fav`, que **contrasta con el fondo**: **paper** sobre pin terracota/negro,
+  **terracota** sobre el visitado (stone).
+- Se actualiza en vivo al marcar/desmarcar el corazón en el modal (mismo patrón
+  live que selección y visitado, sin recrear los markers). Persiste vía localStorage.
+
+**Coexistencia de estados (capas):**
+- El **color de fondo** lo define un solo estado, con prioridad:
+  `activo (negro)` › `visitado (stone)` › `destacada/normal/hover (terracota)`.
+- Los **indicadores** son capas independientes que se suman al fondo:
+  - `★` destacada → esquina superior **izquierda**
+  - `♥` favorito → esquina superior **derecha**
+  - Nunca se enciman (esquinas opuestas). Una propiedad puede ser, a la vez,
+    visitada + favorita + destacada: fondo stone, con `★` y `♥` visibles.
 
 **Formato de precio en el pin:**
 - USD < 1.000.000 → `USD 250k`

@@ -24,6 +24,7 @@ export default function PublicPage() {
   const isLoading = useCityStore((s) => s.isLoading);
   const initCity = useCityStore((s) => s.initCity);
   const activeFilters = useMapFilters(selectActiveFiltersCount);
+  const selectedPropertyId = useMapFilters((s) => s.selectedPropertyId);
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const [showMap, setShowMap] = useState(true);
 
@@ -90,14 +91,6 @@ export default function PublicPage() {
             />
           </div>
 
-          {/* Marco editorial: hairline negro por encima de los tiles. Como overlay
-              no resta espacio interno, no desplaza el contenido ni recorta tiles,
-              y pointer-events-none deja el mapa totalmente interactivo. */}
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0 z-[5] border border-black"
-          />
-
           {/* Vista de lista (mobile, cuando showMap es false) */}
           {!showMap && (
             <div className="md:hidden h-full flex items-center justify-center bg-mist">
@@ -122,36 +115,43 @@ export default function PublicPage() {
         onClose={() => setFilterPanelOpen(false)}
       />
 
-      {/* ── Mobile: botón Filtros (izquierda) ──────────────────── */}
-      <button
-        onClick={() => setFilterPanelOpen(true)}
-        className="md:hidden fixed bottom-6 left-4 z-[610] flex items-center gap-2 h-11 px-4 font-sans text-sm font-medium text-white bg-graphite hover:bg-black rounded-full shadow-lg transition-colors"
-        style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom, 0px))" }}
-        aria-label="Abrir filtros"
-      >
-        <SlidersHorizontal size={16} />
-        Filtros{activeFilters > 0 ? ` (${activeFilters})` : ""}
-      </button>
+      {/* ── FABs mobile (par coherente) ──────────────────────────
+          Se ocultan cuando el PropertyModal está abierto para no competir
+          con el botón de WhatsApp del bottom sheet. Respetan el safe-area. */}
+      {!selectedPropertyId && (
+        <>
+          {/* Filtros — secundario: paper + borde stone + texto graphite */}
+          <button
+            onClick={() => setFilterPanelOpen(true)}
+            className="md:hidden fixed left-4 z-[610] flex items-center gap-2 h-11 px-4 font-sans text-sm font-medium text-graphite bg-paper border border-stone rounded-md shadow-lg hover:bg-mist transition-colors"
+            style={{ bottom: "calc(1.5rem + env(safe-area-inset-bottom, 0px))" }}
+            aria-label="Abrir filtros"
+          >
+            <SlidersHorizontal size={16} />
+            Filtros{activeFilters > 0 ? ` (${activeFilters})` : ""}
+          </button>
 
-      {/* ── Mobile: FAB Ver mapa / Ver lista (derecha) ─────────── */}
-      <button
-        onClick={() => setShowMap((v) => !v)}
-        className="md:hidden fixed bottom-6 right-4 z-[610] flex items-center gap-2 h-11 px-5 font-sans text-sm font-medium text-paper bg-terracota hover:bg-terracota-hover rounded-full shadow-lg transition-colors"
-        style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom, 0px))" }}
-        aria-label={showMap ? "Ver lista" : "Ver mapa"}
-      >
-        {showMap ? (
-          <>
-            <List size={16} />
-            Ver lista
-          </>
-        ) : (
-          <>
-            <MapIcon size={16} />
-            Ver mapa
-          </>
-        )}
-      </button>
+          {/* Ver lista / Ver mapa — primario: terracota + texto paper */}
+          <button
+            onClick={() => setShowMap((v) => !v)}
+            className="md:hidden fixed right-4 z-[610] flex items-center gap-2 h-11 px-5 font-sans text-sm font-medium text-paper bg-terracota hover:bg-terracota-hover rounded-md shadow-lg transition-colors"
+            style={{ bottom: "calc(1.5rem + env(safe-area-inset-bottom, 0px))" }}
+            aria-label={showMap ? "Ver lista" : "Ver mapa"}
+          >
+            {showMap ? (
+              <>
+                <List size={16} />
+                Ver lista
+              </>
+            ) : (
+              <>
+                <MapIcon size={16} />
+                Ver mapa
+              </>
+            )}
+          </button>
+        </>
+      )}
     </div>
   );
 }

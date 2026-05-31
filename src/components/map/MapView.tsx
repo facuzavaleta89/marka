@@ -20,14 +20,16 @@ const TILE_CONFIG = MAPTILER_KEY
       attribution:
         '© <a href="https://www.maptiler.com/copyright/">MapTiler</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       subdomains: "abc",
+      maxZoom: 20,
     }
   : {
-      // CARTO Voyager (fallback por defecto, sin key): un poco más de color y
-      // calidez que Positron, sin volver al gris saturado de OSM.
-      url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+      // OpenStreetMap estándar (fallback por defecto, sin key): se siente más
+      // vivo y da mejor contraste con los pines terracota que los estilos lavados.
+      url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
       attribution:
-        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
-      subdomains: "abcd",
+        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      subdomains: "abc",
+      maxZoom: 19,
     };
 
 // ─── Tracker de bounds (componente interno) ───────────────────
@@ -92,8 +94,7 @@ export function MapView({ cityId, center, zoom }: MapViewProps) {
         attribution={TILE_CONFIG.attribution}
         url={TILE_CONFIG.url}
         subdomains={TILE_CONFIG.subdomains}
-        detectRetina
-        maxZoom={20}
+        maxZoom={TILE_CONFIG.maxZoom}
       />
       <BoundsTracker onBoundsChange={setBounds} />
       <ClusterLayer properties={properties} />

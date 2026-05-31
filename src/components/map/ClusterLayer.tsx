@@ -13,6 +13,7 @@ import {
 } from "./PropertyMarker";
 import { useMapFilters } from "@/store/mapFiltersStore";
 import { useVisitedProperties } from "@/lib/hooks/useVisitedProperties";
+import { useFavorites } from "@/lib/hooks/useFavorites";
 import type { Property } from "@/types";
 
 // ─── Ícono de los grupos de clusters ──────────────────────────
@@ -43,6 +44,7 @@ export function ClusterLayer({ properties }: ClusterLayerProps) {
   const map = useMap();
   const { selectedPropertyId, setSelectedProperty } = useMapFilters();
   const { isVisited, markVisited } = useVisitedProperties();
+  const { favorites, isFavorite } = useFavorites();
 
   const clusterRef = useRef<L.MarkerClusterGroup | null>(null);
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
@@ -56,6 +58,8 @@ export function ClusterLayer({ properties }: ClusterLayerProps) {
   const selectedIdRef = useRef<string | null>(selectedPropertyId);
   const isVisitedRef = useRef(isVisited);
   isVisitedRef.current = isVisited;
+  const isFavoriteRef = useRef(isFavorite);
+  isFavoriteRef.current = isFavorite;
 
   // Inicializar el cluster group una sola vez
   useEffect(() => {
@@ -97,10 +101,11 @@ export function ClusterLayer({ properties }: ClusterLayerProps) {
     properties.forEach((property) => {
       const selected = property.id === selectedIdRef.current;
       const visited = isVisitedRef.current(property.id);
+      const favorite = isFavoriteRef.current(property.id);
 
       const marker = createPropertyMarker(
         property,
-        { selected, visited },
+        { selected, visited, favorite },
         () => {
           setSelectedProperty(property.id);
           markVisited(property.id);
@@ -131,6 +136,7 @@ export function ClusterLayer({ properties }: ClusterLayerProps) {
             createPropertyIcon(property, {
               selected,
               visited: isVisitedRef.current(id),
+              favorite: isFavoriteRef.current(id),
             })
           );
         }
@@ -139,6 +145,30 @@ export function ClusterLayer({ properties }: ClusterLayerProps) {
       setMarkerState(marker, { selected });
     });
   }, [selectedPropertyId]);
+
+  // Actualizar el indicador de favorito en vivo cuando cambian los favoritos
+  // (ej: el visitante marca/desmarca el corazón en el modal). Mismo patrón que
+  // selección: toggle de clase sobre el elemento vivo, o rebuild del ícono si
+  // el marker está clusterizado. No recrea todos los markers.
+  useEffect(() => {
+    markersRef.current.forEach((marker, id) => {
+      const favorite = isFavoriteRef.current(id);
+      if (!marker.getElement()) {
+        const property = propertiesRef.current.find((p) => p.id === id);
+        if (property) {
+          marker.setIcon(
+            createPropertyIcon(property, {
+              selected: id === selectedIdRef.current,
+              visited: isVisitedRef.current(id),
+              favorite,
+            })
+          );
+        }
+        return;
+      }
+      setMarkerState(marker, { favorite });
+    });
+  }, [favorites]);
 
   return null;
 }

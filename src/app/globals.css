@@ -179,9 +179,12 @@
   overflow: visible;
 }
 .marka-pin {
-  --pin-bg: #ffffff;
-  --pin-border: #c8c0b7; /* stone */
-  --pin-fg: #111111; /* black */
+  /* Normal = terracota relleno: salta sobre el mapa OSM (mejor contraste
+     que el blanco anterior). Ver nota en DESIGN.md §PropertyMarker. */
+  --pin-bg: #a0522d; /* terracota */
+  --pin-border: #a0522d;
+  --pin-fg: #fbf9f6; /* paper */
+  --pin-fav: #fbf9f6; /* color del corazón de favorito (contrasta con el fondo) */
   --pin-bw: 1.5px;
   position: absolute;
   left: 0;
@@ -236,54 +239,84 @@
     background-color 120ms ease-out,
     border-color 120ms ease-out;
 }
-/* Badge de destacada */
+/* Badge de destacada (★) — esquina superior IZQUIERDA */
 .marka-pin__star {
   position: absolute;
   top: -7px;
-  right: -7px;
+  left: -7px;
   width: 16px;
   height: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #a0522d; /* terracota */
-  color: #ffffff;
-  border: 1.5px solid #fbf9f6; /* paper */
+  background: #fbf9f6; /* paper — resalta sobre el pin terracota */
+  color: #a0522d; /* terracota */
+  border: 1.5px solid #a0522d;
   border-radius: 50%;
   font-size: 9px;
   font-weight: 700;
   line-height: 1;
 }
-/* Hover — borde terracota (CSS puro, sin JS) */
-.marka-pin:hover {
-  --pin-border: #a0522d;
+/* Indicador de favorito (♥) — esquina superior DERECHA. Capa encima, no
+   reemplaza el fondo. El badge hereda el color del pin (se ve "pegado" a él)
+   y el corazón usa --pin-fav, que contrasta con el fondo en cada estado.
+   Siempre presente en el HTML; se muestra solo con la clase .marka-pin--fav
+   para poder togglearlo en vivo desde el modal. */
+.marka-pin__fav {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  width: 16px;
+  height: 16px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: var(--pin-bg);
+  border: var(--pin-bw) solid var(--pin-border);
+  border-radius: 50%;
+  color: var(--pin-fav);
 }
-/* Destacada — borde terracota permanente */
+.marka-pin--fav .marka-pin__fav {
+  display: flex;
+}
+.marka-pin__fav svg {
+  width: 9px;
+  height: 9px;
+  display: block;
+}
+/* Hover — oscurecimiento sutil (solo en no seleccionados / no visitados) */
+.marka-pin:not(.marka-pin--active):not(.marka-pin--visited):hover {
+  --pin-bg: #8b4526; /* terracota-hover */
+  --pin-border: #8b4526;
+}
+/* Destacada — terracota normal + anillo paper 2px (+ badge ★) */
 .marka-pin--featured {
-  --pin-border: #a0522d;
+  --pin-border: #fbf9f6; /* paper */
   --pin-bw: 2px;
 }
-/* Visitada — pierde protagonismo pero sigue legible */
+/* Visitada — "ya la vi": apagada pero claramente un pin (fondo stone sólido,
+   borde graphite definido, texto graphite). Lee como pin desactivado, no como
+   pin roto, y contrasta con el mapa claro. El corazón de favorito pasa a
+   terracota para destacar sobre el fondo apagado. */
 .marka-pin--visited {
-  --pin-bg: #fbf9f6; /* paper */
-  --pin-border: #c8c0b7; /* stone */
-  --pin-fg: #8a847c; /* graphite atenuado */
-  box-shadow: 0 2px 6px -3px rgba(17, 17, 17, 0.16);
+  --pin-bg: #c8c0b7; /* stone */
+  --pin-border: #4e4a46; /* graphite — borde definido */
+  --pin-fg: #4e4a46; /* graphite */
+  --pin-fav: #a0522d; /* terracota — resalta sobre el stone */
+  box-shadow: 0 2px 6px -3px rgba(17, 17, 17, 0.18);
 }
-.marka-pin--visited .marka-pin__star {
-  background: #c8c0b7;
-}
-/* Activa (seleccionada) — definida al final para ganar sobre visited */
+/* Activa (seleccionada) — negro, para distinguirse del terracota normal.
+   Definida al final para ganar sobre visited; el hover la excluye con :not(). */
 .marka-pin--active {
-  --pin-bg: #a0522d; /* terracota */
-  --pin-border: #a0522d;
+  --pin-bg: #111111; /* black */
+  --pin-border: #111111;
   --pin-fg: #fbf9f6; /* paper */
   --pin-bw: 2px;
   /* microtransición de escala — DESIGN 8 (conserva el centrado translateX) */
   transform: translateX(-50%) scale(1.08);
   box-shadow:
-    0 8px 18px -4px rgba(160, 82, 45, 0.45),
-    0 3px 6px -2px rgba(17, 17, 17, 0.18);
+    0 8px 18px -4px rgba(17, 17, 17, 0.45),
+    0 3px 6px -2px rgba(17, 17, 17, 0.22);
 }
 .marka-pin--active .marka-pin__star {
   background: #fbf9f6;

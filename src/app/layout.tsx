@@ -41,7 +41,16 @@ export default function RootLayout({
       lang="es"
       className={cn("h-full antialiased", notoSerif.variable, dmSans.variable)}
     >
-      <body className="min-h-full">{children}</body>
+      <body className="min-h-full">
+        {children}
+        {/* Marco editorial fino alrededor de toda la ventana de la app: 1px stone,
+            como el margen de una página. Overlay fixed → no afecta el layout, no
+            genera scroll y no recorta contenido; pointer-events-none no bloquea. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-0 z-[9999] border border-stone"
+        />
+      </body>
     </html>
   );
 }

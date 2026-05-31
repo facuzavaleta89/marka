@@ -65,8 +65,12 @@ export function useProperties(cityId: string, bounds: MapBounds | null) {
         query = query.ilike("neighborhood", `%${filters.neighborhood}%`);
       }
       if (filters.amenities.length > 0) {
-        // JSONB containment: la propiedad debe tener TODOS los amenities seleccionados
-        query = query.contains("amenities", filters.amenities);
+        // JSONB containment (@>): la propiedad debe tener TODOS los amenities
+        // seleccionados. Hay que pasar un STRING JSON: si se pasa un array JS,
+        // postgrest-js lo serializa como literal de array Postgres ("cs.{a,b}"),
+        // que no matchea contra una columna JSONB. Con JSON.stringify se genera
+        // "cs.[\"a\",\"b\"]" → amenities @> '["a","b"]'.
+        query = query.contains("amenities", JSON.stringify(filters.amenities));
       }
       if (filters.only_featured) {
         query = query.eq("is_featured", true);
