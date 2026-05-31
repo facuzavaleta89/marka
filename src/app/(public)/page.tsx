@@ -34,11 +34,31 @@ export default function PublicPage() {
     initCity();
   }, [initCity]);
 
-  // ── Estados de carga ─────────────────────────────────────────
+  // ── Estado de carga: skeleton del layout (header + panel + mapa) ──
   if (isLoading) {
     return (
-      <div className="h-screen bg-paper flex items-center justify-center">
-        <p className="font-sans text-sm text-graphite">Cargando...</p>
+      <div className="flex flex-col h-screen bg-paper overflow-hidden">
+        {/* Header */}
+        <header className="h-14 flex items-center justify-between px-4 md:px-6 bg-paper border-b border-stone shrink-0">
+          <div className="h-5 w-24 rounded-sm bg-stone/30 animate-pulse" />
+          <div className="h-7 w-32 rounded-md bg-stone/30 animate-pulse" />
+          <div className="h-5 w-16 rounded-sm bg-stone/30 animate-pulse" />
+        </header>
+
+        <div className="flex flex-1 overflow-hidden">
+          {/* FilterPanel skeleton (desktop) */}
+          <aside className="hidden md:flex flex-col gap-6 w-80 shrink-0 border-r border-stone bg-paper p-5">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="space-y-2.5">
+                <div className="h-2.5 w-24 rounded-sm bg-stone/30 animate-pulse" />
+                <div className="h-9 w-full rounded-md bg-stone/30 animate-pulse" />
+              </div>
+            ))}
+          </aside>
+
+          {/* Mapa skeleton */}
+          <div className="flex-1 bg-mist animate-pulse" />
+        </div>
       </div>
     );
   }

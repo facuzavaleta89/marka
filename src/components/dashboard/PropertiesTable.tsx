@@ -60,9 +60,11 @@ interface PropertiesTableProps {
 
 // ─── Constantes ──────────────────────────────────────────────
 
-// Solo el estilo del badge; las etiquetas vienen de PROPERTY_STATUS_LABELS
+// Solo el estilo del badge; las etiquetas vienen de PROPERTY_STATUS_LABELS.
+// "active" usa un verde sutil (success) en vez de terracota: "publicada/en vivo"
+// es un estado positivo y así no compite con los CTAs terracota de las acciones.
 const STATUS_CLASSNAME: Record<PropertyStatus, string> = {
-  active: "bg-terracota-subtle text-terracota",
+  active: "bg-success/10 text-success",
   paused: "bg-mist text-graphite",
   sold: "bg-stone text-graphite",
   rented: "bg-stone text-graphite",
@@ -93,7 +95,7 @@ function Thumbnail({
 
   if (!cover) {
     return (
-      <div className="w-12 h-12 rounded bg-mist flex items-center justify-center shrink-0">
+      <div className="h-12 w-16 rounded-md bg-mist flex items-center justify-center shrink-0">
         <ImageOff size={16} className="text-stone" />
       </div>
     );
@@ -104,7 +106,7 @@ function Thumbnail({
     <img
       src={cover.url}
       alt={title}
-      className="w-12 h-12 object-cover rounded shrink-0"
+      className="h-12 w-16 object-cover rounded-md shrink-0"
     />
   );
 }
@@ -322,6 +324,52 @@ export function PropertiesTable({ properties }: PropertiesTableProps) {
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+// ─── Skeleton de tabla (para el loading de la ruta) ───────────
+
+export function PropertiesTableSkeleton({ rows = 5 }: { rows?: number }) {
+  const items = Array.from({ length: rows });
+  return (
+    <div className="animate-pulse">
+      {/* Desktop */}
+      <div className="hidden md:block bg-paper border border-stone rounded-lg overflow-hidden">
+        <div className="border-b border-stone px-5 py-3">
+          <div className="h-2.5 w-28 rounded-sm bg-stone/30" />
+        </div>
+        <div className="divide-y divide-stone">
+          {items.map((_, i) => (
+            <div key={i} className="flex items-center gap-4 px-5 py-3">
+              <div className="h-12 w-16 shrink-0 rounded-md bg-stone/30" />
+              <div className="h-3 w-48 rounded-sm bg-stone/30" />
+              <div className="ml-auto h-3 w-16 rounded-sm bg-stone/30" />
+              <div className="h-3 w-20 rounded-sm bg-stone/30" />
+              <div className="h-5 w-16 rounded-sm bg-stone/30" />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Mobile */}
+      <div className="md:hidden space-y-3">
+        {items.map((_, i) => (
+          <div key={i} className="bg-paper border border-stone rounded-lg p-4">
+            <div className="flex gap-3">
+              <div className="h-12 w-16 shrink-0 rounded-md bg-stone/30" />
+              <div className="flex-1 space-y-2">
+                <div className="h-3 w-2/3 rounded-sm bg-stone/30" />
+                <div className="h-2.5 w-1/2 rounded-sm bg-stone/30" />
+                <div className="h-3 w-20 rounded-sm bg-stone/30" />
+              </div>
+            </div>
+            <div className="mt-3 pt-3 border-t border-stone">
+              <div className="h-5 w-16 rounded-sm bg-stone/30" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

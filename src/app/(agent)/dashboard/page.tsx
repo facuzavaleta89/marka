@@ -87,24 +87,26 @@ export default async function DashboardPage() {
         <StatsCard
           title="Propiedades activas"
           value={activeCount ?? 0}
-          icon={Building2}
+          icon={<Building2 size={20} />}
         />
         <StatsCard
           title="Leads este mes"
           value={leadsCount ?? 0}
-          icon={LayoutDashboard}
+          icon={<LayoutDashboard size={20} />}
           description="Últimos 30 días"
         />
         <StatsCard
           title="Vistas totales"
-          value={totalViews.toLocaleString("es-AR")}
-          icon={Eye}
+          value={totalViews}
+          icon={<Eye size={20} />}
         />
+        {/* La métrica más relevante para el agente — resaltada en terracota */}
         <StatsCard
           title="Disponibles del plan"
           value={Math.max(0, available)}
-          icon={Layers}
+          icon={<Layers size={20} />}
           description={`${used} de ${propertyLimit} usadas`}
+          accent
         />
       </div>
 

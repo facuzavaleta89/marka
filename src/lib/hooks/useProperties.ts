@@ -90,7 +90,7 @@ export function useProperties(cityId: string, bounds: MapBounds | null) {
       if (cancelled) return;
 
       if (queryError) {
-        setError("No se pudieron cargar las propiedades");
+        setError("No se pudieron cargar las propiedades. Revisá tu conexión y recargá la página.");
         setIsLoading(false);
         return;
       }

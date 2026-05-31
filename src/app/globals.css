@@ -347,6 +347,30 @@
     0 4px 12px -2px rgba(17, 17, 17, 0.32);
 }
 
+/* ─── Pin del LocationPicker (mini-mapa del formulario) ─────────
+   El pin terracota arrastrable lleva sombra (DESIGN §11) y un pulse
+   sutil al soltarlo (micro-feedback). La sombra y la escala van en el
+   span interno para no pisar el transform de posicionamiento de Leaflet. */
+.marka-loc-pin__inner {
+  display: block;
+  transform-origin: 50% 100%; /* ancla en la punta inferior */
+  filter: drop-shadow(0 4px 6px rgba(17, 17, 17, 0.32));
+}
+.marka-loc-pin__inner--pulse {
+  animation: marka-loc-pulse 450ms ease-out;
+}
+@keyframes marka-loc-pulse {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.22);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
 /* ─── Controles de Leaflet (estilo editorial) ──────────────────
    Sobrescriben el look de fábrica para alinear con la paleta paper/stone. */
 .leaflet-control-zoom {

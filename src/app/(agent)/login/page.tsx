@@ -9,8 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { loginAction } from "./actions";
-import { Wordmark } from "@/components/brand/Wordmark";
+import { AuthLayout } from "@/components/auth/AuthLayout";
 import { cn } from "@/lib/utils";
+
+// Claim del panel de identidad (voz DESIGN §10: directo, sin marketing). Fácil de cambiar.
+const CLAIM = "De vuelta al mapa de tu ciudad.";
+const SUBCLAIM = "Entrá para gestionar tus propiedades y tus leads.";
 
 const schema = z.object({
   email: z.string().email("Email inválido"),
@@ -41,18 +45,15 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-paper flex items-center justify-center p-4">
-      <div className="w-full max-w-sm">
-        <h1 className="text-center mb-8">
-          <Wordmark size="lg" variant="dark" />
-        </h1>
+    <AuthLayout claim={CLAIM} subclaim={SUBCLAIM}>
+      <h2 className="font-serif text-3xl font-semibold text-black mb-1.5">
+        Iniciar sesión
+      </h2>
+      <p className="font-sans text-sm text-graphite mb-7">
+        Ingresá a tu cuenta de agente.
+      </p>
 
-        <div className="bg-white border border-stone rounded-lg p-8 shadow-sm">
-          <h2 className="font-serif text-2xl font-semibold text-black mb-6">
-            Iniciar sesión
-          </h2>
-
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
             <div className="space-y-1.5">
               <Label
                 htmlFor="email"
@@ -109,20 +110,18 @@ export default function LoginPage() {
               className="w-full bg-terracota hover:bg-terracota-hover text-paper border-0"
             >
               {loading ? "Ingresando..." : "Ingresar"}
-            </Button>
-          </form>
-        </div>
+        </Button>
+      </form>
 
-        <p className="font-sans text-sm text-graphite text-center mt-6">
-          ¿No tenés cuenta?{" "}
-          <Link
-            href="/register"
-            className="text-terracota hover:underline font-medium"
-          >
-            Registrate
-          </Link>
-        </p>
-      </div>
-    </div>
+      <p className="font-sans text-sm text-graphite mt-7">
+        ¿No tenés cuenta?{" "}
+        <Link
+          href="/register"
+          className="text-terracota hover:underline font-medium"
+        >
+          Registrate
+        </Link>
+      </p>
+    </AuthLayout>
   );
 }

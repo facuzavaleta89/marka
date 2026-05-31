@@ -620,19 +620,26 @@ export function PropertyForm({
         </p>
       )}
 
-      {/* ── Submit ── */}
-      <div className="flex justify-end pt-2">
-        <button
-          type="submit"
-          disabled={submitting}
-          className="inline-flex items-center h-11 px-8 font-sans text-sm font-medium text-paper bg-terracota hover:bg-terracota-hover rounded-md transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-        >
-          {submitting
-            ? "Guardando..."
-            : mode === "create"
-            ? "Publicar propiedad"
-            : "Guardar cambios"}
-        </button>
+      {/* ── Barra de acción sticky ──
+          Siempre visible al pie mientras se scrollea el form (7 secciones).
+          Sangra hasta los bordes del contenedor (-mx-8) y respeta el safe-area. */}
+      <div
+        className="sticky bottom-0 -mx-4 sm:-mx-8 mt-2 border-t border-stone bg-mist/85 backdrop-blur-sm px-4 sm:px-8 pt-4"
+        style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom, 0px))" }}
+      >
+        <div className="flex items-center justify-end">
+          <button
+            type="submit"
+            disabled={submitting}
+            className="inline-flex items-center h-11 px-8 font-sans text-sm font-medium text-paper bg-terracota hover:bg-terracota-hover rounded-md transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {submitting
+              ? "Guardando..."
+              : mode === "create"
+              ? "Publicar propiedad"
+              : "Guardar cambios"}
+          </button>
+        </div>
       </div>
     </form>
   );

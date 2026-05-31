@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ImageOff, X, Upload } from "lucide-react";
+import { ImageOff, X, Upload, GripVertical } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { PropertyImage } from "@/types";
 
@@ -29,6 +29,9 @@ export function ImageUploader({
 }: ImageUploaderProps) {
   const [images, setImages] = useState<PropertyImage[]>(existingImages);
   const [uploading, setUploading] = useState(false);
+  // Nombres de los archivos que se están subiendo, en orden. Cada uno se
+  // renderiza como un thumbnail en estado de carga y se quita al completar.
+  const [pending, setPending] = useState<string[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [draggingFileOver, setDraggingFileOver] = useState(false);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
@@ -50,13 +53,16 @@ export function ImageUploader({
     const remaining = MAX_IMAGES - images.length;
     if (remaining <= 0) return;
 
+    const queued = fileArr.slice(0, remaining);
     setUploading(true);
     setUploadError(null);
+    // Mostrar un thumbnail de carga por cada archivo en cola
+    setPending(queued.map((f) => f.name));
 
     const supabase = createClient();
     const newImages: PropertyImage[] = [];
 
-    for (const file of fileArr.slice(0, remaining)) {
+    for (const file of queued) {
       const ext = file.name.split(".").pop() ?? "jpg";
       const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}.${ext}`;
       const path = `${agentId}/${propertyId}/${filename}`;
@@ -65,8 +71,11 @@ export function ImageUploader({
         .from(BUCKET)
         .upload(path, file, { upsert: false });
 
+      // Este archivo terminó (con o sin éxito): liberar su placeholder
+      setPending((prev) => prev.slice(1));
+
       if (error) {
-        setUploadError(`No se pudo subir "${file.name}"`);
+        setUploadError(`No se pudo subir "${file.name}". Probá con otra imagen.`);
         continue;
       }
 
@@ -91,6 +100,7 @@ export function ImageUploader({
     }));
 
     syncImages(updated);
+    setPending([]);
     setUploading(false);
   };
 
@@ -173,9 +183,7 @@ export function ImageUploader({
         >
           <Upload size={20} className="text-graphite" />
           <p className="font-sans text-sm text-graphite text-center px-4">
-            {uploading
-              ? "Subiendo..."
-              : "Arrastrá imágenes acá o hacé click para seleccionar"}
+            Arrastrá imágenes acá o hacé click para seleccionar
           </p>
           <input
             ref={fileInputRef}
@@ -197,7 +205,7 @@ export function ImageUploader({
       )}
 
       {/* Grilla de thumbnails */}
-      {images.length > 0 && (
+      {(images.length > 0 || pending.length > 0) && (
         <div className="grid grid-cols-3 gap-3">
           {images.map((img, i) => (
             <div
@@ -208,7 +216,7 @@ export function ImageUploader({
               onDrop={(e) => handleImageDrop(e, i)}
               onDragEnd={() => setDraggingIndex(null)}
               className={[
-                "relative rounded-md overflow-hidden aspect-square cursor-grab active:cursor-grabbing border",
+                "group relative rounded-md overflow-hidden aspect-square cursor-grab active:cursor-grabbing border",
                 draggingIndex === i
                   ? "border-terracota opacity-60 scale-95"
                   : "border-stone",
@@ -221,6 +229,14 @@ export function ImageUploader({
                 className="w-full h-full object-cover"
               />
 
+              {/* Affordance de arrastre — aparece en hover del thumbnail */}
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-opacity duration-150 group-hover:bg-black/15 group-hover:opacity-100">
+                <span className="flex items-center gap-1 rounded-sm bg-paper/90 px-1.5 py-0.5 font-sans text-[10px] font-medium text-graphite shadow-sm">
+                  <GripVertical size={12} />
+                  Arrastrá
+                </span>
+              </div>
+
               {/* Badge portada */}
               {i === 0 && (
                 <span className="absolute top-1.5 left-1.5 font-sans text-[10px] font-semibold uppercase tracking-wide bg-terracota text-paper rounded-sm px-1.5 py-0.5">
@@ -232,17 +248,28 @@ export function ImageUploader({
               <button
                 type="button"
                 onClick={() => handleRemove(i)}
-                className="absolute top-1.5 right-1.5 p-0.5 rounded-full bg-black/60 text-white hover:bg-black transition-colors"
+                className="absolute top-1.5 right-1.5 z-10 p-0.5 rounded-full bg-black/60 text-white hover:bg-black transition-colors"
                 aria-label="Eliminar imagen"
               >
                 <X size={12} />
               </button>
             </div>
           ))}
+
+          {/* Thumbnails en carga — uno por archivo en cola */}
+          {pending.map((name, i) => (
+            <div
+              key={`pending-${i}-${name}`}
+              className="relative flex items-center justify-center aspect-square rounded-md border border-stone bg-mist animate-pulse"
+              aria-label={`Subiendo ${name}`}
+            >
+              <Upload size={18} className="text-stone" />
+            </div>
+          ))}
         </div>
       )}
 
-      {images.length === 0 && (
+      {images.length === 0 && pending.length === 0 && (
         <div className="flex items-center justify-center h-16 rounded-md bg-mist border border-stone">
           <ImageOff size={20} className="text-stone mr-2" />
           <span className="font-sans text-sm text-graphite">

@@ -9,8 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { registerAction } from "./actions";
-import { Wordmark } from "@/components/brand/Wordmark";
+import { AuthLayout } from "@/components/auth/AuthLayout";
 import { cn } from "@/lib/utils";
+
+// Claim del panel de identidad (voz DESIGN §10: directo, sin marketing). Fácil de cambiar.
+const CLAIM = "Sumá tu inmobiliaria al mapa de tu ciudad.";
+const SUBCLAIM =
+  "Publicá tus propiedades donde los compradores de tu ciudad ya están buscando.";
 
 const schema = z
   .object({
@@ -77,18 +82,15 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-paper flex items-center justify-center p-4">
-      <div className="w-full max-w-sm">
-        <h1 className="text-center mb-8">
-          <Wordmark size="lg" variant="dark" />
-        </h1>
+    <AuthLayout claim={CLAIM} subclaim={SUBCLAIM}>
+      <h2 className="font-serif text-3xl font-semibold text-black mb-1.5">
+        Crear cuenta
+      </h2>
+      <p className="font-sans text-sm text-graphite mb-7">
+        Sumá tu inmobiliaria en un par de pasos.
+      </p>
 
-        <div className="bg-white border border-stone rounded-lg p-8 shadow-sm">
-          <h2 className="font-serif text-2xl font-semibold text-black mb-6">
-            Crear cuenta
-          </h2>
-
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
             <Field id="fullName" label="Nombre completo" error={errors.fullName?.message}>
               <Input
                 id="fullName"
@@ -164,17 +166,15 @@ export default function RegisterPage() {
               className="w-full bg-terracota hover:bg-terracota-hover text-paper border-0"
             >
               {loading ? "Creando cuenta..." : "Crear cuenta"}
-            </Button>
-          </form>
-        </div>
+        </Button>
+      </form>
 
-        <p className="font-sans text-sm text-graphite text-center mt-6">
-          ¿Ya tenés cuenta?{" "}
-          <Link href="/login" className="text-terracota hover:underline font-medium">
-            Iniciá sesión
-          </Link>
-        </p>
-      </div>
-    </div>
+      <p className="font-sans text-sm text-graphite mt-7">
+        ¿Ya tenés cuenta?{" "}
+        <Link href="/login" className="text-terracota hover:underline font-medium">
+          Iniciá sesión
+        </Link>
+      </p>
+    </AuthLayout>
   );
 }

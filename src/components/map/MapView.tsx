@@ -4,33 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { MapContainer, TileLayer, useMapEvents } from "react-leaflet";
 import { ClusterLayer } from "./ClusterLayer";
 import { useProperties } from "@/lib/hooks/useProperties";
+import { TILE_CONFIG } from "@/lib/map/tiles";
 import type { MapBounds } from "@/types";
-
-// ─── Configuración de tiles ───────────────────────────────────
-// CARTO Positron: baja saturación, cálido y limpio → deja que los pines
-// terracota sean los protagonistas. Gratuito y sin API key.
-// Preparado para migrar a MapTiler: si se define NEXT_PUBLIC_MAPTILER_KEY,
-// el cambio es automático (una sola fuente de verdad acá).
-const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY;
-
-const TILE_CONFIG = MAPTILER_KEY
-  ? {
-      // Estilo claro de MapTiler (cuando se agregue la key)
-      url: `https://api.maptiler.com/maps/dataviz-light/{z}/{x}/{y}{r}.png?key=${MAPTILER_KEY}`,
-      attribution:
-        '© <a href="https://www.maptiler.com/copyright/">MapTiler</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      subdomains: "abc",
-      maxZoom: 20,
-    }
-  : {
-      // OpenStreetMap estándar (fallback por defecto, sin key): se siente más
-      // vivo y da mejor contraste con los pines terracota que los estilos lavados.
-      url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-      attribution:
-        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      subdomains: "abc",
-      maxZoom: 19,
-    };
 
 // ─── Tracker de bounds (componente interno) ───────────────────
 // Debounce de 400ms: solo refetcheamos cuando el usuario deja de mover el mapa,

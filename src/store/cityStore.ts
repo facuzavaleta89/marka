@@ -8,6 +8,9 @@ interface CityState {
   city: City | null;
   cities: City[];
   isLoading: boolean;
+  // Ciudad detectada por geolocalización (para el label "Cerca tuyo" del
+  // CityPicker). null si no se resolvió por geo (ej: ciudad guardada o default).
+  nearbyCityId: string | null;
   // Garantiza que initCity() resuelva la ciudad una sola vez,
   // aunque varios componentes (página + CityPicker) lo invoquen.
   initialized: boolean;
@@ -19,6 +22,7 @@ export const useCityStore = create<CityState>()((set, get) => ({
   city: null,
   cities: [],
   isLoading: true,
+  nearbyCityId: null,
   initialized: false,
 
   setCity: (city) => {
@@ -79,7 +83,7 @@ export const useCityStore = create<CityState>()((set, get) => ({
               Math.pow(best.center_lng - coords.longitude, 2);
             return d < bestD ? c : best;
           });
-          set({ city: nearest, isLoading: false });
+          set({ city: nearest, nearbyCityId: nearest.id, isLoading: false });
         },
         () => {
           // 3. Permiso rechazado o error → ciudad por defecto (primera activa)

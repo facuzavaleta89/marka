@@ -3,9 +3,15 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 import { useMapFilters, selectActiveFiltersCount } from "@/store/mapFiltersStore";
+import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import type { PropertyType, Amenity } from "@/types";
 import { PROPERTY_TYPE_LABELS, AMENITY_LABELS } from "@/lib/utils/labels";
+
+// Override para que el Checkbox de shadcn use terracota en estado marcado
+// (mismo patrón que PropertyForm, para consistencia en todo el form).
+const CHECKBOX_TERRACOTA =
+  "border-stone data-[state=checked]:bg-terracota data-[state=checked]:border-terracota data-[state=checked]:text-paper";
 
 // ─── Constantes ───────────────────────────────────────────────
 
@@ -72,10 +78,13 @@ function ToggleBtn({
 function NumInput({
   value,
   onChange,
+  onCommit,
   placeholder,
 }: {
   value: string;
   onChange: (v: string) => void;
+  /** Se aplica el filtro al perder el foco o con Enter (sin botón "Aplicar") */
+  onCommit: () => void;
   placeholder: string;
 }) {
   return (
@@ -84,6 +93,10 @@ function NumInput({
       inputMode="numeric"
       value={value}
       onChange={(e) => onChange(e.target.value)}
+      onBlur={onCommit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+      }}
       placeholder={placeholder}
       className="w-full h-9 px-3 font-sans text-sm text-black placeholder:text-stone bg-white border border-stone rounded-md outline-none focus:border-graphite focus:ring-2 focus:ring-terracota/20"
     />
@@ -178,7 +191,7 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
+      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6 md:space-y-8">
         {/* Operación */}
         <Section title="Operación">
           <div className="flex gap-2">
@@ -255,40 +268,40 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
               </button>
             ))}
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="flex items-center gap-2">
             <NumInput
               value={priceMin}
               onChange={setPriceMin}
+              onCommit={() => commitPrice("price_min", priceMin)}
               placeholder="Desde"
             />
+            <span className="text-stone">–</span>
             <NumInput
               value={priceMax}
               onChange={setPriceMax}
+              onCommit={() => commitPrice("price_max", priceMax)}
               placeholder="Hasta"
             />
           </div>
-          <button
-            type="button"
-            onClick={() => { commitPrice("price_min", priceMin); commitPrice("price_max", priceMax); }}
-            className="w-full mt-1 py-1.5 font-sans text-xs text-graphite bg-mist hover:bg-stone/60 rounded-md transition-colors"
-          >
-            Aplicar precio
-          </button>
         </Section>
 
         {/* Superficie */}
         <Section title="Superficie (m²)">
-          <div className="grid grid-cols-2 gap-2">
-            <NumInput value={areaMin} onChange={setAreaMin} placeholder="Desde" />
-            <NumInput value={areaMax} onChange={setAreaMax} placeholder="Hasta" />
+          <div className="flex items-center gap-2">
+            <NumInput
+              value={areaMin}
+              onChange={setAreaMin}
+              onCommit={() => commitArea("area_min", areaMin)}
+              placeholder="Desde"
+            />
+            <span className="text-stone">–</span>
+            <NumInput
+              value={areaMax}
+              onChange={setAreaMax}
+              onCommit={() => commitArea("area_max", areaMax)}
+              placeholder="Hasta"
+            />
           </div>
-          <button
-            type="button"
-            onClick={() => { commitArea("area_min", areaMin); commitArea("area_max", areaMax); }}
-            className="w-full mt-1 py-1.5 font-sans text-xs text-graphite bg-mist hover:bg-stone/60 rounded-md transition-colors"
-          >
-            Aplicar superficie
-          </button>
         </Section>
 
         {/* Dormitorios */}
@@ -319,16 +332,20 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
 
         {/* Amenities */}
         <Section title="Amenities">
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-2.5">
             {FILTER_AMENITIES.map((value) => {
               const active = filters.amenities.includes(value);
               return (
-                <label key={value} className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
+                <label
+                  key={value}
+                  htmlFor={`amenity-${value}`}
+                  className="flex items-center gap-2.5 cursor-pointer"
+                >
+                  <Checkbox
+                    id={`amenity-${value}`}
                     checked={active}
-                    onChange={() => toggleAmenity(value)}
-                    className="w-4 h-4 accent-terracota rounded"
+                    onCheckedChange={() => toggleAmenity(value)}
+                    className={CHECKBOX_TERRACOTA}
                   />
                   <span className="font-sans text-sm text-black">
                     {AMENITY_LABELS[value]}
@@ -341,14 +358,21 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
 
         {/* Solo destacadas */}
         <Section title="Destacadas">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
+          <label
+            htmlFor="only-featured"
+            className="flex items-center gap-2.5 cursor-pointer"
+          >
+            <Checkbox
+              id="only-featured"
               checked={filters.only_featured}
-              onChange={() => setFilter("only_featured", !filters.only_featured)}
-              className="w-4 h-4 accent-terracota rounded"
+              onCheckedChange={() =>
+                setFilter("only_featured", !filters.only_featured)
+              }
+              className={CHECKBOX_TERRACOTA}
             />
-            <span className="font-sans text-sm text-black">Solo propiedades destacadas</span>
+            <span className="font-sans text-sm text-black">
+              Solo propiedades destacadas
+            </span>
           </label>
         </Section>
       </div>

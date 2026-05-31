@@ -15,13 +15,23 @@ export function PlanBadge({ planUsage }: PlanBadgeProps) {
     );
   }
 
+  // Plan free: badge con contador + micro-barra de proporción (used/limit)
+  const pct = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
+
   return (
-    <span className="inline-flex items-center font-sans text-[11px] font-semibold uppercase tracking-wide bg-mist text-graphite rounded-sm px-2.5 py-1">
-      Plan Free ·{" "}
-      <strong className="ml-1 font-semibold">
+    <span className="inline-flex items-center gap-2 bg-mist rounded-sm px-2.5 py-1">
+      <span className="font-sans text-[11px] font-semibold uppercase tracking-wide text-graphite">
+        Plan Free
+      </span>
+      <span className="font-sans text-[11px] font-semibold tabular-nums text-graphite">
         {used}/{limit}
-      </strong>
-      &nbsp;propiedades
+      </span>
+      <span className="relative h-1 w-10 overflow-hidden rounded-full bg-stone/50">
+        <span
+          className="absolute inset-y-0 left-0 rounded-full bg-terracota transition-all duration-[220ms]"
+          style={{ width: `${pct}%` }}
+        />
+      </span>
     </span>
   );
 }

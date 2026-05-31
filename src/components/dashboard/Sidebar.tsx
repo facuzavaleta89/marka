@@ -48,13 +48,31 @@ function NavContent({
       {/* Encabezado: marca + agente */}
       <div className="px-6 py-5 border-b border-white/10">
         <Wordmark size="md" variant="light" className="mb-5" />
-        <p className="font-sans text-xs text-stone uppercase tracking-wider">
-          {agent.agency?.name ?? ""}
-        </p>
-        <p className="font-sans text-base font-medium text-paper mt-0.5 truncate">
-          {agent.full_name}
-        </p>
-        <div className="mt-3">
+        <div className="flex items-center gap-3">
+          {agent.avatar_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={agent.avatar_url}
+              alt={agent.full_name}
+              className="h-10 w-10 shrink-0 rounded-full object-cover ring-1 ring-white/15"
+            />
+          ) : (
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/15">
+              <span className="font-serif text-base font-semibold text-paper">
+                {agent.full_name.trim().charAt(0).toUpperCase() || "?"}
+              </span>
+            </div>
+          )}
+          <div className="min-w-0">
+            <p className="font-sans text-xs text-stone uppercase tracking-wider truncate">
+              {agent.agency?.name ?? ""}
+            </p>
+            <p className="font-sans text-sm font-medium text-paper truncate">
+              {agent.full_name}
+            </p>
+          </div>
+        </div>
+        <div className="mt-4">
           <PlanBadge planUsage={planUsage} />
         </div>
       </div>
@@ -74,7 +92,7 @@ function NavContent({
                 "flex items-center gap-3 py-2.5 rounded-md font-sans text-sm transition-colors duration-100",
                 active
                   ? "border-l-[3px] border-terracota text-paper bg-white/5 pl-[calc(0.75rem_-_3px)] pr-3"
-                  : "text-stone hover:text-paper px-3",
+                  : "text-stone hover:text-paper hover:bg-white/5 px-3",
               ].join(" ")}
             >
               <Icon size={18} strokeWidth={1.75} />

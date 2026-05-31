@@ -33,7 +33,7 @@ export async function updateProfileAction(data: {
     .update(updatePayload)
     .eq("id", user.id);
 
-  if (error) return { error: "No se pudo actualizar el perfil" };
+  if (error) return { error: "No se pudo actualizar el perfil. Intentá de nuevo." };
 
   revalidatePath("/dashboard/perfil");
   revalidatePath("/dashboard", "layout");
