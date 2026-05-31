@@ -10,6 +10,7 @@ import { CityPicker } from "@/components/map/CityPicker";
 import { Wordmark } from "@/components/brand/Wordmark";
 import { FilterPanel } from "@/components/map/FilterPanel";
 import { PropertyModal } from "@/components/map/PropertyModal";
+import { PropertyList } from "@/components/properties/PropertyList";
 
 const MapView = dynamic(
   () => import("@/components/map/MapView").then((m) => ({ default: m.MapView })),
@@ -91,17 +92,9 @@ export default function PublicPage() {
             />
           </div>
 
-          {/* Vista de lista (mobile, cuando showMap es false) */}
-          {!showMap && (
-            <div className="md:hidden h-full flex items-center justify-center bg-mist">
-              <div className="text-center px-8">
-                <List size={32} className="text-stone mx-auto mb-3" />
-                <p className="font-sans text-sm text-graphite">
-                  Lista de propiedades próximamente
-                </p>
-              </div>
-            </div>
-          )}
+          {/* Vista de lista (mobile, cuando showMap es false).
+              Mismos datos/filtros que el mapa (useProperties), cards-first. */}
+          {!showMap && <PropertyList city={city} />}
         </div>
       </div>
 
