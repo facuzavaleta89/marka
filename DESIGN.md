@@ -246,82 +246,88 @@ El diseño editorial prefiere bordes sobre sombras. Las sombras se usan solo en 
 
 El pin muestra el precio directamente — es el único dato que importa en el mapa.
 
-> **Nota (cambio de esquema):** el pin base pasó de **blanco** a **terracota relleno**.
-> El blanco casi no contrastaba con el mapa OSM; el terracota hace que el pin "salte"
-> sobre el fondo. Con el normal en terracota, el estado **activo** se mueve a **negro**
-> para que la selección siga siendo inequívoca. El precio va siempre en DM Sans 12px
-> Medium con `tabular-nums`, y la punta inferior hereda el color de fondo del pin.
+**Estado normal:**
+El pin es una cápsula con punta inferior (ancla al punto geográfico exacto), fondo sólido, en DM Sans con `tabular-nums`. La implementación es CSS sobre un `DivIcon` de Leaflet (clases `.marka-pin`, no SVG fijo), lo que permite ancho variable según el precio y transiciones reales.
+
+> **Nota:** el esquema de color se invirtió respecto al diseño original (antes el pin normal era blanco). Se cambió para mejorar el contraste sobre el mapa OSM: el pin normal ahora es terracota y "salta" sobre el fondo del mapa. La jerarquía de estados se reordenó para no perder la señal de selección.
 
 **Estado normal:**
 ```
 ┌──────────────┐
-│  USD 250k    │  ← DM Sans 12px Medium, color: paper
-└──────┬───────┘  ← background: terracota (#A0522D), shadow-md
-       ▼            (punta inferior también terracota)
+│  USD 250k    │  ← fondo: terracota (#A0522D), texto: paper
+└──────┬───────┘  ← punta terracota, shadow-md suave
+       ▼
 ```
 
 **Estado hover:**
 ```
 ┌──────────────┐
-│  USD 250k    │  ← background: terracota-hover (#8B4526), oscurecimiento sutil
+│  USD 250k    │  ← fondo: terracota-hover (#8B4526), oscurecimiento sutil
 └──────┬───────┘
        ▼
 ```
+Transición real 120ms ease-out. El pin activo y los visitados NO se oscurecen en hover (la selección queda siempre inequívoca).
 
 **Estado activo (propiedad seleccionada):**
 ```
 ┌──────────────┐
-│  USD 250k    │  ← background: black (#111111), texto: paper
-└──────┬───────┘     + microtransición de escala 1.08 (120ms ease-out)
+│  USD 250k    │  ← fondo: black (#111111), texto: paper, escala 1.08
+└──────┬───────┘
        ▼
 ```
+El negro distingue claramente el pin seleccionado del resto (que son terracota).
+
+**Estado visitado (ya abrió el modal):**
+```
+┌──────────────┐
+│  USD 250k    │  ← fondo: stone (#C8C0B7), texto y borde: graphite
+└──────┬───────┘
+       ▼
+```
+Atenuado pero claramente un pin (no parece sin estilo). Persiste en localStorage (`useVisitedProperties`). Da sensación de progreso, patrón de Idealista. Se eligió `stone` sobre `mist` porque mist es casi tan claro como paper y se funde con el mapa.
 
 **Propiedad destacada (`is_featured: true`):**
 - Mantiene el fondo terracota normal
-- Anillo/borde **paper de 2px** permanente para diferenciarla
-- Badge `★` en la esquina superior **izquierda** (fondo paper, estrella terracota)
+- Badge `★` en la esquina superior **izquierda** del pin
+- Anillo `paper` de 2px que la diferencia
 
-**Estado visitada (ya abierta por el visitante):**
-```
-┌──────────────┐
-│  USD 250k    │  ← background: stone (#C8C0B7), border + texto: graphite (#4E4A46)
-└──────┬───────┘     "ya la vi": apagada pero claramente un pin (fondo sólido,
-       ▼             borde definido), legible y distinta del mapa. Vía localStorage.
-```
-> El visitado usa **stone**, no paper: el paper casi blanco se confundía con un pin
-> sin estilo y se fundía con el mapa claro. Stone se lee como pin "desactivado"
-> intencional y mantiene contraste. (Se evaluó `mist` #EAE4DC, pero es demasiado
-> claro y también se funde con el mapa OSM.)
+**Propiedad favorita (`useFavorites`):**
+- Indicador agregado: corazón pequeño en la esquina superior **derecha** del pin (capa encima, no cambia el fondo)
+- Color del corazón con contraste según el fondo: `paper` sobre terracota/negro, `terracota` sobre el stone del visitado
+- Se actualiza en vivo: marcar/desmarcar el favorito desde el modal o una card lo refleja al instante en el pin (sin recrear markers)
 
-**Indicador de favorito (guardado por el visitante):**
-- Corazón `♥` (lucide Heart relleno) en la esquina superior **derecha**.
-- Es una **capa encima**, no un color de fondo: convive con cualquier estado.
-- El badge hereda el fondo/borde del pin (se ve "pegado" a él) y el corazón usa
-  `--pin-fav`, que **contrasta con el fondo**: **paper** sobre pin terracota/negro,
-  **terracota** sobre el visitado (stone).
-- Se actualiza en vivo al marcar/desmarcar el corazón en el modal (mismo patrón
-  live que selección y visitado, sin recrear los markers). Persiste vía localStorage.
+**Coexistencia de estados:** una propiedad puede ser favorita Y visitada Y/O destacada a la vez. El color de fondo lo determina el estado (normal/visitado/activo); los badges (★ izquierda, ♥ derecha) son capas encima que conviven sin encimarse.
 
-**Coexistencia de estados (capas):**
-- El **color de fondo** lo define un solo estado, con prioridad:
-  `activo (negro)` › `visitado (stone)` › `destacada/normal/hover (terracota)`.
-- Los **indicadores** son capas independientes que se suman al fondo:
-  - `★` destacada → esquina superior **izquierda**
-  - `♥` favorito → esquina superior **derecha**
-  - Nunca se enciman (esquinas opuestas). Una propiedad puede ser, a la vez,
-    visitada + favorita + destacada: fondo stone, con `★` y `♥` visibles.
+| Combinación | Fondo | Badges |
+|---|---|---|
+| normal | terracota | — |
+| visitado | stone | — |
+| favorito | terracota | ♥ paper |
+| visitado + favorito | stone | ♥ terracota |
+| destacado + favorito | terracota | ★ izq + ♥ der |
+| activo + favorito | black | ♥ paper |
 
 **Formato de precio en el pin:**
 - USD < 1.000.000 → `USD 250k`
 - USD ≥ 1.000.000 → `USD 1.2M`
 - ARS → `ARS 15M` (siempre en millones para que quepa)
+- Usar `formatPriceCompact` de `@/lib/utils/formatPrice`
+
+**Tipografía:** DM Sans 12px Medium con `tabular-nums`, inyectada en el `DivIcon` vía la variable `--font-dm-sans`.
+
+### Tiles del mapa
+
+- Tiles de **OpenStreetMap estándar** (`https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png`). Se probaron tiles tonales (CARTO Positron/Voyager) pero se descartaron: lavaban el mapa y reducían el contraste con los pines. OSM da más vida y mejor contraste con los pines terracota.
+- La configuración de tiles vive en `src/lib/map/tiles.ts` (fuente única, compartida por el mapa principal y el `LocationPicker`), con una rama opcional para `NEXT_PUBLIC_MAPTILER_KEY` (migración futura de una línea).
+- Controles de zoom estilados según la paleta (`paper`/`stone`, bordes finos), no el estilo de fábrica de Leaflet.
 
 ### ClusterLayer
 
 - Fondo: `graphite` (`#4E4A46`)
-- Texto: `paper` (`#FBF9F6`), DM Sans 13px SemiBold
-- Forma: circular, tamaño crece con la cantidad de propiedades
+- Texto: `paper` (`#FBF9F6`), DM Sans 13px SemiBold (inyectada vía `--font-dm-sans`)
+- Forma: circular con anillo exterior translúcido sutil (comunica "muchos")
 - Tamaños: `40px` (2–9), `52px` (10–99), `64px` (100+)
+- Diff por ids: no recrea markers si el conjunto no cambió
 
 ### PropertyModal
 
@@ -355,6 +361,15 @@ El modal se abre al hacer click en un pin. En desktop es un drawer desde la dere
 2. Al hacer click → el input de nombre aparece con animación (no estaba visible antes)
 3. Usuario escribe nombre → botón cambia a "Enviar mensaje"
 4. Al confirmar → se abre WhatsApp en nueva pestaña y se registra el lead
+
+**Tratamiento visual (refinado en el repaso editorial):**
+- Fondo del drawer/sheet en `paper`, nunca blanco puro. Los inputs internos sí van en white (legibilidad).
+- Fotos full-bleed con ratio consistente, gradiente inferior sutil para legibilidad, y crossfade entre fotos (no corte seco), 180–200ms.
+- Flechas de navegación finas (`paper`/85 + backdrop-blur, chevron graphite), se ocultan en los extremos. Dot indicators finos y discretos.
+- Botones flotantes (cerrar / favorito) en `paper`/85 con backdrop-blur e ícono graphite — no círculos `bg-black/50`. El corazón favorito en terracota relleno (coherente con el mapa).
+- Chips de amenities con ícono lucide 16px graphite a la izquierda (mapeo amenity→ícono: pileta→Waves, gym→Dumbbell, seguridad_24h→ShieldCheck, etc.).
+- Estado de carga: skeleton que imita el layout (no "Cargando..." en texto).
+- Apertura del modal: 220ms ease-out (DESIGN §8).
 
 ---
 
@@ -420,6 +435,10 @@ Todos en DM Sans 11px SemiBold uppercase, `rounded-sm`, padding `4px 8px`.
 - Separadores internos entre secciones: `stone` (1px)
 - Título de cada sección: DM Sans 11px SemiBold uppercase, `graphite`, `tracking-wider`
 - Valores seleccionados: DM Sans 14px, `black`
+- Aire vertical entre secciones: `space-y-6 md:space-y-8`
+- Checkboxes (amenities, "Solo destacadas"): componente `Checkbox` de shadcn estilizado (terracota al marcar), no checkboxes nativos
+- Precio y superficie: inputs de rango con separador `–` (Desde – Hasta), commit on-blur (sin botones "Aplicar"). El filtro se aplica al perder foco o con Enter
+- Se evaluó un slider de precio pero se descartó: sin un máximo de dominio fijo (el precio varía 1000× entre USD/ARS y entre alquiler/venta), los inputs numéricos son más precisos
 
 ---
 
@@ -440,7 +459,31 @@ El área privada del agente mantiene la paleta pero con una distribución más f
 - Background: `mist` (`#EAE4DC`) — más oscuro que `paper` para diferenciar del área pública
 - Cards de contenido: background `paper`, border `stone`
 - Títulos de página: Noto Serif H1, `black`
-- Stats cards: número en Noto Serif 36px Bold, label en DM Sans 13px, `graphite`
+- Stats cards: número en Noto Serif 36px Bold con `tabular-nums`, label en DM Sans 13px, `graphite`
+- Layout y scroll: el dashboard usa `flex h-screen overflow-hidden` en el wrapper, con el `Sidebar` y el `main` (`flex-1 overflow-y-auto`) como hijos. El `main` es el contenedor scrolleable y **debe** llevar `relative` (load-bearing, no decorativo): así es el containing block de los descendientes `position: absolute` de los formularios (inputs ocultos internos de Radix/shadcn, p. ej. el `Checkbox`). Sin `relative`, esos absolutos se anclan al viewport (ICB) y en páginas altas (nueva/editar propiedad) aterrizan muy abajo, generando un segundo scroll fantasma en el documento por debajo del form. No quitar el `relative` del `main`.
+
+**StatsCard (refinado):**
+- Números con `tabular-nums` y count-up sutil al montar (ease-out ~600ms, respeta `prefers-reduced-motion`)
+- Jerarquía entre las 4 cards: la métrica más relevante (propiedades disponibles del plan) lleva acento terracota (borde + fondo terracota-subtle + número e ícono terracota); las demás neutras
+- Ícono superior derecho en `graphite`/55 (más presencia que el `stone` original sin competir con el número)
+
+**Sidebar (refinado):**
+- Wordmark de Marka arriba (variant light)
+- Avatar del agente (`avatar_url` o placeholder con su inicial sobre `bg-white/10`)
+- Hover de items con fondo sutil (`hover:bg-white/5`)
+- El footer del sidebar tiene dos salidas apareadas: "Ver el mapa" (→ `/`, ícono `Map`) encima de "Cerrar sesión", ambas con ícono 18px y tratamiento `stone`→`paper` en hover. "Ver el mapa" no es navegación interna del dashboard (no va en `NAV_ITEMS`, donde la lógica de item activo usa `pathname.startsWith(href)` y `href="/"` haría match en cualquier ruta): es una salida al sitio público, igual que el logout. Abre en la misma pestaña.
+
+**PropertiesTable (refinado):**
+- Thumbnails 64×48 (ratio 4:3), `rounded-md`
+- StatusBadge "Activa" en verde sutil (`bg-success/10 text-success`), no terracota — para no competir con los CTAs
+- Skeleton de tabla mientras carga (`loading.tsx` en la ruta)
+
+**PlanBadge (refinado):**
+- Plan free muestra una micro-barra de uso: `PLAN FREE · 3/5 · [▰▰▱▱▱]` con fill terracota proporcional
+
+**SubscriptionContent (refinado):**
+- Modal "Próximamente" usa el `Dialog` de shadcn (no overlay casero)
+- Card Pro destacada sobre Free: fondo terracota-subtle + borde 2px terracota + shadow-lg. Free pasa a neutro para que Pro "venda" el upgrade
 
 ---
 
@@ -600,11 +643,78 @@ La app es instalable como PWA. Esto implica algunos detalles de diseño:
 
 ---
 
-## 14. Referencias de Mercado
+## 14. Identidad de Marca
+
+### Wordmark
+
+La marca es "Marka" tratada como wordmark **tipográfico** (no logo gráfico), en Noto Serif 700, con un **punto final en terracota** — "Marka." — al estilo de los mastheads editoriales (Vox., Quartz.). El punto es el único acento, alineado a "calidez contenida" y "un acento usado con avaricia".
+
+- Componente reutilizable: `src/components/brand/Wordmark.tsx`
+- Props: `size` (`sm` 20px / `md` 24px / `lg` 36px) y `variant` (`dark` = texto black sobre fondos claros / `light` = texto paper sobre fondos oscuros como el sidebar)
+- El punto es siempre terracota en ambas variantes
+- `tracking-[-0.01em]`, `leading-none`, `select-none`, accesible con `aria-label="Marka"`
+- Se usa en: header público, login, register, sidebar del dashboard
+- En el header público y en login/register (AuthLayout), el wordmark se envuelve en un `Link` a `/` (volver al mapa). El componente sigue siendo presentacional puro: el comportamiento de link se agrega desde afuera, nunca dentro de `Wordmark.tsx`, para que cada uso decida su destino (el sidebar del dashboard, por ejemplo, no lo envuelve — un agente trabajando no espera que el logo lo saque al sitio público).
+
+### Íconos e identidad
+
+- Favicon multi-resolución y íconos PWA (192/512) con la inicial "M" en Noto Serif, terracota sobre fondo paper
+- Markers SVG en `public/markers/` como fuente de verdad del diseño de los pines (la implementación viva es CSS sobre DivIcon)
+
+### Pantallas de autenticación (split-screen)
+
+Login y register usan un layout split-screen editorial (`src/components/auth/AuthLayout.tsx`):
+- Panel de identidad: gradiente cálido oscuro (`#3b2a22` → `#1c1512` → black) con glow terracota radial, wordmark arriba, claim en Noto Serif abajo con un hairline terracota
+- Panel de formulario: sobre `paper`, con aire
+- En mobile: el panel colapsa a una franja superior corta (~176px); el formulario ocupa el ancho completo, accesible sin scroll
+- Asset-ready: el fondo de gradiente está marcado para reemplazar por una fotografía editorial con una línea, cuando haya una foto propia
+- Claims (constantes editables): login "De vuelta al mapa de tu ciudad", register "Sumá tu inmobiliaria al mapa de tu ciudad"
+- Salida al mapa: el panel del formulario tiene un link "← Volver al mapa" (→ `/`, ícono `ArrowLeft` 16px) como primer elemento dentro del contenedor del form, alineado al mismo eje izquierdo que inputs y heading. Es navegación secundaria (no botón): DM Sans 14px `graphite`, hover a `terracota` (texto e ícono viran juntos vía `currentColor`). Convive con el wordmark clickeable del panel de identidad — el wordmark queda como salida secundaria intuitiva, este link como la explícita y descubrible. Se agregó porque el wordmark como única salida no era descubrible para quien no sabe que el logo es un link.
+
+---
+
+## 15. Marco de App y Estructura
+
+- Marco fino editorial (1px `stone`) alrededor de toda la ventana de la app — da el aire de margen de página sin sensación de caja. Se eligió `stone` sobre `graphite` para que no se sienta como un borde duro.
+- Implementación: un overlay único (`fixed inset-0 z-[9999] border border-stone pointer-events-none mix-blend-multiply`) en el layout raíz (`src/app/layout.tsx`), no afecta el layout ni genera scroll. El `mix-blend-multiply` es funcional, no decorativo: la hairline `stone` se multiplica contra el fondo, así que sobre `paper` queda como hilo cálido sutil pero sobre fondos oscuros (sidebar negro, gradiente del login) tiende a negro y se desvanece, en vez de "saltar" como una línea blanquecina. No quitar el blend mode (reintroduce el contorno claro sobre oscuro). Caso límite a tener presente: si un ancestro introduce `isolation: isolate` o un blend mode propio, el blend del marco quedaría confinado a ese grupo y volvería a verse claro sobre oscuro.
+- Divisor header/cuerpo: línea fina `stone` que separa navegación de contenido.
+- El objetivo es dar estructura y un poco de contraste a la app sin perder la limpieza (evitar el "todo demasiado blanco y plano").
+
+---
+
+## 16. PropertyCard y Lista Mobile
+
+### PropertyCard (`src/components/properties/PropertyCard.tsx`)
+
+Card editorial reutilizable. Recibe `PropertyCardData` (un `Pick` de `Property`, desacoplada del store) y un callback `onSelect` — para poder reusarse a futuro en un panel de resultados desktop sincronizado con el mapa.
+
+- Portada full-width 180px, ratio consistente. Placeholder `ImageOff` en stone si no hay foto
+- Badge "Destacada" en terracota arriba-derecha si `is_featured`
+- Corazón de favorito arriba-izquierda (no choca con "Destacada"), `bg-paper`/85 backdrop-blur, conectado a `useFavorites` (sincroniza con mapa y modal en vivo). Tocar el corazón NO abre el modal
+- Kicker tipo·operación → título Noto Serif 17px → precio Noto Serif 20px bold terracota → ubicación con MapPin → métricas con íconos 13px
+- Border stone, bg paper, rounded-lg
+- Hover desktop: elevación magnética sutil (`-translate-y-0.5` + shadow-sm + border-graphite, 120ms)
+
+### Lista mobile (`src/components/properties/PropertyList.tsx`)
+
+- Es el punto de entrada en mobile (cards-first). Usa el mismo `useProperties` que el mapa pero con `bounds = null` (toda la ciudad, no solo el viewport), respetando los filtros activos
+- El toggle FAB "Ver lista / Ver mapa" alterna entre lista y mapa en mobile
+- Estados: cargando → skeleton de cards; vacío con filtros → "No hay propiedades con estos filtros" + "Limpiar filtros"; vacío sin filtros → "Todavía no hay propiedades"
+- Scroll con padding inferior que respeta el safe-area (la última card no queda tapada por los FABs)
+
+### FABs mobile
+
+- Par coherente: primario "Ver lista/mapa" en terracota + texto paper; secundario "Filtros" en paper + borde stone + texto graphite
+- DM Sans, rounded-md, shadow-lg, respetan `env(safe-area-inset-bottom)`
+- Se ocultan cuando el PropertyModal está abierto
+
+---
+
+## 17. Referencias de Mercado
 
 Portales con los que este diseño compite y de los que toma referencia:
 
-- **Idealista** (ES) — jerarquía tipográfica, filtros laterales, pins de precio
+- **Idealista** (ES) — jerarquía tipográfica, filtros laterales, pins de precio, estado "visitado" de los pines
 - **Immowelt** (DE) — limpieza editorial, uso del espacio blanco
-- **Sotheby's International Realty** — paleta neutra cálida, tipografía serif en displays
+- **Sotheby's International Realty** — paleta neutra cálida, tipografía serif en displays, fotografía a sangre
 - **Zonaprop / Mercado Libre Inmuebles** (AR) — referencia local de UX, no de diseño

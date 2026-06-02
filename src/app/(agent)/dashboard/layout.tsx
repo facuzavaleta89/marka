@@ -41,7 +41,12 @@ export default async function DashboardLayout({
         }}
         planUsage={planUsage}
       />
-      <main className="flex-1 overflow-y-auto">{children}</main>
+      {/* relative: main es el contenedor scrolleable del dashboard; al ser
+          containing block, los descendientes position:absolute de los formularios
+          (internos de Radix/shadcn) quedan anclados a él y no al viewport — si no,
+          en páginas altas (nueva/editar) escapan al ICB y generan un segundo scroll
+          fantasma en el documento por debajo del form. */}
+      <main className="relative flex-1 overflow-y-auto">{children}</main>
     </div>
   );
 }

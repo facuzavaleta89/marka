@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { LayoutDashboard, Building2, Eye, Layers } from "lucide-react";
 import { StatsCard } from "@/components/dashboard/StatsCard";
+import { NewPropertyButton } from "@/components/dashboard/NewPropertyButton";
 import { formatPrice } from "@/lib/utils/formatPrice";
 import { getPlanUsage } from "@/lib/utils/getPlanUsage";
 import {
@@ -9,6 +10,7 @@ import {
   PROPERTY_STATUS_LABELS,
 } from "@/lib/utils/labels";
 import type { Currency, PropertyStatus, PropertyType } from "@/types";
+import Link from "next/link"
 
 const STATUS_COLOR: Record<PropertyStatus, string> = {
   active: "text-success",
@@ -80,7 +82,10 @@ export default async function DashboardPage() {
 
   return (
     <div className="p-8">
-      <h1 className="font-serif text-4xl font-bold text-black mb-8">Inicio</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+        <h1 className="font-serif text-4xl font-bold text-black">Inicio</h1>
+        <NewPropertyButton planUsage={planUsage} />
+      </div>
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-10">
@@ -121,12 +126,12 @@ export default async function DashboardPage() {
             <p className="font-sans text-base text-graphite">
               No tenés propiedades publicadas aún.
             </p>
-            <a
+            <Link
               href="/dashboard/propiedades/nueva"
               className="inline-block mt-3 font-sans text-sm font-medium text-terracota hover:underline"
             >
               Publicar primera propiedad
-            </a>
+            </Link>
           </div>
         ) : (
           <div className="bg-paper border border-stone rounded-lg overflow-hidden">

@@ -10,6 +10,7 @@ import {
   Settings,
   CreditCard,
   LogOut,
+  Map,
   Menu,
   X,
 } from "lucide-react";
@@ -102,8 +103,19 @@ function NavContent({
         })}
       </nav>
 
-      {/* Cerrar sesión */}
-      <div className="px-3 py-4 border-t border-white/10">
+      {/* Salidas: ver el mapa público + cerrar sesión.
+          "Ver el mapa" no es navegación interna del dashboard, por eso vive
+          en el footer junto a logout y no en NAV_ITEMS (su match activo por
+          pathname.startsWith("/") daría positivo en cualquier ruta). */}
+      <div className="px-3 py-4 border-t border-white/10 space-y-0.5">
+        <Link
+          href="/"
+          onClick={onClose}
+          className="flex items-center gap-3 px-3 py-2.5 font-sans text-sm text-stone hover:text-paper transition-colors duration-100"
+        >
+          <Map size={18} strokeWidth={1.75} />
+          Ver el mapa
+        </Link>
         <form action={logoutAction}>
           <button
             type="submit"

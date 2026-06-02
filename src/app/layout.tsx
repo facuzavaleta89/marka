@@ -45,10 +45,14 @@ export default function RootLayout({
         {children}
         {/* Marco editorial fino alrededor de toda la ventana de la app: 1px stone,
             como el margen de una página. Overlay fixed → no afecta el layout, no
-            genera scroll y no recorta contenido; pointer-events-none no bloquea. */}
+            genera scroll y no recorta contenido; pointer-events-none no bloquea.
+            mix-blend-multiply: la hairline stone se multiplica contra el fondo —
+            sobre paper queda como un hilo cálido sutil; sobre los fondos oscuros
+            (sidebar negro, gradiente del login) tiende a negro y se desvanece,
+            en vez de "saltar" como una línea blanquecina. */}
         <div
           aria-hidden="true"
-          className="pointer-events-none fixed inset-0 z-[9999] border border-stone"
+          className="pointer-events-none fixed inset-0 z-[9999] border border-stone mix-blend-multiply"
         />
       </body>
     </html>

@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { SlidersHorizontal, MapIcon, List } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 import { useCityStore } from "@/store/cityStore";
 import { useMapFilters, selectActiveFiltersCount } from "@/store/mapFiltersStore";
 import { CityPicker } from "@/components/map/CityPicker";
@@ -28,11 +29,26 @@ export default function PublicPage() {
   const selectedPropertyId = useMapFilters((s) => s.selectedPropertyId);
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const [showMap, setShowMap] = useState(true);
+  // Sesión del agente: si está logueado, el CTA del header pasa a "Ir al panel".
+  // Por defecto false → mostramos "Ingresar" sin layout shift mientras resuelve.
+  const [isAuthed, setIsAuthed] = useState(false);
 
   // Inicializa la ciudad activa una sola vez para toda la app
   useEffect(() => {
     initCity();
   }, [initCity]);
+
+  // Detecta sesión client-side (sin volver dinámica la home ni fetchear el perfil).
+  // IIFE async dentro del efecto (CLAUDE.md: no bajar la regla de ESLint).
+  useEffect(() => {
+    const supabase = createClient();
+    (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      setIsAuthed(!!user);
+    })();
+  }, []);
 
   // ── Estado de carga: skeleton del layout (header + panel + mapa) ──
   if (isLoading) {
@@ -40,7 +56,9 @@ export default function PublicPage() {
       <div className="flex flex-col h-screen bg-paper overflow-hidden">
         {/* Header */}
         <header className="h-14 flex items-center justify-between px-4 md:px-6 bg-paper border-b border-stone shrink-0">
-          <div className="h-5 w-24 rounded-sm bg-stone/30 animate-pulse" />
+          <Link href="/" aria-label="Ir al mapa">
+            <div className="h-5 w-24 rounded-sm bg-stone/30 animate-pulse" />
+          </Link>
           <div className="h-7 w-32 rounded-md bg-stone/30 animate-pulse" />
           <div className="h-5 w-16 rounded-sm bg-stone/30 animate-pulse" />
         </header>
@@ -82,15 +100,17 @@ export default function PublicPage() {
     <div className="flex flex-col h-screen bg-paper overflow-hidden">
       {/* ── Header ─────────────────────────────────────────────── */}
       <header className="relative h-14 flex items-center justify-between px-4 md:px-6 bg-paper border-b border-stone shrink-0 z-50">
-        <Wordmark size="md" variant="dark" />
+        <Link href="/" aria-label="Ir al mapa">
+          <Wordmark size="md" variant="dark" />
+        </Link>
 
         <CityPicker />
 
         <Link
-          href="/login"
+          href={isAuthed ? "/dashboard" : "/login"}
           className="font-sans text-sm font-medium text-graphite hover:text-black transition-colors"
         >
-          Ingresar
+          {isAuthed ? "Ir al panel" : "Ingresar"}
         </Link>
       </header>
 

@@ -1,4 +1,4 @@
-# CLAUDE.md — App Mapa Inmobiliario
+# CLAUDE.md — App Mapa Inmobiliario (Marka)
 
 > Este archivo provee contexto persistente a Claude Code sobre la arquitectura, convenciones y reglas del proyecto. Leerlo antes de cualquier tarea de código.
 
@@ -6,17 +6,19 @@
 
 ## Resumen del Proyecto
 
-Marketplace inmobiliario por ciudad. Una sola web pública donde el visitante ve en un mapa interactivo las propiedades de **todas las agencias de su ciudad**, filtra, y contacta al agente por WhatsApp. Las agencias pagan una suscripción para publicar.
+Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública donde el visitante ve en un mapa interactivo las propiedades de **todas las agencias de su ciudad**, filtra, y contacta al agente por WhatsApp. Las agencias pagan una suscripción para publicar.
 
 **Modelo de negocio:** SaaS B2B. Las agencias se suscriben (plan free con límite de propiedades, plan pro ilimitado + destacados + métricas). El visitante no paga ni se registra.
 
 **Dos tipos de usuario:**
 - **Visitante (cliente)**: sin registro. Navega el mapa, filtra, ve detalles, contacta por WhatsApp, guarda favoritos localmente.
-- **Agente (cliente de pago)**: login. CRUD de propiedades, perfil, preferencias, métricas de sus propiedades y leads.
+- **Agente (cliente de pago)**: login. CRUD de propiedades, perfil, preferencias, suscripción, métricas de sus propiedades y leads.
 
 **Arquitectura:** marketplace multi-tenant. Un solo mapa por ciudad muestra todas las agencias juntas, pero los datos están separados por `agency_id` y `city_id`, lo que permite a futuro activar vistas white-label (`agencia.dominio.com` con solo sus propiedades) sin reescribir nada.
 
-**Distribución:** web responsive + PWA instalable. No hay app nativa ni stores. El visitante entra desde un link; el agente usa el dashboard desde el navegador.
+**Distribución:** web responsive + PWA instalable. No hay app nativa ni stores.
+
+**Estado:** MVP completo y revisado (seguridad, performance, cleanup) + plan visual editorial completo. Build verde, 0 errores de TypeScript/ESLint. Listo para deploy.
 
 ---
 
@@ -25,12 +27,12 @@ Marketplace inmobiliario por ciudad. Una sola web pública donde el visitante ve
 | Capa | Tecnología |
 |---|---|
 | Framework | Next.js 16 (App Router) + React + TypeScript |
-| Estilos | Tailwind CSS + shadcn/ui |
+| Estilos | Tailwind CSS + shadcn/ui (preset Sera) |
 | Mapa | react-leaflet + OpenStreetMap + leaflet.markercluster |
-| Estado global | Zustand (solo filtros del mapa) |
+| Estado global | Zustand (filtros del mapa + ciudad activa) |
 | Formularios | react-hook-form + zod |
 | DB + Auth + Storage | Supabase (PostgreSQL + PostGIS) |
-| PWA | next-pwa o configuración manual de manifest + service worker |
+| PWA | manifest + service worker |
 | Deploy | Vercel |
 | Node.js | 20+ (requerido por Next.js 16) |
 
@@ -38,25 +40,22 @@ Marketplace inmobiliario por ciudad. Una sola web pública donde el visitante ve
 
 ## Modelos de Negocio y Multi-Tenancy — Reglas Críticas
 
-Estas reglas gobiernan toda la lógica de datos. Leerlas antes de tocar queries, RLS o componentes que muestren propiedades.
-
 ### Marketplace por ciudad
 - El visitante ve propiedades de **todas las agencias de UNA ciudad** en el mismo mapa.
 - Toda query pública de propiedades **filtra por `city_id`**. Nunca mostrar propiedades de otra ciudad.
-- La ciudad activa se determina por: (1) selección explícita del usuario, (2) geolocalización del navegador si la concede, (3) ciudad por defecto (centro-norte de Argentina) como fallback.
+- La ciudad activa se gestiona con `cityStore` (Zustand): localStorage → geolocalización → primera ciudad activa.
 
 ### Multi-tenant
 - Toda propiedad pertenece a una `agency_id` (NOT NULL) y a una `city_id` (NOT NULL).
-- `city_id` está **denormalizado en `properties`** para filtrar el mapa sin JOIN. Al crear/editar una propiedad, copiar el `city_id` de la agencia del agente.
-- A futuro: una vista white-label filtra por `agency_id` para mostrar solo las propiedades de esa agencia bajo su marca. La base de datos ya lo soporta; no romper esa separación.
+- `city_id` está **denormalizado en `properties`** para filtrar el mapa sin JOIN.
+- Al crear una propiedad, copiar `city_id` y `agency_id` del agente autenticado — nunca del cliente.
 
 ### Suscripciones y límites
 - Cada agencia tiene una fila en `subscriptions` con `plan` (`free`/`pro`) y `property_limit`.
-- El límite de propiedades activas se valida **a nivel de base de datos** (trigger `check_property_limit`), no solo en el frontend.
-- Plan free: hasta 5 propiedades activas/pausadas. Plan pro: límite alto (ej. 9999).
-- Las propiedades `sold`/`rented` **no** ocupan cupo.
-- La escritura de `subscriptions` la hace **solo el backend con service role**, nunca el cliente.
-- El frontend debe mostrar el límite y bloquear el botón "Nueva propiedad" cuando se alcanzó, pero confiar en la DB como fuente de verdad.
+- El límite se valida **en la DB** (trigger `check_property_limit`). El frontend lo anticipa pero la DB es la fuente de verdad.
+- El conteo de propiedades usa **siempre `agency_id`**, nunca `agent_id`. Usar el helper `getPlanUsage` de `@/lib/utils/getPlanUsage`.
+- `is_featured` solo puede ser `true` si el plan es `pro`. Las server actions lo fuerzan a `false` para agentes free silenciosamente.
+- La escritura de `subscriptions` y el insert de `agents` en el registro se hacen **con service role** (`admin.ts`), nunca con el client normal.
 
 ---
 
@@ -66,80 +65,93 @@ Estas reglas gobiernan toda la lógica de datos. Leerlas antes de tocar queries,
 /
 ├── src/
 │   ├── app/
-│   │   ├── (public)/                    # Rutas sin auth
-│   │   │   ├── page.tsx                 ← Mapa principal (homepage)
-│   │   │   ├── [ciudad]/page.tsx        ← Marketplace de una ciudad específica
+│   │   ├── (public)/
+│   │   │   ├── page.tsx                 ← Mapa principal + lista mobile
+│   │   │   ├── [ciudad]/page.tsx        ← Marketplace de una ciudad
 │   │   │   └── propiedades/[slug]/      ← Página SEO por propiedad
-│   │   ├── (agent)/                     # Rutas protegidas
-│   │   │   ├── login/ register/
+│   │   ├── (agent)/
+│   │   │   ├── login/ register/         ← Split-screen editorial (AuthLayout)
 │   │   │   └── dashboard/
-│   │   │       ├── page.tsx             ← Métricas y últimos leads
-│   │   │       ├── propiedades/         ← Listado CRUD + nueva + [id]/editar
-│   │   │       ├── perfil/              ← Datos del agente + foto + WhatsApp
-│   │   │       ├── preferencias/        ← Config de cuenta y notificaciones
-│   │   │       └── suscripcion/         ← Plan actual, límite, upgrade
-│   │   └── api/og/[slug]/               ← Open Graph dinámico
+│   │   │       ├── page.tsx             ← Métricas (StatsCard) y últimos leads
+│   │   │       ├── propiedades/         ← Listado CRUD + nueva + [id]/editar + loading.tsx
+│   │   │       ├── perfil/
+│   │   │       ├── preferencias/
+│   │   │       └── suscripcion/
+│   │   └── api/og/[slug]/
 │   │
 │   ├── components/
+│   │   ├── brand/
+│   │   │   └── Wordmark.tsx             ← "Marka." con punto terracota (Lote 0)
+│   │   ├── auth/
+│   │   │   └── AuthLayout.tsx           ← Shell split-screen de login/register
 │   │   ├── map/
 │   │   │   ├── MapView.tsx              ← Raíz del mapa (client, ssr:false)
-│   │   │   ├── PropertyMarker.tsx       ← Pin con precio visible
-│   │   │   ├── PropertyModal.tsx        ← Modal/drawer + mini-form WA
-│   │   │   ├── FilterPanel.tsx          ← Sidebar de filtros
-│   │   │   ├── CityPicker.tsx           ← Selector de ciudad
-│   │   │   └── ClusterLayer.tsx
+│   │   │   ├── PropertyMarker.tsx       ← Pin terracota + estados (CSS sobre DivIcon)
+│   │   │   ├── PropertyModal.tsx        ← Drawer/sheet + flujo WA + carrusel
+│   │   │   ├── FilterPanel.tsx          ← Filtros (checkboxes shadcn, commit on-blur)
+│   │   │   ├── CityPicker.tsx           ← Selector de ciudad (lee cityStore)
+│   │   │   └── ClusterLayer.tsx         ← Clustering, diff por id, estados live
 │   │   ├── properties/
-│   │   │   ├── PropertyCard.tsx
-│   │   │   ├── PropertyForm.tsx
-│   │   │   ├── LocationPicker.tsx       ← Pin manual en mini-mapa (NO geocoding)
-│   │   │   ├── ImageUploader.tsx
+│   │   │   ├── PropertyCard.tsx         ← Card editorial reutilizable
+│   │   │   ├── PropertyList.tsx         ← Lista mobile (cards-first)
+│   │   │   ├── PropertyForm.tsx         ← CRUD form + barra de acción sticky
+│   │   │   ├── LocationPicker.tsx       ← Pin manual (NO geocoding), tiles compartidos
+│   │   │   ├── ImageUploader.tsx        ← Drag&drop, progreso por imagen, máx 10
 │   │   │   └── WhatsAppButton.tsx
 │   │   ├── dashboard/
-│   │   │   ├── Sidebar.tsx
-│   │   │   ├── StatsCard.tsx
-│   │   │   ├── PropertiesTable.tsx
-│   │   │   └── PlanBadge.tsx            ← Muestra plan y límite restante
+│   │   │   ├── Sidebar.tsx              ← Wordmark + avatar + nav
+│   │   │   ├── StatsCard.tsx            ← tabular-nums, count-up, acento en métrica clave
+│   │   │   ├── PropertiesTable.tsx      ← Tabla desktop + cards mobile + skeleton
+│   │   │   ├── PlanBadge.tsx            ← Plan + micro-barra de uso
+│   │   │   ├── ProfileForm.tsx
+│   │   │   └── SubscriptionContent.tsx  ← Cards de planes (Pro destacada) + Dialog shadcn
 │   │   └── ui/                          ← shadcn/ui components
 │   │
 │   ├── lib/
 │   │   ├── supabase/
 │   │   │   ├── client.ts                ← Browser client
 │   │   │   ├── server.ts                ← SSR client
-│   │   │   ├── admin.ts                 ← Service role (solo server, para subscriptions)
-│   │   │   └── middleware.ts            ← Helper de cookies para proxy.ts (≠ convención Next.js)
+│   │   │   ├── admin.ts                 ← Service role (registro agents + subscriptions). NUNCA en cliente
+│   │   │   └── middleware.ts            ← Helper de cookies para proxy.ts
+│   │   ├── map/
+│   │   │   └── tiles.ts                 ← Config de tiles compartida (mapa + LocationPicker)
 │   │   ├── hooks/
-│   │   │   ├── useProperties.ts         ← Fetch + filtrado (no queries en componentes)
-│   │   │   ├── useMapFilters.ts         ← Lee Zustand store
-│   │   │   ├── useCity.ts               ← Ciudad activa + geolocalización
-│   │   │   ├── useFavorites.ts          ← Favoritos en localStorage (sin login)
+│   │   │   ├── useProperties.ts         ← Fetch reactivo con debounce + diff + SELECT acotado
+│   │   │   ├── useMapFilters.ts         ← Lee mapFiltersStore
+│   │   │   ├── useFavorites.ts          ← Favoritos en localStorage (sync entre instancias)
+│   │   │   ├── useVisitedProperties.ts  ← Pines visitados en localStorage
 │   │   │   └── useWhatsApp.ts
 │   │   └── utils/
-│   │       ├── formatPrice.ts
-│   │       ├── generateSlug.ts
-│   │       └── waMessage.ts
+│   │       ├── formatPrice.ts           ← formatPrice + formatPriceCompact (pines)
+│   │       ├── generateSlug.ts          ← Slug con sufijo aleatorio
+│   │       ├── waMessage.ts             ← generateWaUrl(): string | null
+│   │       ├── getPlanUsage.ts          ← Helper server: cuenta por agency_id
+│   │       └── labels.ts                ← Etiquetas UI compartidas
 │   │
 │   ├── store/
-│   │   └── mapFiltersStore.ts           ← Zustand store de filtros
+│   │   ├── mapFiltersStore.ts           ← Filtros + selectActiveFiltersCount
+│   │   └── cityStore.ts                 ← Ciudad activa, initCity(), setCity(), nearbyCityId
 │   │
 │   ├── types/
 │   │   ├── index.ts                     ← Todos los tipos del proyecto
 │   │   └── supabase.ts                  ← Generado por Supabase CLI (no editar)
 │   │
-│   └── proxy.ts                         ← Convención Next.js 16: auth guard de rutas
+│   └── proxy.ts                         ← Convención Next.js 16: auth guard
 │
 ├── public/
-│   ├── markers/                         ← Íconos SVG para el mapa
-│   └── manifest.json                    ← PWA manifest
+│   ├── markers/                         ← SVG fuente de verdad de los pines
+│   ├── icon-192.png / icon-512.png      ← PWA icons ("M" terracota)
+│   └── manifest.json
 │
 ├── supabase/
-│   ├── migrations/
+│   ├── migrations/20240101000000_initial_schema.sql
 │   └── seed.sql
 │
 ├── CLAUDE.md
 └── DESIGN.md
 ```
 
-> **Alias `@/*`**: resuelve a `src/*`. Configurado automáticamente por Next.js con `--src-dir`.
+> **Alias `@/*`**: resuelve a `src/*`. Configurado por Next.js con `--src-dir`.
 
 ---
 
@@ -147,179 +159,114 @@ Estas reglas gobiernan toda la lógica de datos. Leerlas antes de tocar queries,
 
 ### TypeScript
 - Estricto en todo. Usar los tipos de `src/types/index.ts`. **Nunca `any`**
-- Interfaces en PascalCase, variables y funciones en camelCase
-- Archivos y carpetas en kebab-case
+- Para extender tipos: `Pick<>`, `Omit<>`, `Partial<>` — nunca redefinir campos inline
+- Interfaces en PascalCase, variables y funciones en camelCase, archivos y carpetas en kebab-case
 
-### Next.js 16 — Reglas críticas
+### Next.js 16
+- `src/proxy.ts` exporta `proxy()`, no `middleware()`. `src/lib/supabase/middleware.ts` es un utilitario distinto (helper de cookies)
+- `params` y `searchParams` son Promises — siempre `await`
+- Server Components por defecto; `"use client"` solo cuando sea necesario
+- El mapa siempre con `dynamic(..., { ssr: false })` — Leaflet usa `window`
+- Al pasar íconos de Server a Client Component, pasarlos como **elemento** (`<Icon size={20}/>`), no como referencia, para no romper la serialización
 
-**Proxy (auth guard de rutas)**
-- El archivo de convención de Next.js se llama `src/proxy.ts` y exporta `proxy()`, no `middleware()`
-- `src/lib/supabase/middleware.ts` es un archivo utilitario distinto — es el helper de cookies de Supabase
+### Supabase — cuál client usar
 
-```ts
-// src/proxy.ts — correcto en Next.js 16
-import { updateSession } from "@/lib/supabase/middleware";
-import type { NextRequest } from "next/server";
+| Contexto | Client |
+|---|---|
+| Server Components, Server Actions | `@/lib/supabase/server` |
+| Client Components | `@/lib/supabase/client` |
+| Insert `agents` en registro, upsert `subscriptions` | `@/lib/supabase/admin` (service role) |
 
-export async function proxy(request: NextRequest) {
-  return await updateSession(request);
-}
+- No hacer queries directas en componentes → hooks en `src/lib/hooks/`
+- Respetar RLS siempre. Admin client solo en server
 
-export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
-};
-```
-
-**Async params — OBLIGATORIO en Next.js 16**
-- `params` y `searchParams` son Promises. Siempre awaitear antes de usar
-- Afecta a: `[ciudad]`, `propiedades/[slug]`, `dashboard/propiedades/[id]/editar`, `api/og/[slug]`
-
-```ts
-// ✅ Correcto (Next.js 16)
-export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
-}
-```
-
-**Server Components y Client Components**
-- Server Components por defecto
-- Agregar `"use client"` solo cuando sea necesario (eventos, hooks, estado del browser)
-- El mapa **siempre** se carga así — Leaflet requiere `window`:
-  ```ts
-  dynamic(() => import("@/components/map/MapView"), { ssr: false })
-  ```
-- Mutations con Server Actions cuando sea posible
-
-### Supabase
-- Server Components y Server Actions → `@/lib/supabase/server`
-- Client Components → `@/lib/supabase/client`
-- **Service role** (`@/lib/supabase/admin`) → SOLO en server, exclusivo para operaciones sobre `subscriptions`. Nunca importar en el cliente.
-- **No** hacer queries directas en componentes → usar hooks en `src/lib/hooks/`
-- Respetar RLS siempre
+### ESLint
+- El patrón `setIsLoading(true)` al inicio de efectos: usar IIFE async dentro del efecto. No bajar la regla globalmente.
+- Hay un warning cosmético no bloqueante en `PropertyForm.tsx` por el cast `zodResolver` (RHF + React Compiler). Es inherente a la librería.
 
 ### Estilos
-- Tailwind para todo. Sin CSS-in-JS ni módulos CSS
-- shadcn/ui para componentes base (Button, Dialog, Input, Select, etc.)
-- Seguir el sistema de diseño en `DESIGN.md` (ver sección Diseño al final)
+- Tailwind, sin CSS-in-JS ni módulos CSS. shadcn/ui para componentes base
+- Seguir `DESIGN.md`
 
 ### Comentarios
-- Lógica de negocio: **español**
-- Código, variables, nombres de función: **inglés**
+- Lógica de negocio en español, código en inglés
 
 ---
 
 ## Convenciones de Dominio
 
-### Ciudad activa y geolocalización
-- Al entrar, el hook `useCity` determina la ciudad: selección guardada → geolocalización del navegador (Geolocation API, con permiso) → ciudad por defecto (centro-norte de Argentina).
-- La geolocalización es **opcional**: si el usuario la rechaza, caer al default sin bloquear la experiencia.
-- El mapa se centra en `center_lat`/`center_lng`/`default_zoom` de la ciudad activa.
+### Ciudad activa — cityStore
+- `src/store/cityStore.ts`. `initCity()` se llama **una sola vez** desde la raíz, no en componentes hijos.
+- `CityPicker` y todo componente que necesite la ciudad leen del store. `useCity.ts` fue eliminado.
+- `nearbyCityId` (campo del store) marca la ciudad detectada por geolocalización para el label "Cerca tuyo".
 
-### Ubicación de propiedades — pin manual, NO geocoding
-- El agente escribe la dirección en texto (`address`).
-- La posición en el mapa (`lat`/`lng`) se coloca **manualmente** moviendo un pin en un mini-mapa (`LocationPicker`).
-- **No** usar geocoding automático: en muchas ciudades los mapas no son precisos y genera confusión.
-- El `LocationPicker` debe incluir un instructivo claro ("Arrastrá el pin hasta la ubicación exacta del inmueble").
+### Plan usage — getPlanUsage
+- Siempre `src/lib/utils/getPlanUsage.ts`. Cuenta por `agency_id`. Solo en server.
 
-### Favoritos del visitante — localStorage, sin login
-- Los favoritos viven solo en el dispositivo (`useFavorites` sobre localStorage).
-- No requieren registro ni se sincronizan entre dispositivos. Es una decisión de producto deliberada.
-- **Excepción a la regla de artifacts:** en este proyecto localStorage SÍ se usa (no es un artifact de Claude.ai, es la app real desplegada).
+### Etiquetas UI — labels.ts
+- Nunca definir mapas de etiquetas inline. Usar `PROPERTY_TYPE_LABELS`, `OPERATION_TYPE_LABELS`, `PROPERTY_STATUS_LABELS`, `AMENITY_LABELS`, `CURRENCY_LABELS`.
+
+### Tiles del mapa — tiles.ts
+- `src/lib/map/tiles.ts` es la fuente única de config de tiles (OSM estándar), consumida por `MapView` y `LocationPicker`. Rama opcional para `NEXT_PUBLIC_MAPTILER_KEY`.
+
+### Favoritos y visitados
+- `useFavorites` y `useVisitedProperties` en localStorage. Se reflejan en vivo en el mapa, el modal y las cards (sync entre instancias vía CustomEvent + storage). Sin login.
 
 ### WhatsApp
-- `phone_wa` se guarda como `"5491112345678"` (sin `+`, sin espacios)
-- El mensaje se genera con `generateWaUrl()` en `@/lib/utils/waMessage`
-- **Antes** de abrir el link WA → registrar lead con `INSERT INTO leads` (incluir `agency_id`)
+- `phone_wa` en formato `"5491112345678"`. `generateWaUrl()` retorna `string | null` — verificar antes de usar; si null, deshabilitar botón con mensaje.
+- Registrar lead (con `agency_id`) antes de abrir WhatsApp.
 
-### Precios
-- Siempre formatear con `formatPrice(price, currency)` de `@/lib/utils/formatPrice`
-- USD: `$250.000` — ARS: `$15.000.000` (punto como separador de miles)
+### Ubicación — pin manual
+- `LocationPicker`, sin geocoding. Si el agente no movió el pin, el form bloquea el submit.
 
 ### Imágenes
-- Bucket de Supabase Storage: `property-images` (público)
-- Path: `{agent_id}/{property_id}/{filename}`
-- Primera imagen: `sort_order = 0`, `is_cover = true`
+- Bucket `property-images`, path `{agent_id}/{property_id}/{filename}`. Avatares: `avatars/{agent_id}/avatar.{ext}`.
+- Primera imagen `sort_order = 0`, `is_cover = true`. Si falla el insert: avisar, no hacer rollback.
 
-### Slugs
-- Se generan automáticamente al crear la propiedad
-- Usar `generateSlug()` de `@/lib/utils/generateSlug` (limpia tildes y caracteres especiales)
+### Precios
+- `formatPrice(price, currency)` → `$250.000`. `formatPriceCompact` → `USD 250k` (pines).
 
-### Mapa — Performance
-- Query de propiedades filtra por `city_id` **y** por `bounds` del viewport actual
-- Clustering con `leaflet.markercluster` para evitar renderizar 500+ pines individuales
-- Cada pin muestra el precio formateado: `USD 250k`
+### Mapa — performance
+- Debounce 400ms en `moveend`. `ClusterLayer` diff por ids. `useProperties` con SELECT acotado, no `*`. La lista mobile usa `bounds = null` (toda la ciudad).
 
 ---
 
 ## Base de Datos — Referencia Rápida
 
-Schema completo en `supabase/migrations/`. Tablas principales:
+Schema en `supabase/migrations/20240101000000_initial_schema.sql`.
 
 | Tabla | Descripción |
 |---|---|
 | `cities` | Mercados. Centro del mapa y zoom por ciudad |
-| `agencies` | Inmobiliarias. Pertenecen a una ciudad |
-| `subscriptions` | Plan (free/pro) y límite de propiedades por agencia |
-| `agents` | Agentes (id = `auth.users.id`). Pertenecen a una agencia |
-| `properties` | Propiedades. `agency_id` y `city_id` NOT NULL; `location` GEOGRAPHY generada |
-| `property_images` | Imágenes vinculadas a una propiedad |
-| `leads` | Registro de cada contacto vía WhatsApp (incluye `agency_id`) |
+| `agencies` | Inmobiliarias. `city_id` NOT NULL. `brand_color` para white-label futuro |
+| `subscriptions` | Plan (free/pro) y `property_limit` por agencia |
+| `agents` | `id` = `auth.users.id`. `agency_id` NOT NULL |
+| `properties` | `agency_id` y `city_id` NOT NULL; `location` GEOGRAPHY generada |
+| `property_images` | `is_cover` + `sort_order` |
+| `leads` | Contactos WA. Incluye `agency_id` |
 
-**PostGIS** habilitado. Query principal del marketplace (ciudad + viewport):
+**Policies RLS clave:** lectura pública de cities/agencies/properties activas; agentes ven y gestionan lo suyo + leen propiedades de su agencia (para el conteo); `Public insert lead` valida que property+agent+agency coincidan; escritura de subscriptions solo service role.
+
+**Query principal:**
 ```sql
-SELECT * FROM properties
-WHERE city_id = $1
-  AND status = 'active'
-  AND ST_Within(location, ST_MakeEnvelope($west, $south, $east, $north, 4326));
+SELECT ... FROM properties
+WHERE city_id = $1 AND status = 'active'
+  AND lat BETWEEN $south AND $north AND lng BETWEEN $west AND $east;
 ```
 
-**Amenities** como `JSONB`. Filtrar con:
-```sql
-WHERE amenities @> '["pileta", "quincho"]'
-```
+**Amenities** JSONB: filtrar con `.contains("amenities", JSON.stringify([...]))` (genera `@>`).
 
-**Límite de propiedades**: validado por el trigger `check_property_limit`. Si una agencia free intenta crear la 6ta propiedad activa, la DB lanza excepción. El frontend debe anticipar esto y mostrar el upgrade.
+**Vistas RPC:** `increment_views(property_id)` — incrementa `views_count` (SECURITY DEFINER).
 
 ---
 
-## Flujo del Visitante
-
-```
-Visitante abre la app
-  → useCity determina ciudad (guardada / geolocalización / default)
-  → MapView carga propiedades de esa ciudad + viewport actual
-  → Zustand store aplica filtros activos
-  → Pines agrupados con clustering
-  → Click en pin → PropertyModal (drawer desktop / bottom sheet mobile)
-  → Visitante ingresa nombre → se genera URL de WA
-  → Se inserta lead en Supabase (con agency_id) → se abre WhatsApp
-  → (Opcional) Guarda favoritos en localStorage, sin login
-```
-
-## Flujo del Agente
-
-```
-Agente hace login
-  → Dashboard: métricas, leads recientes, plan actual y límite
-  → CRUD propiedades (bloqueado al alcanzar límite del plan free)
-  → Al crear propiedad: form + LocationPicker (pin manual) + ImageUploader
-  → Perfil: datos, foto, número de WhatsApp
-  → Preferencias: configuración de cuenta
-  → Suscripción: ver plan, límite usado, upgrade a pro
-```
-
----
-
-## Variables de Entorno Requeridas
+## Variables de Entorno
 
 ```env
-# .env.local
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=          # Solo en server, nunca en cliente
-
-# Opcional: tiles más bonitos (100k req/mes gratis)
-NEXT_PUBLIC_MAPTILER_KEY=
+SUPABASE_SERVICE_ROLE_KEY=     # Requerido: registro de agentes + suscripciones
+NEXT_PUBLIC_MAPTILER_KEY=      # Opcional
 ```
 
 ---
@@ -327,26 +274,11 @@ NEXT_PUBLIC_MAPTILER_KEY=
 ## Comandos Útiles
 
 ```bash
-# Inicializar proyecto (Node.js 20+ requerido)
-npx create-next-app@16 base \
-  --typescript --tailwind --eslint --app --src-dir --import-alias "@/*"
-
-# Desarrollo
 npm run dev
-
-# Verificar tipos TypeScript sin compilar
 npx tsc --noEmit
-
-# Migrar middleware.ts a proxy.ts en proyectos existentes
-npx @next/codemod@canary middleware-to-proxy .
-
-# Ejecutar migraciones en Supabase
-supabase db push
-
-# Generar tipos TS desde el schema de Supabase (apunta a src/)
+npx next lint          # debe dar 0 errors
+npx next build
 supabase gen types typescript --local > src/types/supabase.ts
-
-# Agregar componente de shadcn/ui
 npx shadcn@latest add [componente]
 ```
 
@@ -356,36 +288,27 @@ npx shadcn@latest add [componente]
 
 | Decisión | Razón |
 |---|---|
-| Marketplace por ciudad (no white-label aislado) | La concentración de oferta es el valor; el efecto de red atrae más agencias |
-| Multi-tenant por debajo (`agency_id`/`city_id`) | Permite activar white-label a futuro sin reescribir |
-| Multi-ciudad en el diseño, single-city en el lanzamiento | Barato diseñarlo ahora, carísimo migrarlo después. Se lanza enfocado en una ciudad |
-| Suscripción fija, no comisión por venta | El cierre ocurre por WhatsApp fuera de la app; no se puede medir comisión |
-| Límite de plan validado en la DB | El frontend no es fuente de verdad; el trigger garantiza el límite |
-| PWA, no app nativa | El visitante usa la app pocas semanas; descargar de la store mata la conversión |
-| Sin registro para el visitante | Reduce fricción; favoritos locales alcanzan |
-| Geocoding manual (pin en mapa) | Los mapas no son precisos en muchas ciudades; el pin manual evita confusión |
-| Next.js 16 desde el inicio | Evita migración futura; Turbopack más rápido; async params desde el arranque |
-| `proxy.ts` en lugar de `middleware.ts` | Convención de Next.js 16; `middleware.ts` está deprecado |
-| Carpeta `src/` | Preferencia del equipo; separa el código de config raíz |
-| Leaflet en lugar de Mapbox | Tiles OSM 100% gratuitos, sin límite de requests |
-| `amenities` como JSONB | Los amenities varían mucho; evita migraciones al agregar nuevos |
-| Mapa siempre CSR (`ssr:false`) | Leaflet usa `window`; no funciona en SSR |
-| Zustand solo para filtros del mapa | Estado mínimo global; evita complejidad innecesaria |
+| Marketplace por ciudad | La concentración de oferta es el valor; efecto de red |
+| Multi-tenant (`agency_id`/`city_id`) | Permite white-label futuro sin reescribir |
+| cityStore (Zustand) | Una sola instancia compartida; evita desincronización del selector con el mapa |
+| getPlanUsage por agency_id | Coincide con el trigger; correcto en agencias multi-agente |
+| Admin client para registro | La sesión no está disponible en server justo tras signUp |
+| is_featured gateado en server action | El trigger solo valida cantidad, no features de plan |
+| Debounce 400ms + diff por ids | Evita ráfaga de queries y recreación de markers al panear |
+| Tiles OSM (no CARTO/tonal) | Mejor contraste con los pines terracota; CARTO lavaba el mapa |
+| Pin terracota (no blanco) | Contraste sobre el mapa; activo en negro para distinguir selección |
+| Suscripción fija, no comisión | El cierre ocurre en WhatsApp fuera de la app |
+| PWA, no app nativa | El visitante usa la app pocas semanas |
+| Pin manual sin geocoding | Los mapas no son precisos en muchas ciudades |
+| Leaflet en lugar de Mapbox | Tiles OSM gratuitos sin límite |
+| `amenities` como JSONB | Flexible, sin migraciones al agregar amenities |
+| `proxy.ts` (no middleware.ts) | Convención Next.js 16 |
 
 ---
 
-## Archivos de Referencia Clave
+## Método de Diagnóstico
 
-- `src/proxy.ts` — Auth guard de rutas (convención Next.js 16)
-- `src/lib/supabase/middleware.ts` — Helper de cookies de Supabase (utilitario, no convención Next.js)
-- `src/lib/supabase/admin.ts` — Service role, solo para `subscriptions` (nunca en cliente)
-- `src/types/index.ts` — Todos los tipos TypeScript del proyecto
-- `src/types/supabase.ts` — Tipos generados por Supabase CLI (no editar manualmente)
-- `supabase/migrations/` — Schema SQL con cities, subscriptions, RLS y trigger de límite
-- `src/lib/utils/waMessage.ts` — Generador de URL de WhatsApp
-- `src/lib/hooks/useCity.ts` — Ciudad activa y geolocalización
-- `src/lib/hooks/useFavorites.ts` — Favoritos en localStorage
-- `src/store/mapFiltersStore.ts` — Zustand store de filtros del mapa
+Cuando el usuario reporta un síntoma visual, **inspeccionar el estado real del DOM y las clases aplicadas antes de teorizar sobre el pipeline de build**. La causa más simple (un elemento en otro estado, una clase pisada) es más probable que una corrupción de caché. No verificar en entornos aislados (headless, build paralelo) cuando el síntoma aparece en la app corriendo — la evidencia está en el DOM real.
 
 ## Diseño
 

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { PlanBadge } from "@/components/dashboard/PlanBadge";
+import { NewPropertyButton } from "@/components/dashboard/NewPropertyButton";
 import { PropertiesTable, type PropertyRow } from "@/components/dashboard/PropertiesTable";
 import { getPlanUsage } from "@/lib/utils/getPlanUsage";
 
@@ -43,34 +43,8 @@ export default async function PropiedadesPage() {
           </div>
         </div>
 
-        <div className="flex flex-col items-start sm:items-end gap-1.5 shrink-0">
-          {planUsage.canCreate ? (
-            <Link
-              href="/dashboard/propiedades/nueva"
-              className="inline-flex items-center gap-1.5 h-10 px-5 font-sans text-sm font-medium text-paper bg-terracota hover:bg-terracota-hover rounded-md transition-colors duration-[120ms]"
-            >
-              + Nueva propiedad
-            </Link>
-          ) : (
-            <>
-              <button
-                disabled
-                aria-disabled="true"
-                className="inline-flex items-center gap-1.5 h-10 px-5 font-sans text-sm font-medium text-graphite bg-stone rounded-md cursor-not-allowed opacity-60"
-              >
-                + Nueva propiedad
-              </button>
-              <p className="font-sans text-xs text-graphite">
-                Límite del plan alcanzado.{" "}
-                <Link
-                  href="/dashboard/suscripcion"
-                  className="text-terracota hover:underline"
-                >
-                  Pasá a Pro
-                </Link>
-              </p>
-            </>
-          )}
+        <div className="shrink-0">
+          <NewPropertyButton planUsage={planUsage} />
         </div>
       </div>
 

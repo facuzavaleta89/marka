@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { Wordmark } from "@/components/brand/Wordmark";
 
 // ─── Layout split-screen para login / register ───────────────
@@ -36,9 +38,11 @@ export function AuthLayout({ claim, subclaim, children }: AuthLayoutProps) {
         {/* Degradé de legibilidad (clave si en el futuro hay foto detrás) */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-black/10" />
 
-        {/* Marca arriba */}
+        {/* Marca arriba — link de vuelta al mapa público */}
         <div className="relative z-10">
-          <Wordmark size="lg" variant="light" />
+          <Link href="/" aria-label="Ir al mapa">
+            <Wordmark size="lg" variant="light" />
+          </Link>
         </div>
 
         {/* Claim abajo */}
@@ -58,7 +62,18 @@ export function AuthLayout({ claim, subclaim, children }: AuthLayoutProps) {
 
       {/* ── Panel del formulario ─────────────────────────────────── */}
       <main className="flex flex-1 items-center justify-center px-6 py-10 md:px-10">
-        <div className="w-full max-w-sm">{children}</div>
+        <div className="w-full max-w-sm">
+          {/* Salida explícita al mapa (navegación secundaria, no botón).
+              Convive con el wordmark clickeable del panel de identidad. */}
+          <Link
+            href="/"
+            className="mb-6 inline-flex items-center gap-1.5 font-sans text-sm text-graphite transition-colors duration-[120ms] ease-out hover:text-terracota"
+          >
+            <ArrowLeft size={16} />
+            Volver al mapa
+          </Link>
+          {children}
+        </div>
       </main>
     </div>
   );
