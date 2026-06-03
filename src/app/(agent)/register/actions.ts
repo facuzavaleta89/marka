@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
+import { PLANS } from "@/types";
 
 type RegisterData = {
   fullName: string;
@@ -58,11 +59,20 @@ export async function registerAction(
   if (agentError) return { error: "Error al crear el perfil del agente" };
 
   // Garantiza que la agencia tenga una suscripción.
-  // upsert con ignoreDuplicates: no pisa una suscripción existente (ej. una pro).
+  // upsert con ignoreDuplicates: no pisa una suscripción existente (ej. una de pago).
+  // Una agencia nueva arranca en el plan free (límite 1, sin entitlements).
+  // NOTA: la selección de plan post-registro es trabajo de Fase 3.
   const { error: subError } = await admin
     .from("subscriptions")
     .upsert(
-      { agency_id: agency.id, plan: "free", property_limit: 5 },
+      {
+        agency_id: agency.id,
+        plan: "free",
+        property_limit: PLANS.free.propertyLimit,
+        has_featured: PLANS.free.featured,
+        has_white_label: PLANS.free.whiteLabel,
+        has_metrics: PLANS.free.metrics,
+      },
       { onConflict: "agency_id", ignoreDuplicates: true }
     );
 

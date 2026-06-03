@@ -1,4 +1,6 @@
+// src/components/dashboard/PlanBadge.tsx
 import type { PlanUsage } from "@/types";
+import { PLANS } from "@/types";
 
 interface PlanBadgeProps {
   planUsage: PlanUsage;
@@ -7,21 +9,14 @@ interface PlanBadgeProps {
 export function PlanBadge({ planUsage }: PlanBadgeProps) {
   const { plan, used, limit } = planUsage;
 
-  if (plan === "pro") {
-    return (
-      <span className="inline-flex items-center font-sans text-[11px] font-semibold uppercase tracking-wide bg-terracota text-paper rounded-sm px-2.5 py-1">
-        Plan Pro · Ilimitado
-      </span>
-    );
-  }
-
-  // Plan free: badge con contador + micro-barra de proporción (used/limit)
+  // En el modelo de 4 planes todos tienen un límite finito → todos muestran
+  // el contador + micro-barra de proporción (used/limit). Ya no hay "Ilimitado".
   const pct = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
 
   return (
     <span className="inline-flex items-center gap-2 bg-mist rounded-sm px-2.5 py-1">
       <span className="font-sans text-[11px] font-semibold uppercase tracking-wide text-graphite">
-        Plan Free
+        Plan {PLANS[plan].name}
       </span>
       <span className="font-sans text-[11px] font-semibold tabular-nums text-graphite">
         {used}/{limit}

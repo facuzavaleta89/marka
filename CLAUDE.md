@@ -8,7 +8,7 @@
 
 Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública donde el visitante ve en un mapa interactivo las propiedades de **todas las agencias de su ciudad**, filtra, y contacta al agente por WhatsApp. Las agencias pagan una suscripción para publicar.
 
-**Modelo de negocio:** SaaS B2B. Las agencias se suscriben (plan free con límite de propiedades, plan pro ilimitado + destacados + métricas). El visitante no paga ni se registra.
+**Modelo de negocio:** SaaS B2B. 4 planes: free (particular, 1 propiedad), inicial (agencia, 20), profesional (agencia, 60, + white-label), premium (agencia, 200, + white-label + destacados + métricas). El visitante no paga ni se registra.
 
 **Dos tipos de usuario:**
 - **Visitante (cliente)**: sin registro. Navega el mapa, filtra, ve detalles, contacta por WhatsApp, guarda favoritos localmente.
@@ -51,10 +51,10 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 - Al crear una propiedad, copiar `city_id` y `agency_id` del agente autenticado — nunca del cliente.
 
 ### Suscripciones y límites
-- Cada agencia tiene una fila en `subscriptions` con `plan` (`free`/`pro`) y `property_limit`.
+- Cada agencia tiene una fila en `subscriptions` con `plan` (`free`/`inicial`/`profesional`/`premium`), `property_limit` y los entitlements `has_featured`/`has_white_label`/`has_metrics`.
 - El límite se valida **en la DB** (trigger `check_property_limit`). El frontend lo anticipa pero la DB es la fuente de verdad.
 - El conteo de propiedades usa **siempre `agency_id`**, nunca `agent_id`. Usar el helper `getPlanUsage` de `@/lib/utils/getPlanUsage`.
-- `is_featured` solo puede ser `true` si el plan es `pro`. Las server actions lo fuerzan a `false` para agentes free silenciosamente.
+- `is_featured` solo puede ser `true` si la suscripción tiene `has_featured` (hoy: premium). Las server actions lo fuerzan a `false` silenciosamente si la agencia no lo tiene. **El gating se hace por el booleano `has_featured` (vía `planUsage.hasFeatured`), NUNCA comparando el nombre del plan (`=== "premium"`).**
 - La escritura de `subscriptions` y el insert de `agents` en el registro se hacen **con service role** (`admin.ts`), nunca con el client normal.
 
 ---
@@ -104,7 +104,7 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 │   │   │   ├── PropertiesTable.tsx      ← Tabla desktop + cards mobile + skeleton
 │   │   │   ├── PlanBadge.tsx            ← Plan + micro-barra de uso
 │   │   │   ├── ProfileForm.tsx
-│   │   │   └── SubscriptionContent.tsx  ← Cards de planes (Pro destacada) + Dialog shadcn
+│   │   │   └── SubscriptionContent.tsx  ← Cards de planes (4 planes, flex-wrap) + Dialog shadcn
 │   │   └── ui/                          ← shadcn/ui components
 │   │
 │   ├── lib/
@@ -239,7 +239,7 @@ Schema en `supabase/migrations/20240101000000_initial_schema.sql`.
 |---|---|
 | `cities` | Mercados. Centro del mapa y zoom por ciudad |
 | `agencies` | Inmobiliarias. `city_id` NOT NULL. `brand_color` para white-label futuro |
-| `subscriptions` | Plan (free/pro) y `property_limit` por agencia |
+| `subscriptions` | Plan (free/inicial/profesional/premium), `property_limit` y entitlements `has_*` por agencia |
 | `agents` | `id` = `auth.users.id`. `agency_id` NOT NULL |
 | `properties` | `agency_id` y `city_id` NOT NULL; `location` GEOGRAPHY generada |
 | `property_images` | `is_cover` + `sort_order` |
@@ -293,7 +293,7 @@ npx shadcn@latest add [componente]
 | cityStore (Zustand) | Una sola instancia compartida; evita desincronización del selector con el mapa |
 | getPlanUsage por agency_id | Coincide con el trigger; correcto en agencias multi-agente |
 | Admin client para registro | La sesión no está disponible en server justo tras signUp |
-| is_featured gateado en server action | El trigger solo valida cantidad, no features de plan |
+| is_featured gateado por `has_featured` en server action | El trigger solo valida cantidad, no features; el gating lee el booleano de la suscripción, no el nombre del plan |
 | Debounce 400ms + diff por ids | Evita ráfaga de queries y recreación de markers al panear |
 | Tiles OSM (no CARTO/tonal) | Mejor contraste con los pines terracota; CARTO lavaba el mapa |
 | Pin terracota (no blanco) | Contraste sobre el mapa; activo en negro para distinguir selección |

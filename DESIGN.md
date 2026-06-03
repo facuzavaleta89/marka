@@ -479,11 +479,11 @@ El área privada del agente mantiene la paleta pero con una distribución más f
 - Skeleton de tabla mientras carga (`loading.tsx` en la ruta)
 
 **PlanBadge (refinado):**
-- Plan free muestra una micro-barra de uso: `PLAN FREE · 3/5 · [▰▰▱▱▱]` con fill terracota proporcional
+- Todos los planes muestran micro-barra de uso: `PLAN INICIAL · 8/20 · [▰▰▱▱▱]` con fill terracota proporcional (los 4 planes tienen límite finito)
 
 **SubscriptionContent (refinado):**
 - Modal "Próximamente" usa el `Dialog` de shadcn (no overlay casero)
-- Card Pro destacada sobre Free: fondo terracota-subtle + borde 2px terracota + shadow-lg. Free pasa a neutro para que Pro "venda" el upgrade
+- Cards de los 4 planes en `flex flex-wrap justify-center` con ancho fijo (~300px) que respiran y se centran: la card del plan actual + las de upgrade (planes superiores). La primera de upgrade lleva badge "Recomendado ★" (fondo terracota-subtle + borde 2px terracota + shadow-lg). Con 4 cards wrapean 3+1; con 2 quedan centradas. `items-stretch` iguala alturas por fila
 
 ---
 
@@ -590,44 +590,42 @@ Visible en el sidebar del dashboard y en la cabecera del listado de propiedades.
 
 | Plan | Background | Texto | Contenido |
 |---|---|---|---|
-| Free | `mist` | `graphite` | "Plan Free · 3/5 propiedades" |
-| Pro | `terracota` | `paper` | "Plan Pro · Ilimitado" |
+| Todos | `mist` | `graphite` | "Plan {Nombre} · {usadas}/{límite}" + micro-barra |
 
 - DM Sans 12px Medium, `rounded-sm`, padding `4px 10px`
-- En plan free, el contador de uso (`3/5`) usa el mismo color del texto pero en SemiBold
+- Todos los planes tienen límite finito (free=1, inicial=20, profesional=60, premium=200): el badge muestra siempre el contador `usadas/límite` en SemiBold + micro-barra de proporción con fill terracota. Ya no existe "Ilimitado"
 
 ### Bloqueo de alta al alcanzar el límite
 
-Cuando la agencia free llegó a su límite, el botón "Nueva propiedad" cambia de estado:
+Cuando la agencia llegó a su límite, el botón "Nueva propiedad" cambia de estado:
 
 - Botón deshabilitado: fondo `stone`, texto `graphite`, cursor `not-allowed`
-- Debajo del botón, un mensaje constructivo:
-  > "Alcanzaste el límite de 5 propiedades del plan Free. Pasá a Pro para publicar sin límite."
-  > con un link "Ver planes" en `terracota`
+- Debajo del botón, un mensaje constructivo dinámico según el plan actual:
+  > Si hay plan superior: "Alcanzaste el límite de tu plan {Actual}. Pasá a {Siguiente} para publicar más." + link "Ver planes" en `terracota`
+  > Si es premium (tope): "Alcanzaste el máximo de propiedades. Escribinos si necesitás más." + link "Escribinos" (mailto) en `terracota`
 
 - **Nunca** ocultar el botón — mostrarlo deshabilitado comunica que existe la posibilidad de crecer
 
 ### Vista de suscripción (`/dashboard/suscripcion`)
 
-Layout de dos cards lado a lado (apiladas en mobile):
+Barra de uso del plan actual + cards de planes en `flex flex-wrap justify-center` (ancho fijo ~300px, no un grid rígido): la card del plan actual seguida de las cards de upgrade (planes superiores). Apiladas/centradas en mobile.
 
 ```
-┌──────────────────┐  ┌──────────────────┐
-│  Plan Free       │  │  Plan Pro         │
-│  (actual)        │  │                   │
-│                  │  │  Recomendado ★    │  ← badge terracota
-│  Hasta 5 props   │  │  Propiedades      │
-│                  │  │  ilimitadas       │
-│  Gratis          │  │  + Destacados     │
-│                  │  │  + Métricas       │
-│  [Plan actual]   │  │  [Pasar a Pro]    │  ← CTA terracota
-└──────────────────┘  └──────────────────┘
+┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
+│  Plan {Actual}   │  │  Plan {Siguiente} │  │  Plan {…}         │
+│  Plan actual     │  │  Recomendado ★    │  │                   │  ← badge terracota en el 1er upgrade
+│  {precio}        │  │  {precio}         │  │  {precio}         │
+│  + features…     │  │  + features…      │  │  + features…      │
+│  [Plan actual]   │  │  [Pasar a {plan}] │  │  [Pasar a {plan}] │  ← CTA terracota
+└──────────────────┘  └──────────────────┘  └──────────────────┘
 ```
 
-- Título de cada plan: Noto Serif H3
-- Precio: Noto Serif 28px Bold
+- Las cards mantienen el mismo ancho siempre; con 4 wrapean 3+1, con 2 se centran. `items-stretch` iguala alturas por fila
+- Título de cada plan: Noto Serif H2/H3 · Precio: Noto Serif Bold (placeholder editable desde `PLANS` en types)
 - Card del plan actual: borde `terracota`, badge "Plan actual" en `terracota-subtle`
-- Lista de features: DM Sans 14px, ícono `check` 16px en `success`
+- Primer upgrade: badge "Recomendado ★" en `terracota`, fondo `terracota-subtle`, borde 2px, shadow-lg
+- Lista de features derivada de `PLANS`: límite + destacados/white-label/métricas según el plan. DM Sans 14px, ícono `check` 16px en `success`
+- El CTA "Pasar a {plan}" abre el Dialog "Próximamente" (la activación es manual por ahora; contacto vía mailto)
 
 ---
 

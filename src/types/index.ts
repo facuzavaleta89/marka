@@ -20,9 +20,17 @@ export type PropertyStatus = "active" | "paused" | "sold" | "rented";
 
 export type Currency = "USD" | "ARS";
 
-// Planes y estados de suscripción
-export type SubscriptionPlan = "free" | "pro";
-export type SubscriptionStatus = "active" | "past_due" | "canceled";
+// Planes y estados de suscripción.
+// Modelo unificado de 4 planes. Límites de propiedades: free=1, inicial=20,
+// profesional=60, premium=200 (ver constante PLANS más abajo).
+// 'free' es el plan del tenant_type 'individual' (particular); el resto, 'agency'.
+export type SubscriptionPlan = "free" | "inicial" | "profesional" | "premium";
+// 'pending' = plan pago elegido pero todavía no activado, esperando la
+// activación manual del admin (se usa en la selección de plan de Fase 3).
+export type SubscriptionStatus = "active" | "pending" | "past_due" | "canceled";
+
+// Tipo de cuenta/tenant: particular individual (plan free) o agencia (resto).
+export type TenantType = "individual" | "agency";
 
 // Amenities disponibles en el sistema
 export type Amenity =
@@ -73,14 +81,20 @@ export interface Agency {
   subscription?: Subscription;
 }
 
-// Suscripción de una agencia. Controla plan y límite de propiedades.
+// Suscripción de una agencia. Controla plan, límite de propiedades y los
+// entitlements efectivos (destacados / white-label / métricas).
 // La escritura ocurre solo en el backend (service role).
+// IMPORTANTE: el gating de features se hace con estos booleanos (fuente de
+// verdad en la DB ya migrada), NO comparando el nombre del plan.
 export interface Subscription {
   id: string;
   agency_id: string;
   plan: SubscriptionPlan;
   status: SubscriptionStatus;
-  property_limit: number;            // free = 5; pro = alto (ej. 9999)
+  property_limit: number;            // free=1, inicial=20, profesional=60, premium=200
+  has_featured: boolean;             // puede marcar propiedades como destacadas
+  has_white_label: boolean;          // habilita la vista white-label
+  has_metrics: boolean;              // métricas avanzadas de propiedades y leads
   current_period_end: string | null;
   created_at: string;
   updated_at: string;
@@ -248,10 +262,56 @@ export type PropertyUpdate = Partial<PropertyInsert> & { id: string };
 
 // ─── Helpers de plan ──────────────────────────────────────────
 
+// Catálogo de planes para la UI (pricing, badges, mensajes de upgrade).
+// Es la fuente de verdad de NOMBRE / PRECIO / LÍMITE de cada plan.
+// Los flags (featured/whiteLabel/metrics) describen qué INCLUYE cada plan en
+// las tarjetas de precios; el gating en runtime se hace con los booleanos de la
+// suscripción (has_featured / has_white_label / has_metrics), no con estos.
+export interface PlanInfo {
+  id: SubscriptionPlan;
+  name: string;            // nombre visible
+  tenantType: TenantType;  // 'individual' (free) | 'agency' (resto)
+  propertyLimit: number;
+  priceLabel: string;      // placeholder editable
+  featured: boolean;
+  whiteLabel: boolean;
+  metrics: boolean;
+}
+
+export const PLANS: Record<SubscriptionPlan, PlanInfo> = {
+  free: {
+    id: "free", name: "Particular", tenantType: "individual",
+    propertyLimit: 1, priceLabel: "Gratis",
+    featured: false, whiteLabel: false, metrics: false,
+  },
+  inicial: {
+    id: "inicial", name: "Inicial", tenantType: "agency",
+    propertyLimit: 20, priceLabel: "$30.000",
+    featured: false, whiteLabel: false, metrics: false,
+  },
+  profesional: {
+    id: "profesional", name: "Profesional", tenantType: "agency",
+    propertyLimit: 60, priceLabel: "$65.000",
+    featured: false, whiteLabel: true, metrics: false,
+  },
+  premium: {
+    id: "premium", name: "Premium", tenantType: "agency",
+    propertyLimit: 200, priceLabel: "$140.000",
+    featured: true, whiteLabel: true, metrics: true,
+  },
+};
+
+// Orden ascendente de planes (free → premium). Para mostrar "el plan siguiente".
+export const PLAN_ORDER = ["free", "inicial", "profesional", "premium"] as const;
+
 // Estado de uso del plan, para mostrar en el dashboard y bloquear el alta.
+// Incluye los entitlements efectivos leídos de la suscripción (no del nombre del plan).
 export interface PlanUsage {
   plan: SubscriptionPlan;
   used: number;          // propiedades activas/pausadas actuales
   limit: number;         // property_limit del plan
   canCreate: boolean;    // used < limit
+  hasFeatured: boolean;     // = subscription.has_featured
+  hasWhiteLabel: boolean;   // = subscription.has_white_label
+  hasMetrics: boolean;      // = subscription.has_metrics
 }

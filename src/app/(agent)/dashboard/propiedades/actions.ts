@@ -91,8 +91,7 @@ export async function activatePropertyAction(id: string): Promise<ActionResult> 
     // El trigger check_property_limit lanza SQLSTATE 23514 al superar el límite del plan
     if (dbError.code === "23514" || dbError.message.includes("Límite")) {
       return {
-        error:
-          "Alcanzaste el límite de propiedades de tu plan. Pasá a Pro para activar más.",
+        error: "Alcanzaste el límite de propiedades de tu plan.",
       };
     }
     return { error: "No se pudo activar la propiedad" };
@@ -177,9 +176,10 @@ export async function createPropertyAction(
 
   const slug = generateSlug(data.title);
 
-  // Destacar es feature de plan pro: si el plan es free, se ignora el valor
+  // Destacar es un entitlement de la suscripción (has_featured): si la agencia
+  // no lo tiene, se ignora el valor que mandó el form.
   const planUsage = await getPlanUsage(supabase, agent.agency_id);
-  const isFeatured = data.is_featured && planUsage.plan === "pro";
+  const isFeatured = data.is_featured && planUsage.hasFeatured;
 
   const { error: insertError } = await supabase.from("properties").insert({
     id: data.id,
@@ -217,8 +217,7 @@ export async function createPropertyAction(
     // El trigger check_property_limit lanza SQLSTATE 23514 al superar el límite del plan
     if (insertError.code === "23514" || insertError.message.includes("Límite")) {
       return {
-        error:
-          "Alcanzaste el límite de propiedades de tu plan. Pasá a Pro para publicar más.",
+        error: "Alcanzaste el límite de propiedades de tu plan.",
       };
     }
     return { error: "No se pudo crear la propiedad" };
@@ -254,14 +253,15 @@ export async function updatePropertyAction(
   const { ok, error, supabase } = await verifyOwnership(id);
   if (!ok) return { error: error! };
 
-  // Destacar es feature de plan pro: si el plan es free, se ignora el valor
+  // Destacar es un entitlement de la suscripción (has_featured): si la agencia
+  // no lo tiene, se ignora el valor que mandó el form.
   const { data: prop } = await supabase
     .from("properties")
     .select("agency_id")
     .eq("id", id)
     .single();
   const planUsage = prop ? await getPlanUsage(supabase, prop.agency_id) : null;
-  const isFeatured = data.is_featured && planUsage?.plan === "pro";
+  const isFeatured = data.is_featured && (planUsage?.hasFeatured ?? false);
 
   const { error: updateError } = await supabase
     .from("properties")
