@@ -20,6 +20,13 @@ export type PropertyStatus = "active" | "paused" | "sold" | "rented";
 
 export type Currency = "USD" | "ARS";
 
+// Rol del agente dentro de su agencia (Fase 3, ya migrado en la base).
+// 'admin': gestiona la suscripción, invita/elimina agentes y ve los leads de
+// toda la agencia. 'agent': CRUD de sus propias propiedades.
+// IMPORTANTE: hoy la columna 'role' EXISTE en la base, pero todavía NO gatea
+// permisos (las RLS policies admin/agent son una pieza posterior de Fase 3).
+export type AgentRole = "admin" | "agent";
+
 // Planes y estados de suscripción.
 // Modelo unificado de 4 planes. Límites de propiedades: free=1, inicial=20,
 // profesional=60, premium=200 (ver constante PLANS más abajo).
@@ -72,6 +79,11 @@ export interface Agency {
   city_id: string;       // toda agencia pertenece a una ciudad
   name: string;
   slug: string;
+  // Tipo de tenant (Fase 3, ya migrado en la base). 'agency' = inmobiliaria
+  // (varios agentes); 'individual' = particular (una persona, plan free).
+  // Internamente ambos son filas en agencies. La regla "individual → solo free"
+  // se valida en el registro (backend), no en la base.
+  tenant_type: TenantType;
   logo_url: string | null;
   website: string | null;
   brand_color: string | null; // override del acento para futura vista white-label
@@ -103,6 +115,7 @@ export interface Subscription {
 export interface Agent {
   id: string; // = auth.users(id) de Supabase
   agency_id: string; // NOT NULL en el modelo marketplace
+  role: AgentRole; // 'admin' | 'agent' (ya migrado; todavía no gatea permisos)
   full_name: string;
   phone_wa: string; // número sin "+" ej: "5491112345678"
   avatar_url: string | null;

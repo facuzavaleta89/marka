@@ -2,11 +2,17 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { generateSlug } from "@/lib/utils/generateSlug";
 import { redirect } from "next/navigation";
-import { PLANS } from "@/types";
+import { PLANS, type TenantType } from "@/types";
 
 type RegisterData = {
+  tenantType: TenantType;
   fullName: string;
+  // Nombre de la inmobiliaria. Solo se usa cuando tenantType === "agency";
+  // para un particular ("individual") la agencia toma el fullName.
+  agencyName: string;
+  cityId: string;
   email: string;
   password: string;
   phoneWa: string;
@@ -38,20 +44,33 @@ export async function registerAction(
   // "Agent creates own profile" (WITH CHECK id = auth.uid()) rechazaría el insert.
   const admin = createAdminClient();
 
-  // Busca la agencia del seed por slug (evita hardcodear el UUID)
+  // Crea una agencia nueva para este registro (ya no se cuelga de una demo).
+  // Una inmobiliaria usa su razón social; un particular usa su nombre completo.
+  // El insert va con service role porque no hay policy de INSERT en agencies.
+  const agencyName =
+    data.tenantType === "agency" ? data.agencyName : data.fullName;
+
   const { data: agency, error: agencyError } = await admin
     .from("agencies")
+    .insert({
+      city_id: data.cityId,
+      name: agencyName,
+      slug: generateSlug(agencyName),
+      tenant_type: data.tenantType,
+    })
     .select("id")
-    .eq("slug", "inmobiliaria-demo")
     .single();
 
   if (agencyError || !agency) {
-    return { error: "No hay agencia disponible para el registro" };
+    return { error: "No se pudo crear la agencia" };
   }
 
+  // El creador de la agencia es su admin (gestiona suscripción y, a futuro,
+  // invita agentes y ve los leads de toda la agencia — Fase 3).
   const { error: agentError } = await admin.from("agents").insert({
     id: authData.user.id,
     agency_id: agency.id,
+    role: "admin",
     full_name: data.fullName,
     phone_wa: data.phoneWa,
   });

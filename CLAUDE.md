@@ -50,12 +50,19 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 - `city_id` está **denormalizado en `properties`** para filtrar el mapa sin JOIN.
 - Al crear una propiedad, copiar `city_id` y `agency_id` del agente autenticado — nunca del cliente.
 
+### Roles de agente (Fase 3 — parcial)
+- `agents.role` (`admin`/`agent`) **ya está migrado** en la base. Backfill aplicado: el admin de cada agencia es el agente más antiguo.
+- **Hoy `role` NO gatea permisos todavía**: existe la columna y el dato, pero las RLS policies admin/agent y la UI condicionada por rol son piezas posteriores de Fase 3. No escribir código que asuma que un `agent` tiene menos acceso que un `admin` hasta que se implementen esas policies.
+- Modelo previsto: `admin` gestiona la suscripción, invita/elimina agentes y ve los leads de toda la agencia; `agent` hace CRUD de lo suyo.
+- **El registro crea una agencia nueva** y deja al que se registra como `admin` de ella (con suscripción `free` al instante). Ya no existe el hardcodeo a una agencia demo. Las altas siguientes a una agencia existente (por invitación) caerán en `agent` — pieza futura.
+- `tenant_type` (en `agencies`) **ya está migrado** (`agency`/`individual`, default `agency`) y **ya se usa en el registro**: el alta elige inmobiliaria o particular. `phone_wa` de agencia **sigue sin migrar** — no asumir que existe.
+
 ### Suscripciones y límites
 - Cada agencia tiene una fila en `subscriptions` con `plan` (`free`/`inicial`/`profesional`/`premium`), `property_limit` y los entitlements `has_featured`/`has_white_label`/`has_metrics`.
 - El límite se valida **en la DB** (trigger `check_property_limit`). El frontend lo anticipa pero la DB es la fuente de verdad.
 - El conteo de propiedades usa **siempre `agency_id`**, nunca `agent_id`. Usar el helper `getPlanUsage` de `@/lib/utils/getPlanUsage`.
 - `is_featured` solo puede ser `true` si la suscripción tiene `has_featured` (hoy: premium). Las server actions lo fuerzan a `false` silenciosamente si la agencia no lo tiene. **El gating se hace por el booleano `has_featured` (vía `planUsage.hasFeatured`), NUNCA comparando el nombre del plan (`=== "premium"`).**
-- La escritura de `subscriptions` y el insert de `agents` en el registro se hacen **con service role** (`admin.ts`), nunca con el client normal.
+- La creación de `agencies`, el insert de `agents` y la escritura de `subscriptions` en el registro se hacen **con service role** (`admin.ts`), nunca con el client normal.
 
 ---
 
@@ -70,7 +77,8 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 │   │   │   ├── [ciudad]/page.tsx        ← Marketplace de una ciudad
 │   │   │   └── propiedades/[slug]/      ← Página SEO por propiedad
 │   │   ├── (agent)/
-│   │   │   ├── login/ register/         ← Split-screen editorial (AuthLayout)
+│   │   │   ├── login/                    ← Split-screen editorial (AuthLayout)
+│   │   │   ├── register/                  ← page.tsx (Server: trae ciudades) + RegisterForm.tsx (client: tipo de cuenta, agencia, ciudad)
 │   │   │   └── dashboard/
 │   │   │       ├── page.tsx             ← Métricas (StatsCard) y últimos leads
 │   │   │       ├── propiedades/         ← Listado CRUD + nueva + [id]/editar + loading.tsx
@@ -111,7 +119,7 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 │   │   ├── supabase/
 │   │   │   ├── client.ts                ← Browser client
 │   │   │   ├── server.ts                ← SSR client
-│   │   │   ├── admin.ts                 ← Service role (registro agents + subscriptions). NUNCA en cliente
+│   │   │   ├── admin.ts                 ← Service role (registro: agencies + agents + subscriptions). NUNCA en cliente
 │   │   │   └── middleware.ts            ← Helper de cookies para proxy.ts
 │   │   ├── map/
 │   │   │   └── tiles.ts                 ← Config de tiles compartida (mapa + LocationPicker)
@@ -175,7 +183,7 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 |---|---|
 | Server Components, Server Actions | `@/lib/supabase/server` |
 | Client Components | `@/lib/supabase/client` |
-| Insert `agents` en registro, upsert `subscriptions` | `@/lib/supabase/admin` (service role) |
+| Crear `agencies`, insert `agents`, upsert `subscriptions` en registro | `@/lib/supabase/admin` (service role) |
 
 - No hacer queries directas en componentes → hooks en `src/lib/hooks/`
 - Respetar RLS siempre. Admin client solo en server
@@ -238,14 +246,14 @@ Schema en `supabase/migrations/20240101000000_initial_schema.sql`.
 | Tabla | Descripción |
 |---|---|
 | `cities` | Mercados. Centro del mapa y zoom por ciudad |
-| `agencies` | Inmobiliarias. `city_id` NOT NULL. `brand_color` para white-label futuro |
+| `agencies` | Inmobiliarias. `city_id` NOT NULL. `tenant_type` (`agency`/`individual`) ya migrado. `brand_color` para white-label futuro |
 | `subscriptions` | Plan (free/inicial/profesional/premium), `property_limit` y entitlements `has_*` por agencia |
-| `agents` | `id` = `auth.users.id`. `agency_id` NOT NULL |
+| `agents` | `id` = `auth.users.id`. `agency_id` NOT NULL. `role` (`admin`/`agent`) ya migrado, todavía no gatea permisos |
 | `properties` | `agency_id` y `city_id` NOT NULL; `location` GEOGRAPHY generada |
 | `property_images` | `is_cover` + `sort_order` |
 | `leads` | Contactos WA. Incluye `agency_id` |
 
-**Policies RLS clave:** lectura pública de cities/agencies/properties activas; agentes ven y gestionan lo suyo + leen propiedades de su agencia (para el conteo); `Public insert lead` valida que property+agent+agency coincidan; escritura de subscriptions solo service role.
+**Policies RLS clave:** lectura pública de cities/agencies/properties activas; agentes ven y gestionan lo suyo + leen propiedades de su agencia (para el conteo); `Agent reads own leads` (un agent ve los suyos) + `Admin reads agency leads` (un admin ve los de toda su agencia — Fase 3, ya aplicada); `Public insert lead` valida que property+agent+agency coincidan (todavía no contempla `agent_id IS NULL`, eso llega con agente desvinculado); escritura de subscriptions solo service role.
 
 **Query principal:**
 ```sql
@@ -276,7 +284,7 @@ NEXT_PUBLIC_MAPTILER_KEY=      # Opcional
 ```bash
 npm run dev
 npx tsc --noEmit
-npx next lint          # debe dar 0 errors
+npm run lint          # debe dar 0 errors
 npx next build
 supabase gen types typescript --local > src/types/supabase.ts
 npx shadcn@latest add [componente]
