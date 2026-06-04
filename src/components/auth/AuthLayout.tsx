@@ -17,10 +17,10 @@ interface AuthLayoutProps {
 
 export function AuthLayout({ claim, subclaim, children }: AuthLayoutProps) {
   return (
-    <div className="flex min-h-screen flex-col bg-paper md:flex-row">
+    <div className="flex min-h-screen flex-col bg-paper md:flex-row md:items-start">
       {/* ── Panel de identidad ──────────────────────────────────
           En mobile: franja superior corta. En desktop: columna a sangre. */}
-      <section className="relative flex h-44 shrink-0 flex-col justify-between overflow-hidden px-6 py-5 md:h-auto md:min-h-screen md:w-[44%] md:px-10 md:py-10">
+      <section className="relative flex h-44 shrink-0 flex-col justify-between overflow-hidden px-6 py-5 md:sticky md:top-0 md:h-screen md:w-[44%] md:px-10 md:py-10">
         {/* ════════════════════════════════════════════════════════════
             FONDO DEL PANEL — preparado para foto editorial.
             Cuando haya una fotografía real, reemplazar SOLO el <div> de
