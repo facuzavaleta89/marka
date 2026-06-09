@@ -87,6 +87,7 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 │   │   │       ├── perfil/
 │   │   │       ├── preferencias/
 │   │   │       └── suscripcion/
+│   │   ├── admin/                        ← Panel de plataforma (solo dueño, gateado por ADMIN_USER_ID): activa planes pending. page (Server) + PendingAgenciesTable (client) + actions. NO usa el sidebar del agente
 │   │   └── api/og/[slug]/
 │   │
 │   ├── components/
@@ -276,6 +277,7 @@ WHERE city_id = $1 AND status = 'active'
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=     # Requerido: registro de agentes + suscripciones
+ADMIN_USER_ID=                 # Requerido para /admin: auth.uid() (UUID) del dueño de la plataforma. Server-side (sin NEXT_PUBLIC_). Fail-closed: si falta, /admin deniega a todos
 NEXT_PUBLIC_MAPTILER_KEY=      # Opcional
 ```
 

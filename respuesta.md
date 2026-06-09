@@ -1,68 +1,65 @@
-# Implementación — selección de plan como paso 2 del registro
+# Implementación — panel de admin de plataforma (/admin) · v1 activar planes
 
-> Se separó la selección de plan del form de registro a una pantalla nueva `/register/plan`. No se tocó el dashboard ni `SubscriptionContent`. No se implementó activación de planes (sigue siendo manual, fuera de este flujo).
+> Panel solo para el dueño, para activar planes pagos en `status: 'pending'`. v1 = solo activar (no desactivar/downgrade, ni gestión de usuarios, ni métricas, ni `current_period_end`).
 
-## Flujo resultante
+## Seguridad (lo primero)
 
-1. **Registro** crea siempre la cuenta en `free`/`active` (usuario + agencia + agente + suscripción), como antes del selector.
-2. **Particular** (`individual`) → redirige directo a `/dashboard`.
-3. **Inmobiliaria** (`agency`) → redirige a `/register/plan` para elegir plan.
-4. En `/register/plan`: elige plan → `free` queda `active`, plan pago queda `pending` (con límites de free hasta activación manual). O bien "Por ahora sigo en free" → `/dashboard` sin cambiar nada.
-
-## Archivos tocados (2)
-
-### `src/app/(agent)/register/RegisterForm.tsx`
-Revertido todo lo del selector de plan agregado en la tarea anterior:
-- Quitado el import `PLANS, PLAN_ORDER`.
-- Quitado `plan: z.enum(...)` del schema.
-- Quitado `plan: "free"` de `defaultValues`.
-- Quitado `plan: data.plan` del payload de `onSubmit`.
-- Quitado el bloque del selector de plan (cards) del JSX.
-- Intacto todo lo demás: toggle `tenantType`, "Nombre de la inmobiliaria" condicional, ciudad, email, password, phone, etc.
-
-### `src/app/(agent)/register/actions.ts`
-- `RegisterData` ya no tiene `plan`; quitado el import `type SubscriptionPlan`.
-- Quitada la lógica `effectivePlan` / `status pending`. El upsert de `subscriptions` vuelve a fijar siempre `plan: "free"`, `status: "active"`, `property_limit`/`has_*` de `PLANS.free` (con `onConflict: "agency_id", ignoreDuplicates: true`).
-- El `redirect` final ahora depende del tipo de cuenta:
-  ```ts
-  redirect(data.tenantType === "individual" ? "/dashboard" : "/register/plan");
-  ```
+- **Identidad por `process.env.ADMIN_USER_ID`** (server-side, SIN `NEXT_PUBLIC_`): un UUID = el `auth.uid()` del dueño.
+- **Verificación en dos lugares**: (a) el Server Component `/admin` y (b) la server action `activatePlanAction`. La action es la defensa real (la UI no alcanza).
+- **Fail-closed**: si `ADMIN_USER_ID` es `undefined`, se deniega (nunca "si no hay env, permitir"). En la action → `{ error: "Acción no autorizada" }`; en la página → `redirect("/dashboard")`.
+- **No se revela que la ruta existe**: un no-admin con sesión es redirigido a `/dashboard` (sin error explícito).
 
 ## Archivos creados (3)
 
-### `src/app/(agent)/register/plan/page.tsx` (Server Component)
-- Verifica sesión con `@/lib/supabase/server` (`auth.getUser()`); sin sesión → `redirect("/login")`.
-- Lee el `agency_id` del agente logueado; si no hay agente → `redirect("/login")`.
-- Lee `subscriptions.plan` de esa agencia para preseleccionar la card (default `"free"`).
-- Renderiza `<PlanSelector currentPlan={...} />`.
+### `src/app/(agent)/admin/page.tsx` (Server Component)
+- `createClient()` (`@/lib/supabase/server`) → `getUser()`. Sin user → `redirect("/login")`.
+- `const adminUserId = process.env.ADMIN_USER_ID;` → si `!adminUserId || user.id !== adminUserId` → `redirect("/dashboard")` (fail-closed + no revela la ruta).
+- Lee pendientes con **admin client (service role)** porque la policy de SELECT de `subscriptions` es por agencia propia:
+  ```ts
+  .from("subscriptions")
+  .select("agency_id, plan, status, agencies(name, slug, tenant_type)")
+  .eq("status", "pending")
+  .order("created_at", { ascending: false })
+  ```
+- Normaliza el embedding `agencies(...)` (objeto o array según inferencia) a `PendingRow[]` y renderiza `<PendingAgenciesTable rows={...} />`.
+- **Layout propio** (NO el sidebar del agente — es panel de plataforma): `min-h-screen bg-mist`, header con `Wordmark` + etiqueta "Admin de plataforma", `h1` `font-serif text-4xl` "Activación de planes", coherente con DESIGN.md. (Confirmado que `/admin` no hereda sidebar: el sidebar vive en `(agent)/dashboard/layout.tsx`, no en `(agent)/layout.tsx`.)
 
-### `src/app/(agent)/register/plan/PlanSelector.tsx` (Client Component)
-- Reusa el **estilo del selector** que estaba en `RegisterForm` (recuperado antes de borrarlo): cards seleccionables, activo `border-terracota bg-terracota text-paper`, inactivo `border-stone … hover:bg-mist`, transición 120ms.
-- Muestra los 4 planes de `PLAN_ORDER` con: nombre (`PLANS[x].name`, Noto Serif), precio (`priceLabel`), y la lista de features de cada plan (límite + destacados/white-label/métricas según corresponda, con `Check` de lucide). Helper `planFeatures` local (NO se importó/extrajo el `PlanCard` del dashboard).
-- Estado local de selección (preseleccionado con `currentPlan`), `loading` y `serverError`.
-- Botón **"Continuar"** (terracota) → llama a `selectPlanAction(selected)`.
-- Link **"Por ahora sigo en free"** → `/dashboard` sin cambiar nada (la cuenta ya quedó en free/active).
-- Envuelto en `AuthLayout` (mismo patrón visual editorial que login/register), con claim/subclaim propios (voz DESIGN §10).
+### `src/app/(agent)/admin/PendingAgenciesTable.tsx` (Client Component)
+- Visual **modelado sobre `PropertiesTable`** (no importado, copiado): tabla desktop + cards mobile + badge + `useTransition` + banner de error + `AlertDialog`.
+- Por fila: nombre de la agencia, plan elegido (`PLANS[plan].name`), precio (`priceLabel`), límite al activar (`propertyLimit`), badge "Pendiente" y botón **"Activar"**.
+- **`AlertDialog` de confirmación** antes de activar: "¿Activar plan {X}?" + "para {agencia}".
+- Al confirmar → `activatePlanAction(agencyId)`. Estados: `loading` por fila (opacity + disabled), `error` banner. **Tras éxito → `router.refresh()`** (la fila desaparece porque ya no está pending).
+- **Estado vacío** constructivo: "No hay planes pendientes de activación."
+- Exporta el tipo `PendingRow` (consumido por la página).
 
-### `src/app/(agent)/register/plan/actions.ts` (Server Action)
-`selectPlanAction(plan: SubscriptionPlan)`:
-- Defensa de input: valida que `plan` esté en `PLAN_ORDER` (no confía en el cliente).
-- Sesión con `@/lib/supabase/server`; sin sesión → `redirect("/login")`.
-- Deriva `agency_id` del **agente logueado** (`auth.uid()`), nunca de un id del cliente.
-- **RLS de `subscriptions`**: como no hay policy de UPDATE para usuarios (la escritura es service role), usa `@/lib/supabase/admin`, pero **acotando el `UPDATE` a `agency_id = agent.agency_id`** (el id viene del agente logueado, validado server-side).
-- Actualiza: `plan` elegido, `status: plan === "free" ? "active" : "pending"`, y `property_limit`/`has_*` **siempre** de `PLANS.free` (cupo de free hasta activación manual).
-- En éxito → `redirect("/dashboard")`; en error → `{ error }` que el client muestra.
+### `src/app/(agent)/admin/actions.ts` (Server Action)
+`activatePlanAction(agencyId: string)`:
+- `"use server"`.
+- Valida `agencyId` string no vacío.
+- **Identidad admin** (obligatoria): `adminUserId = process.env.ADMIN_USER_ID`; si falta → `{ error }`. `getUser()`; sin user → `redirect("/login")`; `user.id !== adminUserId` → `{ error: "Acción no autorizada" }`.
+- Lee el plan elegido: `.from("subscriptions").select("plan").eq("agency_id", agencyId).single()`. Si no existe → error.
+- Si el plan es `"free"` → error claro ("no hay nada que activar"), no "activa free".
+- Actualiza con admin client: `status: "active"`, `property_limit/has_*` con los valores **reales** de `PLANS[plan]`. **`current_period_end` NO se toca** (V2).
+- Devuelve `{ error }` en fallo; en éxito **sin redirect** (el client refresca).
+
+## Archivos tocados (2)
+
+### `src/proxy.ts`
+- Agregado `"/admin"` a `PROTECTED_PREFIXES` (primera barrera: exige sesión → redirige a `/login` si no hay). La autorización de identidad NO va acá; va en el server component y la action.
+
+### `CLAUDE.md`
+- Sección "Variables de Entorno": agregada `ADMIN_USER_ID` con comentario (server-side, SIN `NEXT_PUBLIC_`, el `auth.uid()`/UUID del dueño, requerida para `/admin`, fail-closed si no está).
 
 ## Verificación
 
 - **`npx tsc --noEmit`**: limpio, sin errores.
-- **`npm run lint`**: sin errores ni warnings **nuevos** por estos cambios. Los archivos nuevos (`PlanSelector`, `plan/actions.ts`, `plan/page.tsx`) no generan nada. Lo que queda es preexistente y conocido:
-  - **Warnings** (cosméticos RHF + React Compiler, documentados en CLAUDE.md): `RegisterForm.tsx:105` (`watch("tenantType")`) y `PropertyForm.tsx:219` (`watch("currency")`).
-  - **Errores preexistentes en archivos NO tocados**: `StatsCard.tsx:26` y `ClusterLayer.tsx:60,62`. Sin relación con esta tarea.
+- **`npm run lint`**: sin errores ni warnings **nuevos**. Los 3 archivos admin no generan nada. Lo que queda es preexistente y conocido:
+  - **Warnings** (RHF + React Compiler, documentados en CLAUDE.md): `RegisterForm.tsx:105`, `PropertyForm.tsx:219`.
+  - **Errores preexistentes en archivos NO tocados**: `StatsCard.tsx:26`, `ClusterLayer.tsx:60,62`. Sin relación con esta tarea.
 
 ## Fuera de alcance (respetado)
-- No se tocó `SubscriptionContent.tsx` ni nada del dashboard.
-- No se implementó activación de planes pagos: quedan en `pending` esperando el proceso manual externo.
+- No se implementó desactivar/downgrade, gestión de usuarios, métricas ni manejo de `current_period_end`.
+- No se tocó el dashboard del agente ni `SubscriptionContent`.
 
-### Nota de seguridad (RLS)
-La server action nunca recibe ni usa un `agency_id` del cliente: lo deriva del `auth.uid()` y acota el `UPDATE` a esa agencia. El admin client (service role) se usa solo porque no existe policy de UPDATE de `subscriptions` para usuarios; la validación de pertenencia es explícita en el servidor.
+## Pendiente del lado del operador (no es código del repo)
+- **Definir `ADMIN_USER_ID`** en `.env.local` y en Vercel con tu `auth.uid()` real. Sin esa env, `/admin` deniega a todos (fail-closed, por diseño). Esto no se puede setear ni verificar desde el repo.

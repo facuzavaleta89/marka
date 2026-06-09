@@ -1,7 +1,9 @@
 import { updateSession } from "@/lib/supabase/middleware";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PROTECTED_PREFIXES = ["/dashboard", "/perfil", "/preferencias", "/suscripcion"];
+// "/admin" exige sesión acá (primera barrera). La autorización de identidad
+// del dueño (user.id === ADMIN_USER_ID) va en el server component y la action.
+const PROTECTED_PREFIXES = ["/dashboard", "/perfil", "/preferencias", "/suscripcion", "/admin"];
 
 export async function proxy(request: NextRequest) {
   const { supabaseResponse, user } = await updateSession(request);
