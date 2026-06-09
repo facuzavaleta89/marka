@@ -79,14 +79,15 @@ export async function registerAction(
 
   // Garantiza que la agencia tenga una suscripción.
   // upsert con ignoreDuplicates: no pisa una suscripción existente (ej. una de pago).
-  // Una agencia nueva arranca en el plan free (límite 1, sin entitlements).
-  // NOTA: la selección de plan post-registro es trabajo de Fase 3.
+  // Toda agencia nueva arranca en 'free'/'active' con los límites de free. La
+  // selección de un plan pago es un paso posterior (/register/plan), no acá.
   const { error: subError } = await admin
     .from("subscriptions")
     .upsert(
       {
         agency_id: agency.id,
         plan: "free",
+        status: "active",
         property_limit: PLANS.free.propertyLimit,
         has_featured: PLANS.free.featured,
         has_white_label: PLANS.free.whiteLabel,
@@ -98,6 +99,8 @@ export async function registerAction(
   if (subError) return { error: "No se pudo configurar la suscripción de la agencia" };
 
   // Si Supabase requiere confirmación de email, el usuario llega aquí sin sesión
-  // → Desactivar "Confirm email" en Supabase > Auth > Settings para desarrollo
-  redirect("/dashboard");
+  // → Desactivar "Confirm email" en Supabase > Auth > Settings para desarrollo.
+  // Un particular ya tiene su plan (free) → directo al dashboard. Una inmobiliaria
+  // pasa por el paso de selección de plan.
+  redirect(data.tenantType === "individual" ? "/dashboard" : "/register/plan");
 }

@@ -54,7 +54,9 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 - `agents.role` (`admin`/`agent`) **ya está migrado** en la base. Backfill aplicado: el admin de cada agencia es el agente más antiguo.
 - **Hoy `role` NO gatea permisos todavía**: existe la columna y el dato, pero las RLS policies admin/agent y la UI condicionada por rol son piezas posteriores de Fase 3. No escribir código que asuma que un `agent` tiene menos acceso que un `admin` hasta que se implementen esas policies.
 - Modelo previsto: `admin` gestiona la suscripción, invita/elimina agentes y ve los leads de toda la agencia; `agent` hace CRUD de lo suyo.
-- **El registro crea una agencia nueva** y deja al que se registra como `admin` de ella (con suscripción `free` al instante). Ya no existe el hardcodeo a una agencia demo. Las altas siguientes a una agencia existente (por invitación) caerán en `agent` — pieza futura.
+- **El registro es de dos pasos.** Paso 1 (`/register`): crea agencia nueva + agente `admin` + suscripción `free`/`active`, siempre. Ya no existe el hardcodeo a una agencia demo. Paso 2 (`/register/plan`, solo inmobiliarias): elige plan. El particular salta el paso 2 y va directo al dashboard.
+- **Selección de plan (`/register/plan`):** `free` queda `active`; un plan pago queda `status: 'pending'` pero con `property_limit` y `has_*` **de free** hasta la activación manual (que actualiza esos campos a los reales del plan). La server action deriva el `agency_id` del `auth.uid()`, nunca del cliente, y usa admin client acotando el UPDATE a esa agencia (no hay policy de UPDATE de subscriptions para usuarios).
+- Las altas siguientes a una agencia existente (por invitación) caerán en `agent` — pieza futura.
 - `tenant_type` (en `agencies`) **ya está migrado** (`agency`/`individual`, default `agency`) y **ya se usa en el registro**: el alta elige inmobiliaria o particular. `phone_wa` de agencia **sigue sin migrar** — no asumir que existe.
 
 ### Suscripciones y límites
@@ -78,7 +80,7 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 │   │   │   └── propiedades/[slug]/      ← Página SEO por propiedad
 │   │   ├── (agent)/
 │   │   │   ├── login/                    ← Split-screen editorial (AuthLayout)
-│   │   │   ├── register/                  ← page.tsx (Server: trae ciudades) + RegisterForm.tsx (client: tipo de cuenta, agencia, ciudad)
+│   │   │   ├── register/                  ← page.tsx (Server: trae ciudades) + RegisterForm.tsx (client). Paso 2: plan/ (page Server + PlanSelector client + actions: elige plan, pago→pending)
 │   │   │   └── dashboard/
 │   │   │       ├── page.tsx             ← Métricas (StatsCard) y últimos leads
 │   │   │       ├── propiedades/         ← Listado CRUD + nueva + [id]/editar + loading.tsx
@@ -190,7 +192,7 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 
 ### ESLint
 - El patrón `setIsLoading(true)` al inicio de efectos: usar IIFE async dentro del efecto. No bajar la regla globalmente.
-- Hay un warning cosmético no bloqueante en `PropertyForm.tsx` por el cast `zodResolver` (RHF + React Compiler). Es inherente a la librería.
+- Hay dos warnings cosméticos no bloqueantes, ambos inherentes a react-hook-form + React Compiler (no se memoiza bien): en `PropertyForm.tsx` (cast `zodResolver`) y en `RegisterForm.tsx` (el `watch("tenantType")` del toggle Inmobiliaria/Particular). Son warnings, no errores; no bloquean el build.
 
 ### Estilos
 - Tailwind, sin CSS-in-JS ni módulos CSS. shadcn/ui para componentes base
