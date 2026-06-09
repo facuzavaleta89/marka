@@ -22,11 +22,13 @@ export default async function RegisterPlanPage() {
 
   const { data: subscription } = await supabase
     .from("subscriptions")
-    .select("plan")
+    .select("plan, pending_plan")
     .eq("agency_id", agent.agency_id)
     .single();
 
-  const currentPlan: SubscriptionPlan = subscription?.plan ?? "free";
+  // Preselecciona el plan ya pedido (pending_plan) si lo hay; si no, el que rige.
+  const currentPlan: SubscriptionPlan =
+    subscription?.pending_plan ?? subscription?.plan ?? "free";
 
   return <PlanSelector currentPlan={currentPlan} />;
 }

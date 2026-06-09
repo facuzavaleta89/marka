@@ -25,6 +25,12 @@ export default async function DashboardLayout({
 
   const planUsage = await getPlanUsage(supabase, agent.agency_id);
 
+  // Acceso al panel de plataforma: solo el dueño. Se calcula en el server
+  // (ADMIN_USER_ID es server-only); al cliente solo le llega el booleano.
+  // Fail-closed: sin env, nadie es admin.
+  const adminUserId = process.env.ADMIN_USER_ID;
+  const isAppAdmin = !!adminUserId && user.id === adminUserId;
+
   // Supabase devuelve agency como array cuando se usa join; normalizamos
   const agencyRaw = agent.agency;
   const agencyName = Array.isArray(agencyRaw)
@@ -40,6 +46,7 @@ export default async function DashboardLayout({
           agency: agencyName ? { name: agencyName } : null,
         }}
         planUsage={planUsage}
+        isAppAdmin={isAppAdmin}
       />
       {/* relative: main es el contenedor scrolleable del dashboard; al ser
           containing block, los descendientes position:absolute de los formularios

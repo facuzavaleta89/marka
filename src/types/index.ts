@@ -101,13 +101,21 @@ export interface Agency {
 export interface Subscription {
   id: string;
   agency_id: string;
-  plan: SubscriptionPlan;
+  plan: SubscriptionPlan;            // el plan que RIGE hoy (límites/has_* efectivos)
+  // Plan pago PEDIDO esperando activación manual del admin; null si no hay.
+  // 'plan' nunca se pisa al pedir un upgrade: lo pedido vive acá hasta que el
+  // admin lo activa (entonces pending_plan → plan y se limpia a null).
+  pending_plan: SubscriptionPlan | null;
   status: SubscriptionStatus;
-  property_limit: number;            // free=1, inicial=20, profesional=60, premium=200
+  property_limit: number;            // del plan que rige. free=1, inicial=20, profesional=60, premium=200
   has_featured: boolean;             // puede marcar propiedades como destacadas
   has_white_label: boolean;          // habilita la vista white-label
   has_metrics: boolean;              // métricas avanzadas de propiedades y leads
   current_period_end: string | null;
+  // Fecha desde la que rige el plan pago activo actual; null si no hay plan
+  // pago activo (free, o pago en pending sin activar). La setea la activación
+  // del admin (no un trigger): se actualiza en cada activación/cambio/renovación.
+  activated_at: string | null;
   created_at: string;
   updated_at: string;
 }

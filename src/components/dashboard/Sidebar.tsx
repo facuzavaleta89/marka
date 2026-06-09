@@ -11,6 +11,7 @@ import {
   CreditCard,
   LogOut,
   Map,
+  ShieldCheck,
   Menu,
   X,
 } from "lucide-react";
@@ -28,6 +29,10 @@ type SidebarAgent = {
 interface SidebarProps {
   agent: SidebarAgent;
   planUsage: PlanUsage;
+  // true solo si el usuario logueado es el dueño de la plataforma (calculado en
+  // el server comparando user.id con ADMIN_USER_ID; nunca se expone el id al
+  // cliente, solo este booleano). Gatea el acceso al panel /admin desde el nav.
+  isAppAdmin: boolean;
 }
 
 const NAV_ITEMS = [
@@ -41,6 +46,7 @@ const NAV_ITEMS = [
 function NavContent({
   agent,
   planUsage,
+  isAppAdmin,
   pathname,
   onClose,
 }: SidebarProps & { pathname: string; onClose: () => void }) {
@@ -108,6 +114,19 @@ function NavContent({
           en el footer junto a logout y no en NAV_ITEMS (su match activo por
           pathname.startsWith("/") daría positivo en cualquier ruta). */}
       <div className="px-3 py-4 border-t border-white/10 space-y-0.5">
+        {/* Panel admin: salida especial, solo para el dueño de la plataforma.
+            No va en NAV_ITEMS (no es navegación de agencia y su match activo
+            no aplica acá); vive en el footer junto a las otras salidas. */}
+        {isAppAdmin && (
+          <Link
+            href="/admin"
+            onClick={onClose}
+            className="flex items-center gap-3 px-3 py-2.5 font-sans text-sm text-stone hover:text-paper transition-colors duration-100"
+          >
+            <ShieldCheck size={18} strokeWidth={1.75} />
+            Panel admin
+          </Link>
+        )}
         <Link
           href="/"
           onClick={onClose}
@@ -130,7 +149,7 @@ function NavContent({
   );
 }
 
-export function Sidebar({ agent, planUsage }: SidebarProps) {
+export function Sidebar({ agent, planUsage, isAppAdmin }: SidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
 
@@ -173,6 +192,7 @@ export function Sidebar({ agent, planUsage }: SidebarProps) {
         <NavContent
           agent={agent}
           planUsage={planUsage}
+          isAppAdmin={isAppAdmin}
           pathname={pathname}
           onClose={close}
         />
@@ -183,6 +203,7 @@ export function Sidebar({ agent, planUsage }: SidebarProps) {
         <NavContent
           agent={agent}
           planUsage={planUsage}
+          isAppAdmin={isAppAdmin}
           pathname={pathname}
           onClose={close}
         />

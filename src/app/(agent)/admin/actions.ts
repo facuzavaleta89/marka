@@ -33,13 +33,13 @@ export async function activatePlanAction(
     return { error: "Acción no autorizada" };
   }
 
-  // Lee el plan que la agencia eligió (el que quedó pending).
+  // Lee el plan PEDIDO (pending_plan), que es lo que hay que activar.
   // Con admin client: la policy de SELECT de subscriptions es por agencia propia,
   // así que el dueño necesita service role para leer otra agencia.
   const admin = createAdminClient();
   const { data: sub, error: readError } = await admin
     .from("subscriptions")
-    .select("plan")
+    .select("pending_plan")
     .eq("agency_id", agencyId)
     .single();
 
@@ -47,28 +47,32 @@ export async function activatePlanAction(
     return { error: "No se encontró la suscripción de esa agencia" };
   }
 
-  const plan = sub.plan as SubscriptionPlan;
+  const pendingPlan = sub.pending_plan as SubscriptionPlan | null;
 
-  // Un 'free' no debería estar pending; si llega acá, no "activamos free".
-  if (plan === "free") {
-    return { error: "Esa agencia está en plan free, no hay nada que activar" };
+  // Sin pending_plan no hay nada que activar.
+  if (!pendingPlan) {
+    return { error: "Esa agencia no tiene un plan pendiente que activar" };
   }
 
-  const planInfo = PLANS[plan];
-  if (!planInfo) {
-    return { error: "Plan desconocido" };
+  const planInfo = PLANS[pendingPlan];
+  if (!planInfo || pendingPlan === "free") {
+    return { error: "Plan pendiente inválido" };
   }
 
-  // Activación: el plan pasa a 'active' y recibe sus límites/entitlements reales
-  // (hasta ahora operaba con los de free). current_period_end NO se toca (V2).
+  // Activación: el plan pedido pasa a REGIR (plan = pending_plan) y recibe sus
+  // límites/entitlements reales. Se limpia pending_plan y status vuelve a 'active'.
+  // activated_at sella la fecha de esta activación. current_period_end NO se toca (V2).
   const { error: updateError } = await admin
     .from("subscriptions")
     .update({
+      plan: pendingPlan,
+      pending_plan: null,
       status: "active",
       property_limit: planInfo.propertyLimit,
       has_featured: planInfo.featured,
       has_white_label: planInfo.whiteLabel,
       has_metrics: planInfo.metrics,
+      activated_at: new Date().toISOString(),
     })
     .eq("agency_id", agencyId);
 

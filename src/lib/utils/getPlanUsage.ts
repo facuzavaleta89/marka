@@ -17,6 +17,9 @@ type SubscriptionRow = {
 // Las propiedades 'sold'/'rented' no ocupan cupo.
 // Los entitlements (featured/white-label/métricas) se leen de los booleanos de
 // la suscripción —fuente de verdad—, no del nombre del plan.
+// Devuelve el plan que RIGE (`plan`), nunca el pedido (`pending_plan`): el badge
+// del sidebar, el dashboard y el bloqueo de "Nueva propiedad" usan esto, así que
+// debe reflejar lo efectivo (free → límite 1) aunque haya un upgrade pendiente.
 export async function getPlanUsage(
   supabase: SupabaseClient,
   agencyId: string

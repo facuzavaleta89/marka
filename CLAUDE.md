@@ -55,7 +55,9 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 - **Hoy `role` NO gatea permisos todavía**: existe la columna y el dato, pero las RLS policies admin/agent y la UI condicionada por rol son piezas posteriores de Fase 3. No escribir código que asuma que un `agent` tiene menos acceso que un `admin` hasta que se implementen esas policies.
 - Modelo previsto: `admin` gestiona la suscripción, invita/elimina agentes y ve los leads de toda la agencia; `agent` hace CRUD de lo suyo.
 - **El registro es de dos pasos.** Paso 1 (`/register`): crea agencia nueva + agente `admin` + suscripción `free`/`active`, siempre. Ya no existe el hardcodeo a una agencia demo. Paso 2 (`/register/plan`, solo inmobiliarias): elige plan. El particular salta el paso 2 y va directo al dashboard.
-- **Selección de plan (`/register/plan`):** `free` queda `active`; un plan pago queda `status: 'pending'` pero con `property_limit` y `has_*` **de free** hasta la activación manual (que actualiza esos campos a los reales del plan). La server action deriva el `agency_id` del `auth.uid()`, nunca del cliente, y usa admin client acotando el UPDATE a esa agencia (no hay policy de UPDATE de subscriptions para usuarios).
+- **Selección de plan (`/register/plan`):** modelo `plan` (lo que RIGE) vs `pending_plan` (lo PEDIDO). Si la inmobiliaria elige un plan pago: `plan` queda en `free`, `pending_plan` = el elegido, `status: 'pending'`, y `property_limit`/`has_*` de free hasta la activación manual. Si elige free: `plan: free`, `pending_plan: null`, `status: active`. **Nunca se pisa `plan` al pedir un upgrade** — lo pedido vive en `pending_plan`. La server action deriva el `agency_id` del `auth.uid()`, nunca del cliente, y usa admin client acotando el UPDATE a esa agencia (no hay policy de UPDATE de subscriptions para usuarios).
+- **Pedir upgrade desde el dashboard** (`/dashboard/suscripcion`): mismo modelo. "Pasar a {plan}" pide confirmación y setea `pending_plan` + `status: 'pending'` SIN tocar `plan` ni los límites (el cliente sigue operando con lo que rige hasta la activación). El botón pasa a "Pendiente". Cancelar el pedido aún no está (el cliente escribe; ver PENDIENTES.md).
+- **Activación (panel `/admin`)**: el admin de la plataforma lee `pending_plan`, lo copia a `plan`, sube `property_limit`/`has_*` a los reales, `status: 'active'`, sella `activated_at`, y limpia `pending_plan`. El gating en runtime (badge, dashboard, bloqueo de "Nueva propiedad") usa siempre el plan que RIGE vía `getPlanUsage`, nunca el pedido.
 - Las altas siguientes a una agencia existente (por invitación) caerán en `agent` — pieza futura.
 - `tenant_type` (en `agencies`) **ya está migrado** (`agency`/`individual`, default `agency`) y **ya se usa en el registro**: el alta elige inmobiliaria o particular. `phone_wa` de agencia **sigue sin migrar** — no asumir que existe.
 
@@ -87,7 +89,7 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 │   │   │       ├── perfil/
 │   │   │       ├── preferencias/
 │   │   │       └── suscripcion/
-│   │   ├── admin/                        ← Panel de plataforma (solo dueño, gateado por ADMIN_USER_ID): activa planes pending. page (Server) + PendingAgenciesTable (client) + actions. NO usa el sidebar del agente
+│   │   ├── admin/                        ← Panel de plataforma (solo dueño, gateado por ADMIN_USER_ID): tabla de TODAS las agencias + filtros aditivos (pendientes/pagas/free) + activar planes. page (Server) + AgenciesTable (client) + actions. NO usa el sidebar del agente
 │   │   └── api/og/[slug]/
 │   │
 │   ├── components/
@@ -250,7 +252,7 @@ Schema en `supabase/migrations/20240101000000_initial_schema.sql`.
 |---|---|
 | `cities` | Mercados. Centro del mapa y zoom por ciudad |
 | `agencies` | Inmobiliarias. `city_id` NOT NULL. `tenant_type` (`agency`/`individual`) ya migrado. `brand_color` para white-label futuro |
-| `subscriptions` | Plan (free/inicial/profesional/premium), `property_limit` y entitlements `has_*` por agencia |
+| `subscriptions` | `plan` (el que RIGE) + `pending_plan` (pedido, esperando activación) + `status`, `property_limit`, entitlements `has_*`, y `activated_at` (desde cuándo rige el pago). Por agencia |
 | `agents` | `id` = `auth.users.id`. `agency_id` NOT NULL. `role` (`admin`/`agent`) ya migrado, todavía no gatea permisos |
 | `properties` | `agency_id` y `city_id` NOT NULL; `location` GEOGRAPHY generada |
 | `property_images` | `is_cover` + `sort_order` |
@@ -325,3 +327,7 @@ Cuando el usuario reporta un síntoma visual, **inspeccionar el estado real del 
 ## Diseño
 
 @DESIGN.md
+
+## Pendientes
+
+Para deuda técnica, piezas futuras y decisiones de producto abiertas, ver `PENDIENTES.md` (no se listan acá para mantener este archivo enfocado en lo que el proyecto ES, no en lo que falta).

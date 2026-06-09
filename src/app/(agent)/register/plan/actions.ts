@@ -33,16 +33,19 @@ export async function selectPlanAction(
   // La RLS de subscriptions no tiene policy de UPDATE para usuarios (la escritura
   // es service role). Usamos admin client, pero acotando el UPDATE a la agencia
   // del auth.uid() — el agency_id viene del agente logueado, no del cliente.
-  // - free → 'active' al instante.
-  // - plan pago → 'pending' (activación manual fuera de este flujo).
+  // El que RIGE al arrancar es siempre 'free'; un plan pago va a pending_plan:
+  // - free → plan 'free', pending_plan null, status 'active'.
+  // - plan pago → plan 'free' (rige free), pending_plan = <elegido>, status 'pending'.
   // property_limit y has_* SIEMPRE de free: la agencia opera con cupo de free
-  // hasta que la activación manual los actualice a los reales del plan.
+  // hasta que la activación manual copie pending_plan a plan con los valores reales.
+  const isPaid = plan !== "free";
   const admin = createAdminClient();
   const { error } = await admin
     .from("subscriptions")
     .update({
-      plan,
-      status: plan === "free" ? "active" : "pending",
+      plan: "free",
+      pending_plan: isPaid ? plan : null,
+      status: isPaid ? "pending" : "active",
       property_limit: PLANS.free.propertyLimit,
       has_featured: PLANS.free.featured,
       has_white_label: PLANS.free.whiteLabel,

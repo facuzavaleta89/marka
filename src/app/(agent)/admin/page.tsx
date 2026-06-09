@@ -1,12 +1,15 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Wordmark } from "@/components/brand/Wordmark";
-import {
-  PendingAgenciesTable,
-  type PendingRow,
-} from "./PendingAgenciesTable";
-import type { SubscriptionPlan, TenantType } from "@/types";
+import { AgenciesTable, type AgencyRow } from "./AgenciesTable";
+import type {
+  SubscriptionPlan,
+  SubscriptionStatus,
+  TenantType,
+} from "@/types";
 
 // Panel de plataforma (solo el dueño). NO usa el sidebar del agente: es un área
 // de administración de la plataforma, no de una agencia. Layout propio simple.
@@ -28,20 +31,23 @@ export default async function AdminPage() {
 
   // Service role: la policy de SELECT de subscriptions es por agencia propia,
   // así que el dueño necesita admin client para ver las de todas las agencias.
+  // Sin filtro de status: el filtrado por categoría es client-side.
   const admin = createAdminClient();
   const { data } = await admin
     .from("subscriptions")
-    .select("agency_id, plan, status, agencies(name, slug, tenant_type)")
-    .eq("status", "pending")
+    .select("agency_id, plan, pending_plan, status, activated_at, agencies(name, slug, tenant_type)")
     .order("created_at", { ascending: false });
 
   // El embedding agencies(...) puede llegar como objeto o array según la
   // inferencia; lo normalizamos a la forma que espera la tabla.
-  const rows: PendingRow[] = (data ?? []).map((sub) => {
+  const rows: AgencyRow[] = (data ?? []).map((sub) => {
     const agency = Array.isArray(sub.agencies) ? sub.agencies[0] : sub.agencies;
     return {
       agency_id: sub.agency_id,
       plan: sub.plan as SubscriptionPlan,
+      pending_plan: (sub.pending_plan as SubscriptionPlan | null) ?? null,
+      status: sub.status as SubscriptionStatus,
+      activated_at: sub.activated_at,
       agency: agency
         ? {
             name: agency.name,
@@ -65,14 +71,25 @@ export default async function AdminPage() {
       </header>
 
       <main className="mx-auto max-w-5xl px-6 py-8 md:px-8 md:py-10">
+        {/* Salida explícita al dashboard (navegación secundaria, no botón),
+            coherente con el patrón "Volver al mapa" de AuthLayout. */}
+        <Link
+          href="/dashboard"
+          className="mb-6 inline-flex items-center gap-1.5 font-sans text-sm text-graphite transition-colors duration-[120ms] ease-out hover:text-terracota"
+        >
+          <ArrowLeft size={16} />
+          Volver al dashboard
+        </Link>
+
         <h1 className="font-serif text-4xl font-bold text-black mb-2">
           Activación de planes
         </h1>
         <p className="font-sans text-sm text-graphite mb-8">
-          Agencias que eligieron un plan pago y están esperando activación.
+          Todas las agencias de la plataforma. Activá los planes pagos que están
+          pendientes.
         </p>
 
-        <PendingAgenciesTable rows={rows} />
+        <AgenciesTable rows={rows} />
       </main>
     </div>
   );
