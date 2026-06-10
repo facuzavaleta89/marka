@@ -2,23 +2,24 @@
 
 > Lista viva de pendientes, deuda técnica y decisiones de producto abiertas.
 > Se actualiza a medida que se cierran piezas o aparecen cosas nuevas.
-> Última actualización: 9 jun 2026 (cierre selección de plan + modelo pending_plan).
+> Última actualización: 9 jun 2026 (multi-agente sub-pieza 1: crear + listar agentes).
 
 ---
 
 ## Fase 3 — piezas que faltan
 
-- [ ] **Agente desvinculado** — reasignar propiedades al admin cuando un agente se elimina/desvincula + fallback de WhatsApp del lead al teléfono de la agencia. Toca:
-  - El último `ALTER` pendiente: agregar `phone_wa` a `agencies`.
-  - Actualizar la policy `Public insert lead` para contemplar el caso `agent_id IS NULL` (hoy no lo contempla, a propósito, porque el caso aún no puede ocurrir).
-  - `agent_id` en `properties` ya es nullable con `ON DELETE SET NULL` (preparado).
+> Multi-agente es el marco que da sentido a varias de estas. Sub-pieza 1 (crear
+> agentes + listar equipo) YA está hecha. Las que siguen son sus continuaciones.
 
-- [ ] **UI condicionada por rol (admin/agent de agencia)** — la policy `Admin reads agency leads` ya existe (un admin de agencia puede leer los leads de toda su agencia), pero el dashboard todavía no la usa. Falta:
-  - Mostrar en el dashboard los leads de toda la agencia si el usuario es `role = 'admin'` (¿agrupados por agente o en total? — decidir al implementar).
-  - Ocultar/mostrar ítems de menú según rol.
-  - Nota: `role` ya está migrado y con dato, pero todavía NO gatea permisos en la práctica más allá de esa policy de leads.
+- [ ] **Multi-agente · sub-pieza 2 — UI condicionada por rol (más allá de Equipo)** — la policy `Admin reads agency leads` ya existe (un admin puede leer los leads de toda su agencia), pero el dashboard todavía no la usa. Falta: mostrar en el dashboard los leads de toda la agencia si el usuario es `role = 'admin'` (¿agrupados por agente o en total? — decidir al implementar). El gating de la sección Equipo ya está hecho; esto es el resto de la UI por rol.
 
-- [ ] **White-label** (planes profesional+) — URL por agencia (`marka.com.ar/[slug-agencia]`) con el mapa filtrado a esa agencia. Personalización (color, nombre, logo) en Preferencias, "apagada" si el plan no la incluye. Acá conviene el slug limpio (ver deuda técnica).
+- [ ] **Multi-agente · sub-pieza 3 — Eliminar/desvincular agente** — el admin saca a un agente de su agencia. Al eliminarlo: sus propiedades se reasignan (la base ya tiene `ON DELETE SET NULL` en `properties.agent_id`), y el fallback de WhatsApp del lead va al teléfono de la agencia. Toca:
+  - El último `ALTER` pendiente: agregar `phone_wa` a `agencies` (+ cargarlo en registro/preferencias).
+  - Actualizar la policy `Public insert lead` para contemplar el caso `agent_id IS NULL` (hoy no lo contempla a propósito, porque el caso aún no puede ocurrir).
+  - Lógica de fallback en el modal: `agentPhone = agent?.phone_wa ?? agency?.phone_wa ?? ""` (traer `agency:agencies(phone_wa)` en la query del modal y de `useProperties`).
+  - Eliminar el agente requiere service role (no hay policy para que un admin toque la fila de otro).
+
+- [ ] **White-label** (planes profesional+) — URL por agencia (`marka.com.ar/[slug-agencia]`) con el mapa filtrado a esa agencia. Personalización (color, nombre, logo) en Preferencias, "apagada" si el plan no la incluye. Acá conviene el slug limpio (ver deuda técnica). Es la pieza más independiente del resto.
 
 ---
 
@@ -90,3 +91,4 @@
 - [x] Panel `/admin` mejorado: tabla de todas las agencias + filtros aditivos + fecha de activación (`activated_at`) + acceso desde el sidebar (solo dueño).
 - [x] "Mejorar plan" funcional desde el dashboard (pide upgrade → pending → botón "Pendiente").
 - [x] Modelo `plan` (lo que rige) vs `pending_plan` (lo pedido) — separados en columnas distintas; el plan pedido ya no pisa el que rige. Coherencia en badge/dashboard/bloqueo de "Nueva propiedad".
+- [x] Multi-agente · sub-pieza 1: el admin de agencia crea agentes (con contraseña temporal, vía `createUser` service role) y ve la lista de su equipo en `/dashboard/equipo`. Gateado por `role === 'admin'` server-side. Columna `agents.email` denormalizada + ítem "Equipo" en el sidebar (solo admin).

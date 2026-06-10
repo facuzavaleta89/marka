@@ -124,17 +124,21 @@ CREATE TABLE agents (
   id            UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   agency_id     UUID NOT NULL REFERENCES agencies(id) ON DELETE CASCADE,
   -- role dentro de la agencia (Fase 3, YA MIGRADO).
-  -- 'admin': gestiona suscripción, invita/elimina agentes, ve los leads de toda
-  -- la agencia. 'agent': CRUD de sus propias propiedades.
+  -- 'admin': gestiona suscripción, crea/ve agentes de su agencia, ve los leads de
+  -- toda la agencia. 'agent': CRUD de sus propias propiedades.
   -- DEFAULT 'agent': nadie queda admin por accidente; el creador de la agencia
-  -- se inserta explícitamente como 'admin'. La columna ya EXISTE y tiene dato
-  -- (backfill: admin = el agente más antiguo de cada agencia), pero todavía NO
-  -- gatea permisos: las RLS policies admin/agent son una pieza posterior de
-  -- Fase 3. Hoy todos los agentes operan con los mismos permisos efectivos.
+  -- se inserta explícitamente como 'admin'. Backfill: admin = el agente más
+  -- antiguo de cada agencia. YA GATEA la sección "Equipo" (crear/listar agentes):
+  -- la página y la action validan role === 'admin' server-side. Las RLS policies
+  -- admin/agent más finas (ver leads de agencia, etc.) son piezas posteriores.
   role          TEXT NOT NULL DEFAULT 'agent'
                 CHECK (role IN ('admin', 'agent')),
   full_name     TEXT NOT NULL,
   phone_wa      TEXT NOT NULL,   -- ej: "5491112345678" (sin +, sin espacios)
+  -- Email denormalizado de auth.users (Fase 3, agregada por ALTER + backfill).
+  -- Copia de lectura para mostrar en la UI; la fuente de verdad del login es
+  -- auth.users. Nullable. El registro y el alta de agente por el admin lo setean.
+  email         TEXT,
   avatar_url    TEXT,
   is_active     BOOLEAN DEFAULT true,
   created_at    TIMESTAMPTZ DEFAULT now()
@@ -493,13 +497,14 @@ VALUES (
 
 -- 4. Agente (id = UUID de Supabase Auth).
 -- role 'admin': es el único agente de la agencia y la creó, así que la gestiona.
-INSERT INTO agents (id, agency_id, role, full_name, phone_wa)
+INSERT INTO agents (id, agency_id, role, full_name, phone_wa, email)
 VALUES (
   'TU-UUID-DE-AUTH-AQUI',
   (SELECT id FROM agencies WHERE slug = 'inmobiliaria-demo'),
   'admin',
   'Juan Pérez',
-  '5491112345678'
+  '5491112345678',
+  'juan@inmobiliaria-demo.com'
 );
 
 -- 5. Propiedad

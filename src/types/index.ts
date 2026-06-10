@@ -126,6 +126,10 @@ export interface Agent {
   role: AgentRole; // 'admin' | 'agent' (ya migrado; todavía no gatea permisos)
   full_name: string;
   phone_wa: string; // número sin "+" ej: "5491112345678"
+  // Email denormalizado de auth.users, para mostrar en la UI (lista de equipo,
+  // perfil). La fuente de verdad del login sigue siendo auth.users; esta es
+  // copia de lectura. Nullable: agentes previos al backfill pueden no tenerlo.
+  email: string | null;
   avatar_url: string | null;
   is_active: boolean;
   created_at: string;

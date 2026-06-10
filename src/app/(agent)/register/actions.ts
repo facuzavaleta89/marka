@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateSlug } from "@/lib/utils/generateSlug";
+import { translateAuthError } from "@/lib/utils/authErrors";
 import { redirect } from "next/navigation";
 import { PLANS, type TenantType } from "@/types";
 
@@ -17,13 +18,6 @@ type RegisterData = {
   password: string;
   phoneWa: string;
 };
-
-function translateAuthError(message: string): string {
-  if (message.includes("already registered")) return "Ya existe una cuenta con ese email";
-  if (message.includes("Password should be")) return "La contraseña debe tener al menos 6 caracteres";
-  if (message.includes("Unable to validate")) return "Email inválido";
-  return "Error al crear la cuenta. Intentá de nuevo";
-}
 
 export async function registerAction(
   data: RegisterData
@@ -73,6 +67,7 @@ export async function registerAction(
     role: "admin",
     full_name: data.fullName,
     phone_wa: data.phoneWa,
+    email: data.email, // denormalizado para mostrarlo en la UI (lista de equipo)
   });
 
   if (agentError) return { error: "Error al crear el perfil del agente" };

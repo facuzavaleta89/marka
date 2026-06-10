@@ -52,8 +52,10 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 
 ### Roles de agente (Fase 3 — parcial)
 - `agents.role` (`admin`/`agent`) **ya está migrado** en la base. Backfill aplicado: el admin de cada agencia es el agente más antiguo.
-- **Hoy `role` NO gatea permisos todavía**: existe la columna y el dato, pero las RLS policies admin/agent y la UI condicionada por rol son piezas posteriores de Fase 3. No escribir código que asuma que un `agent` tiene menos acceso que un `admin` hasta que se implementen esas policies.
-- Modelo previsto: `admin` gestiona la suscripción, invita/elimina agentes y ve los leads de toda la agencia; `agent` hace CRUD de lo suyo.
+- **`role` YA gatea la sección "Equipo"** (crear/listar agentes): la página `/dashboard/equipo` y la action `createAgentAction` validan `role === 'admin'` server-side, y el ítem del sidebar se muestra solo a admins (`isAgencyAdmin`). Otras distinciones admin/agent más finas (que un admin vea los leads de toda su agencia en el dashboard, etc.) siguen pendientes — la policy `Admin reads agency leads` existe pero el dashboard aún no la usa (ver PENDIENTES.md).
+- **Dos "admin" distintos, no mezclar:** `isAppAdmin` (dueño de la plataforma, por `ADMIN_USER_ID`, gatea `/admin`) vs `isAgencyAdmin` (`agent.role === 'admin'`, admin de su agencia, gatea "Equipo"). El layout del dashboard calcula ambos y los pasa al Sidebar.
+- **Gestión de equipo (`/dashboard/equipo`, solo admin de agencia):** el admin crea agentes de SU agencia y ve la lista del equipo. Agentes ilimitados. El alta usa `admin.auth.admin.createUser({ email, password, email_confirm: true })` (service role) — NO `signUp`, porque `signUp` pisaría la sesión del admin. Contraseña temporal que el admin comparte; el agente la cambia luego desde su perfil. Si el insert en `agents` falla tras crear el user de Auth, se hace rollback (`deleteUser`) para no dejar huérfanos. El `agency_id` del agente nuevo se deriva del admin logueado, nunca del cliente. Falta (piezas siguientes): eliminar/editar agentes, invitación por email.
+- Modelo previsto a futuro: `admin` además gestiona la suscripción y ve los leads de toda la agencia; `agent` hace CRUD de lo suyo.
 - **El registro es de dos pasos.** Paso 1 (`/register`): crea agencia nueva + agente `admin` + suscripción `free`/`active`, siempre. Ya no existe el hardcodeo a una agencia demo. Paso 2 (`/register/plan`, solo inmobiliarias): elige plan. El particular salta el paso 2 y va directo al dashboard.
 - **Selección de plan (`/register/plan`):** modelo `plan` (lo que RIGE) vs `pending_plan` (lo PEDIDO). Si la inmobiliaria elige un plan pago: `plan` queda en `free`, `pending_plan` = el elegido, `status: 'pending'`, y `property_limit`/`has_*` de free hasta la activación manual. Si elige free: `plan: free`, `pending_plan: null`, `status: active`. **Nunca se pisa `plan` al pedir un upgrade** — lo pedido vive en `pending_plan`. La server action deriva el `agency_id` del `auth.uid()`, nunca del cliente, y usa admin client acotando el UPDATE a esa agencia (no hay policy de UPDATE de subscriptions para usuarios).
 - **Pedir upgrade desde el dashboard** (`/dashboard/suscripcion`): mismo modelo. "Pasar a {plan}" pide confirmación y setea `pending_plan` + `status: 'pending'` SIN tocar `plan` ni los límites (el cliente sigue operando con lo que rige hasta la activación). El botón pasa a "Pendiente". Cancelar el pedido aún no está (el cliente escribe; ver PENDIENTES.md).
@@ -86,6 +88,7 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 │   │   │   └── dashboard/
 │   │   │       ├── page.tsx             ← Métricas (StatsCard) y últimos leads
 │   │   │       ├── propiedades/         ← Listado CRUD + nueva + [id]/editar + loading.tsx
+│   │   │       ├── equipo/              ← Gestión de agentes (solo admin de agencia): page (Server, gatea role) + actions (createAgentAction, service role)
 │   │   │       ├── perfil/
 │   │   │       ├── preferencias/
 │   │   │       └── suscripcion/
@@ -139,6 +142,7 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 │   │       ├── generateSlug.ts          ← Slug con sufijo aleatorio
 │   │       ├── waMessage.ts             ← generateWaUrl(): string | null
 │   │       ├── getPlanUsage.ts          ← Helper server: cuenta por agency_id
+│   │       ├── authErrors.ts            ← translateAuthError: mapea errores de Supabase Auth a español (registro + alta de agente)
 │   │       └── labels.ts                ← Etiquetas UI compartidas
 │   │
 │   ├── store/
@@ -253,7 +257,7 @@ Schema en `supabase/migrations/20240101000000_initial_schema.sql`.
 | `cities` | Mercados. Centro del mapa y zoom por ciudad |
 | `agencies` | Inmobiliarias. `city_id` NOT NULL. `tenant_type` (`agency`/`individual`) ya migrado. `brand_color` para white-label futuro |
 | `subscriptions` | `plan` (el que RIGE) + `pending_plan` (pedido, esperando activación) + `status`, `property_limit`, entitlements `has_*`, y `activated_at` (desde cuándo rige el pago). Por agencia |
-| `agents` | `id` = `auth.users.id`. `agency_id` NOT NULL. `role` (`admin`/`agent`) ya migrado, todavía no gatea permisos |
+| `agents` | `id` = `auth.users.id`. `agency_id` NOT NULL. `role` (`admin`/`agent`) gatea la sección Equipo. `email` denormalizado de auth.users (copia de lectura) |
 | `properties` | `agency_id` y `city_id` NOT NULL; `location` GEOGRAPHY generada |
 | `property_images` | `is_cover` + `sort_order` |
 | `leads` | Contactos WA. Incluye `agency_id` |

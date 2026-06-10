@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Building2,
+  Users,
   User,
   Settings,
   CreditCard,
@@ -15,6 +16,7 @@ import {
   Menu,
   X,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { PlanBadge } from "./PlanBadge";
 import { Wordmark } from "@/components/brand/Wordmark";
 import { logoutAction } from "@/app/(agent)/dashboard/actions";
@@ -33,11 +35,25 @@ interface SidebarProps {
   // el server comparando user.id con ADMIN_USER_ID; nunca se expone el id al
   // cliente, solo este booleano). Gatea el acceso al panel /admin desde el nav.
   isAppAdmin: boolean;
+  // true si el agente es admin DE SU agencia (agent.role === 'admin'). Distinto
+  // de isAppAdmin: gatea el ítem "Equipo". La página y la action también lo
+  // revalidan server-side; ocultar el menú es solo cosmético.
+  isAgencyAdmin: boolean;
 }
 
-const NAV_ITEMS = [
+type NavItem = {
+  label: string;
+  href: string;
+  icon: LucideIcon;
+  exact?: boolean;
+  // Solo visible para el admin de la agencia (gestión de equipo).
+  adminOnly?: boolean;
+};
+
+const NAV_ITEMS: NavItem[] = [
   { label: "Inicio", href: "/dashboard", icon: LayoutDashboard, exact: true },
   { label: "Propiedades", href: "/dashboard/propiedades", icon: Building2 },
+  { label: "Equipo", href: "/dashboard/equipo", icon: Users, adminOnly: true },
   { label: "Perfil", href: "/dashboard/perfil", icon: User },
   { label: "Preferencias", href: "/dashboard/preferencias", icon: Settings },
   { label: "Suscripción", href: "/dashboard/suscripcion", icon: CreditCard },
@@ -47,6 +63,7 @@ function NavContent({
   agent,
   planUsage,
   isAppAdmin,
+  isAgencyAdmin,
   pathname,
   onClose,
 }: SidebarProps & { pathname: string; onClose: () => void }) {
@@ -86,7 +103,7 @@ function NavContent({
 
       {/* Navegación */}
       <nav className="flex-1 px-3 py-4 space-y-0.5">
-        {NAV_ITEMS.map(({ label, href, icon: Icon, exact }) => {
+        {NAV_ITEMS.filter((item) => !item.adminOnly || isAgencyAdmin).map(({ label, href, icon: Icon, exact }) => {
           const active = exact
             ? pathname === href
             : pathname.startsWith(href);
@@ -149,7 +166,7 @@ function NavContent({
   );
 }
 
-export function Sidebar({ agent, planUsage, isAppAdmin }: SidebarProps) {
+export function Sidebar({ agent, planUsage, isAppAdmin, isAgencyAdmin }: SidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
 
@@ -193,6 +210,7 @@ export function Sidebar({ agent, planUsage, isAppAdmin }: SidebarProps) {
           agent={agent}
           planUsage={planUsage}
           isAppAdmin={isAppAdmin}
+          isAgencyAdmin={isAgencyAdmin}
           pathname={pathname}
           onClose={close}
         />
@@ -204,6 +222,7 @@ export function Sidebar({ agent, planUsage, isAppAdmin }: SidebarProps) {
           agent={agent}
           planUsage={planUsage}
           isAppAdmin={isAppAdmin}
+          isAgencyAdmin={isAgencyAdmin}
           pathname={pathname}
           onClose={close}
         />

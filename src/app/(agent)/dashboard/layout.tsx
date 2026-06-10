@@ -17,7 +17,7 @@ export default async function DashboardLayout({
 
   const { data: agent } = await supabase
     .from("agents")
-    .select("full_name, avatar_url, agency_id, agency:agencies(name)")
+    .select("full_name, avatar_url, agency_id, role, agency:agencies(name)")
     .eq("id", user.id)
     .single();
 
@@ -30,6 +30,10 @@ export default async function DashboardLayout({
   // Fail-closed: sin env, nadie es admin.
   const adminUserId = process.env.ADMIN_USER_ID;
   const isAppAdmin = !!adminUserId && user.id === adminUserId;
+
+  // Admin DE SU agencia (distinto de isAppAdmin): gatea la gestión de equipo.
+  // Solo oculta/muestra el menú; la página y la action revalidan el rol server-side.
+  const isAgencyAdmin = agent.role === "admin";
 
   // Supabase devuelve agency como array cuando se usa join; normalizamos
   const agencyRaw = agent.agency;
@@ -47,6 +51,7 @@ export default async function DashboardLayout({
         }}
         planUsage={planUsage}
         isAppAdmin={isAppAdmin}
+        isAgencyAdmin={isAgencyAdmin}
       />
       {/* relative: main es el contenedor scrolleable del dashboard; al ser
           containing block, los descendientes position:absolute de los formularios
