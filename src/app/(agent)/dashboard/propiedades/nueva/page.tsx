@@ -14,11 +14,24 @@ export default async function NuevaPropiedadPage() {
 
   const { data: agent } = await supabase
     .from("agents")
-    .select("agency_id")
+    .select("agency_id, role")
     .eq("id", user.id)
     .single();
 
   if (!agent) redirect("/dashboard");
+
+  // Si es admin de agencia, traemos los agentes de la agencia para el selector
+  // "Agente asignado" (ordenados por nombre). Si es agente normal, no se pasa →
+  // el campo no aparece y la propiedad se crea a su nombre.
+  let agencyAgents: { id: string; full_name: string }[] | undefined;
+  if (agent.role === "admin") {
+    const { data: members } = await supabase
+      .from("agents")
+      .select("id, full_name")
+      .eq("agency_id", agent.agency_id)
+      .order("full_name", { ascending: true });
+    agencyAgents = (members ?? []) as { id: string; full_name: string }[];
+  }
 
   const { data: agency } = await supabase
     .from("agencies")
@@ -58,6 +71,7 @@ export default async function NuevaPropiedadPage() {
         agencyId={agent.agency_id}
         cityId={agency.city_id}
         cityCenter={cityCenter}
+        agencyAgents={agencyAgents}
       />
     </div>
   );

@@ -33,18 +33,34 @@ export default async function EditarPropiedadPage({
 
   if (!property) redirect("/dashboard/propiedades");
 
+  // Rol y agencia del caller (del server). Sirve para la autorización y para
+  // decidir si mostrar el selector "Agente asignado".
+  const { data: agent } = await supabase
+    .from("agents")
+    .select("role, agency_id")
+    .eq("id", user.id)
+    .single();
+
+  // Admin de la MISMA agencia que la propiedad.
+  const isAgencyAdmin =
+    agent?.role === "admin" && agent.agency_id === property.agency_id;
+
   // Autorización server-side (mismo criterio que authorizePropertyAccess en las
   // actions): puede editar el dueño, o un admin de la agencia de la propiedad.
-  if (property.agent_id !== user.id) {
-    const { data: agent } = await supabase
-      .from("agents")
-      .select("role, agency_id")
-      .eq("id", user.id)
-      .single();
+  if (property.agent_id !== user.id && !isAgencyAdmin) {
+    redirect("/dashboard/propiedades");
+  }
 
-    const isAgencyAdmin =
-      agent?.role === "admin" && agent.agency_id === property.agency_id;
-    if (!isAgencyAdmin) redirect("/dashboard/propiedades");
+  // Si es admin, traemos los agentes de la agencia para el selector "Agente
+  // asignado" (ordenados por nombre). Si no, no se pasa → el campo no aparece.
+  let agencyAgents: { id: string; full_name: string }[] | undefined;
+  if (isAgencyAdmin) {
+    const { data: members } = await supabase
+      .from("agents")
+      .select("id, full_name")
+      .eq("agency_id", property.agency_id)
+      .order("full_name", { ascending: true });
+    agencyAgents = (members ?? []) as { id: string; full_name: string }[];
   }
 
   const { data: agency } = await supabase
@@ -99,6 +115,7 @@ export default async function EditarPropiedadPage({
         agencyId={property.agency_id}
         cityId={property.city_id}
         cityCenter={cityCenter}
+        agencyAgents={agencyAgents}
       />
     </div>
   );

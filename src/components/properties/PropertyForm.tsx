@@ -75,6 +75,9 @@ const schema = z.object({
   amenities: z.array(z.string()).default([]),
   year_built: optNum(),
   is_featured: z.boolean().default(false),
+  // Agente al que se asigna la propiedad (solo lo usa el admin de agencia). El
+  // server valida que pertenezca a la agencia antes de aplicarlo.
+  assigned_agent_id: z.string().optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -88,6 +91,11 @@ interface PropertyFormProps {
   agencyId: string;
   cityId: string;
   cityCenter: { lat: number; lng: number };
+  // Agentes de la agencia para el selector "Agente asignado". Solo lo pasa la
+  // página cuando el user es admin de agencia; si no viene, el campo no se
+  // muestra (un agente normal no reasigna). La validación de pertenencia a la
+  // agencia es server-side en las actions; esto es solo la UI.
+  agencyAgents?: { id: string; full_name: string }[];
 }
 
 // ─── Sub-componentes ──────────────────────────────────────────
@@ -143,6 +151,7 @@ export function PropertyForm({
   initialData,
   agentId,
   cityCenter,
+  agencyAgents,
 }: PropertyFormProps) {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
@@ -186,6 +195,8 @@ export function PropertyForm({
           amenities: initialData.amenities,
           year_built: initialData.year_built,
           is_featured: initialData.is_featured,
+          // En edición, el agente actual de la propiedad.
+          assigned_agent_id: initialData.agent_id,
         }
       : {
           property_type: "casa",
@@ -200,6 +211,8 @@ export function PropertyForm({
           lat: cityCenter.lat,
           lng: cityCenter.lng,
           is_featured: false,
+          // En alta, por defecto el propio admin que crea (o el agente normal).
+          assigned_agent_id: agentId,
         };
 
   const {
@@ -268,6 +281,7 @@ export function PropertyForm({
         amenities: data.amenities as Amenity[],
         year_built: data.year_built ?? null,
         is_featured: data.is_featured,
+        assigned_agent_id: data.assigned_agent_id,
         images: imagePayload,
       });
 
@@ -299,6 +313,7 @@ export function PropertyForm({
         amenities: data.amenities as Amenity[],
         year_built: data.year_built ?? null,
         is_featured: data.is_featured,
+        assigned_agent_id: data.assigned_agent_id,
         images: imagePayload,
       });
 
@@ -397,6 +412,31 @@ export function PropertyForm({
                     <SelectItem value="paused">Pausada</SelectItem>
                     <SelectItem value="sold">Vendida</SelectItem>
                     <SelectItem value="rented">Alquilada</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          </Field>
+        )}
+
+        {/* Agente asignado — solo para el admin de agencia (agencyAgents viene
+            del server cuando el user es admin). El agente normal no lo ve. */}
+        {agencyAgents && (
+          <Field label="Agente asignado" className="sm:w-1/2">
+            <Controller
+              name="assigned_agent_id"
+              control={control}
+              render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger className={cn(FIELD, "w-full")}>
+                    <SelectValue placeholder="Seleccioná un agente" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {agencyAgents.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.full_name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               )}
