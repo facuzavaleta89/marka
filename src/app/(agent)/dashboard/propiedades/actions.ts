@@ -1,10 +1,12 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import { generateSlug } from "@/lib/utils/generateSlug";
 import { getPlanUsage } from "@/lib/utils/getPlanUsage";
 import type { PropertyInsert } from "@/types";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 type ActionResult = { error: string } | undefined;
 
@@ -39,37 +41,80 @@ export type UpdatePropertyInput = PropertyFormPayload & {
   images: ImageInput[];
 };
 
-// Verifica explícitamente que la propiedad pertenece al agente.
-// No confiar solo en RLS; validar también en la action.
-async function verifyOwnership(id: string): Promise<{
+// Autoriza al user a operar sobre una propiedad y dice CÓMO está autorizado:
+//   - "owner": es el agente dueño → opera con el client normal (la RLS
+//     "Agent manages own properties" lo permite, igual que siempre).
+//   - "admin": no es dueño, pero es admin de la agencia de esa propiedad →
+//     opera con service role (la RLS agent_id = auth.uid() bloquearía al admin
+//     sobre algo ajeno; el admin client salta RLS, y la única barrera es esta
+//     validación de "admin de la MISMA agencia", hecha 100% server-side).
+//   - null (ok:false): no autorizado.
+//
+// SEGURIDAD: el role y el agency_id del que llama se leen SIEMPRE de la fila
+// agents por auth.uid(), nunca de props del cliente. La comparación de agencia
+// es la única defensa cuando se usa service role.
+//
+// Devuelve también `db`: el client con el que cada action debe ESCRIBIR
+// (normal para owner, admin para admin). Las lecturas auxiliares (getPlanUsage,
+// agency_id) pueden seguir con el client normal: un admin es miembro de su
+// agencia y la RLS de lectura por agencia ya lo cubre.
+async function authorizePropertyAccess(id: string): Promise<{
   ok: boolean;
   error?: string;
+  mode?: "owner" | "admin";
   supabase: Awaited<ReturnType<typeof createClient>>;
+  db: SupabaseClient;
 }> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) return { ok: false, error: "No autenticado", supabase };
+  if (!user) return { ok: false, error: "No autenticado", supabase, db: supabase };
 
-  const { data: owned } = await supabase
+  // Lee la propiedad SIN filtrar por agent_id: necesitamos saber de quién es y
+  // de qué agencia para decidir la autorización.
+  const { data: property } = await supabase
     .from("properties")
-    .select("id")
+    .select("agent_id, agency_id")
     .eq("id", id)
-    .eq("agent_id", user.id)
     .maybeSingle();
 
-  if (!owned) return { ok: false, error: "Propiedad no encontrada", supabase };
+  if (!property) {
+    return { ok: false, error: "Propiedad no encontrada", supabase, db: supabase };
+  }
 
-  return { ok: true, supabase };
+  // Dueño: flujo de siempre, client normal.
+  if (property.agent_id === user.id) {
+    return { ok: true, mode: "owner", supabase, db: supabase };
+  }
+
+  // No es dueño: ¿es admin de la agencia de la propiedad?
+  const { data: agent } = await supabase
+    .from("agents")
+    .select("role, agency_id")
+    .eq("id", user.id)
+    .single();
+
+  if (
+    agent &&
+    agent.role === "admin" &&
+    agent.agency_id === property.agency_id
+  ) {
+    // Admin de la misma agencia → escribe con service role.
+    return { ok: true, mode: "admin", supabase, db: createAdminClient() };
+  }
+
+  // Ajeno y no es admin de esa agencia: mismo mensaje que "no existe", para no
+  // revelar que la propiedad existe pero es de otro.
+  return { ok: false, error: "Propiedad no encontrada", supabase, db: supabase };
 }
 
 export async function pausePropertyAction(id: string): Promise<ActionResult> {
-  const { ok, error, supabase } = await verifyOwnership(id);
+  const { ok, error, db } = await authorizePropertyAccess(id);
   if (!ok) return { error: error! };
 
-  const { error: dbError } = await supabase
+  const { error: dbError } = await db
     .from("properties")
     .update({ status: "paused" })
     .eq("id", id);
@@ -79,10 +124,10 @@ export async function pausePropertyAction(id: string): Promise<ActionResult> {
 }
 
 export async function activatePropertyAction(id: string): Promise<ActionResult> {
-  const { ok, error, supabase } = await verifyOwnership(id);
+  const { ok, error, db } = await authorizePropertyAccess(id);
   if (!ok) return { error: error! };
 
-  const { error: dbError } = await supabase
+  const { error: dbError } = await db
     .from("properties")
     .update({ status: "active" })
     .eq("id", id);
@@ -101,10 +146,10 @@ export async function activatePropertyAction(id: string): Promise<ActionResult> 
 }
 
 export async function markAsSoldAction(id: string): Promise<ActionResult> {
-  const { ok, error, supabase } = await verifyOwnership(id);
+  const { ok, error, db } = await authorizePropertyAccess(id);
   if (!ok) return { error: error! };
 
-  const { error: dbError } = await supabase
+  const { error: dbError } = await db
     .from("properties")
     .update({ status: "sold" })
     .eq("id", id);
@@ -114,10 +159,10 @@ export async function markAsSoldAction(id: string): Promise<ActionResult> {
 }
 
 export async function markAsRentedAction(id: string): Promise<ActionResult> {
-  const { ok, error, supabase } = await verifyOwnership(id);
+  const { ok, error, db } = await authorizePropertyAccess(id);
   if (!ok) return { error: error! };
 
-  const { error: dbError } = await supabase
+  const { error: dbError } = await db
     .from("properties")
     .update({ status: "rented" })
     .eq("id", id);
@@ -127,12 +172,12 @@ export async function markAsRentedAction(id: string): Promise<ActionResult> {
 }
 
 export async function deletePropertyAction(id: string): Promise<ActionResult> {
-  const { ok, error, supabase } = await verifyOwnership(id);
+  const { ok, error, db } = await authorizePropertyAccess(id);
   if (!ok) return { error: error! };
 
   // ON DELETE CASCADE en la DB elimina property_images y leads asociados.
   // Las imágenes del Supabase Storage no se eliminan automáticamente.
-  const { error: dbError } = await supabase
+  const { error: dbError } = await db
     .from("properties")
     .delete()
     .eq("id", id);
@@ -250,11 +295,13 @@ export async function updatePropertyAction(
   id: string,
   data: UpdatePropertyInput
 ): Promise<ActionResult> {
-  const { ok, error, supabase } = await verifyOwnership(id);
+  const { ok, error, supabase, db } = await authorizePropertyAccess(id);
   if (!ok) return { error: error! };
 
   // Destacar es un entitlement de la suscripción (has_featured): si la agencia
-  // no lo tiene, se ignora el valor que mandó el form.
+  // no lo tiene, se ignora el valor que mandó el form. La lectura va con el
+  // client normal: un admin es miembro de su agencia y la RLS de lectura por
+  // agencia ya le permite leer esta propiedad y su suscripción.
   const { data: prop } = await supabase
     .from("properties")
     .select("agency_id")
@@ -263,7 +310,7 @@ export async function updatePropertyAction(
   const planUsage = prop ? await getPlanUsage(supabase, prop.agency_id) : null;
   const isFeatured = data.is_featured && (planUsage?.hasFeatured ?? false);
 
-  const { error: updateError } = await supabase
+  const { error: updateError } = await db
     .from("properties")
     .update({
       title: data.title,
@@ -303,7 +350,9 @@ export async function updatePropertyAction(
 
   // Reemplazar imágenes: delete + re-insert con el nuevo orden.
   // Si el delete falla, NO insertamos (evita duplicar) y avisamos sin perder las existentes.
-  const { error: deleteError } = await supabase
+  // Con `db`: la RLS de property_images también está atada al agent_id dueño, así
+  // que un admin editando algo ajeno necesita service role acá igual que en el update.
+  const { error: deleteError } = await db
     .from("property_images")
     .delete()
     .eq("property_id", id);
@@ -312,7 +361,7 @@ export async function updatePropertyAction(
   }
 
   if (data.images.length > 0) {
-    const { error: imagesError } = await supabase.from("property_images").insert(
+    const { error: imagesError } = await db.from("property_images").insert(
       data.images.map((img) => ({
         id: img.id,
         property_id: id,

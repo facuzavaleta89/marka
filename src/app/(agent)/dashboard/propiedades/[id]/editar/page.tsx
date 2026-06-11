@@ -20,16 +20,32 @@ export default async function EditarPropiedadPage({
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
+  // Traemos la propiedad SIN filtrar por agent_id: el dueño la edita, y también
+  // un admin de la misma agencia. La RLS de lectura por agencia ya permite que
+  // un miembro lea las propiedades de su agencia.
   const { data: property } = await supabase
     .from("properties")
     .select(
       "*, images:property_images(id, property_id, url, is_cover, sort_order, created_at)"
     )
     .eq("id", id)
-    .eq("agent_id", user.id) // verifica propiedad del agente autenticado
     .single();
 
   if (!property) redirect("/dashboard/propiedades");
+
+  // Autorización server-side (mismo criterio que authorizePropertyAccess en las
+  // actions): puede editar el dueño, o un admin de la agencia de la propiedad.
+  if (property.agent_id !== user.id) {
+    const { data: agent } = await supabase
+      .from("agents")
+      .select("role, agency_id")
+      .eq("id", user.id)
+      .single();
+
+    const isAgencyAdmin =
+      agent?.role === "admin" && agent.agency_id === property.agency_id;
+    if (!isAgencyAdmin) redirect("/dashboard/propiedades");
+  }
 
   const { data: agency } = await supabase
     .from("agencies")

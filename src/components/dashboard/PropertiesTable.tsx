@@ -52,10 +52,19 @@ type CoverImage = Pick<PropertyImage, "url" | "is_cover" | "sort_order">;
 export type PropertyRow = Pick<
   Property,
   "id" | "title" | "property_type" | "operation_type" | "price" | "currency" | "status"
-> & { images: CoverImage[] | null };
+> & {
+  images: CoverImage[] | null;
+  // Nombre del agente dueño. Solo se usa en la vista de admin de agencia
+  // (columna "Agente"); para el agente normal queda undefined/null y la columna
+  // ni se muestra.
+  agent_name?: string | null;
+};
 
 interface PropertiesTableProps {
   properties: PropertyRow[];
+  // true solo en la vista del admin de agencia: muestra la columna "Agente"
+  // (de quién es cada propiedad). El agente normal ve solo lo suyo → sin columna.
+  showAgent?: boolean;
 }
 
 // ─── Constantes ──────────────────────────────────────────────
@@ -113,7 +122,7 @@ function Thumbnail({
 
 // ─── Componente principal ─────────────────────────────────────
 
-export function PropertiesTable({ properties }: PropertiesTableProps) {
+export function PropertiesTable({ properties, showAgent = false }: PropertiesTableProps) {
   const [toDelete, setToDelete] = useState<{
     id: string;
     title: string;
@@ -184,10 +193,11 @@ export function PropertiesTable({ properties }: PropertiesTableProps) {
                 "Operación",
                 "Precio",
                 "Estado",
+                ...(showAgent ? ["Agente"] : []),
                 "",
-              ].map((col) => (
+              ].map((col, i) => (
                 <th
-                  key={col}
+                  key={col || `col-${i}`}
                   className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite text-left px-4 py-3 first:pl-5 last:pr-5"
                 >
                   {col}
@@ -241,6 +251,15 @@ export function PropertiesTable({ properties }: PropertiesTableProps) {
                     <StatusBadge status={p.status} />
                   </td>
 
+                  {/* Agente (solo admin de agencia) */}
+                  {showAgent && (
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className="font-sans text-sm text-graphite">
+                        {p.agent_name ?? "—"}
+                      </span>
+                    </td>
+                  )}
+
                   {/* Acciones */}
                   <td className="px-5 py-3">
                     <ActionMenu
@@ -289,8 +308,13 @@ export function PropertiesTable({ properties }: PropertiesTableProps) {
                   />
                 </div>
               </div>
-              <div className="mt-3 pt-3 border-t border-stone">
+              <div className="mt-3 pt-3 border-t border-stone flex items-center justify-between gap-3">
                 <StatusBadge status={p.status} />
+                {showAgent && (
+                  <span className="font-sans text-xs text-graphite truncate">
+                    {p.agent_name ?? "—"}
+                  </span>
+                )}
               </div>
             </div>
           );

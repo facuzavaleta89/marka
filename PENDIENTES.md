@@ -2,7 +2,7 @@
 
 > Lista viva de pendientes, deuda técnica y decisiones de producto abiertas.
 > Se actualiza a medida que se cierran piezas o aparecen cosas nuevas.
-> Última actualización: 10 jun 2026 (Consultas + panel del dueño con métricas y sidebar).
+> Última actualización: 11 jun 2026 (Paso 1: admin gestiona propiedades de su agencia).
 
 ---
 
@@ -11,10 +11,9 @@
 > Multi-agente es el marco que da sentido a varias de estas. Sub-pieza 1 (crear
 > agentes + listar equipo) YA está hecha. Las que siguen son sus continuaciones.
 
-- [ ] **Multi-agente · sub-pieza 2 — UI por rol: lo que falta** — la pantalla de Consultas (`/dashboard/leads`) YA diferencia por rol (admin ve los leads de toda la agencia, agente los suyos, vía RLS). Falta el resto:
+- [ ] **Multi-agente · sub-pieza 2 — UI por rol: lo que falta** — la pantalla de Consultas (`/dashboard/leads`) YA diferencia por rol (admin ve los leads de toda la agencia, agente los suyos, vía RLS). El admin YA gestiona (edita/elimina/cambia estado de) las propiedades de su agencia y el listado YA las muestra por agencia con columna "Agente" (Paso 1, vía `authorizePropertyAccess` + service role; las policies RLS no se tocaron). Falta:
   - **Home del dashboard diferenciado**: hoy las 4 métricas del home filtran por `agent_id`. Para un admin deberían ser por `agency_id` (propiedades activas, leads, vistas de toda la agencia). Leer `role` en `dashboard/page.tsx` y condicionar.
-  - **Listado de propiedades por agencia para el admin**: hoy `propiedades/page.tsx` filtra por `agent_id`. El admin debería ver (y gestionar) las de toda su agencia.
-  - **El admin GESTIONA (edita/elimina) las propiedades de su agencia, no solo las ve** — decisión de producto ya tomada: el dueño es responsable de lo que se publica bajo su marca. Pero las policies actuales (`Agent manages own properties` = `agent_id = auth.uid()`) NO lo permiten. Hay que agregar policies/acciones (probablemente service role con validación de `role === 'admin'` y misma agencia). Es la parte más delicada (toca seguridad de escritura).
+  - **Paso 2 — Reasignar `agent_id` de una propiedad** (asignar/cambiar el agente desde el `PropertyForm`, en crear y editar, solo para el admin). El selector se alimenta con los agentes de la agencia; validar server-side que el agente destino es de la misma agencia. No reescribe leads viejos (quedan con el agente anterior). No reasignar a otra agencia. Diseño y prompt ya preparados (ver historial); falta implementar + documentar.
 
 - [ ] **Multi-agente · sub-pieza 3 — Eliminar/desvincular agente** — el admin saca a un agente de su agencia. Al eliminarlo: sus propiedades se reasignan (la base ya tiene `ON DELETE SET NULL` en `properties.agent_id`), y el fallback de WhatsApp del lead va al teléfono de la agencia. Toca:
   - El último `ALTER` pendiente: agregar `phone_wa` a `agencies` (+ cargarlo en registro/preferencias).
