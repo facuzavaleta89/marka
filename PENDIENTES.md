@@ -2,7 +2,7 @@
 
 > Lista viva de pendientes, deuda técnica y decisiones de producto abiertas.
 > Se actualiza a medida que se cierran piezas o aparecen cosas nuevas.
-> Última actualización: 11 jun 2026 (Paso 1: admin gestiona propiedades de su agencia).
+> Última actualización: 11 jun 2026 (Paso 2: admin reasigna el agente de una propiedad).
 
 ---
 
@@ -11,9 +11,8 @@
 > Multi-agente es el marco que da sentido a varias de estas. Sub-pieza 1 (crear
 > agentes + listar equipo) YA está hecha. Las que siguen son sus continuaciones.
 
-- [ ] **Multi-agente · sub-pieza 2 — UI por rol: lo que falta** — la pantalla de Consultas (`/dashboard/leads`) YA diferencia por rol (admin ve los leads de toda la agencia, agente los suyos, vía RLS). El admin YA gestiona (edita/elimina/cambia estado de) las propiedades de su agencia y el listado YA las muestra por agencia con columna "Agente" (Paso 1, vía `authorizePropertyAccess` + service role; las policies RLS no se tocaron). Falta:
-  - **Home del dashboard diferenciado**: hoy las 4 métricas del home filtran por `agent_id`. Para un admin deberían ser por `agency_id` (propiedades activas, leads, vistas de toda la agencia). Leer `role` en `dashboard/page.tsx` y condicionar.
-  - **Paso 2 — Reasignar `agent_id` de una propiedad** (asignar/cambiar el agente desde el `PropertyForm`, en crear y editar, solo para el admin). El selector se alimenta con los agentes de la agencia; validar server-side que el agente destino es de la misma agencia. No reescribe leads viejos (quedan con el agente anterior). No reasignar a otra agencia. Diseño y prompt ya preparados (ver historial); falta implementar + documentar.
+- [ ] **Multi-agente · sub-pieza 2 — UI por rol: lo que falta** — YA hecho: Consultas diferenciadas por rol (RLS); el admin gestiona (edita/elimina/cambia estado/**reasigna el agente de**) las propiedades de toda su agencia, con el listado por agencia + columna "Agente" (Pasos 1 y 2, vía `authorizePropertyAccess` + `resolveAssignedAgent` + service role; las policies RLS no se tocaron). **Falta solo:**
+  - **Home del dashboard diferenciado**: hoy las 4 métricas del home filtran por `agent_id`. Para un admin deberían ser por `agency_id` (propiedades activas, leads, vistas de toda la agencia). Leer `role` en `dashboard/page.tsx` y condicionar. Es lo único que queda de esta sub-pieza.
 
 - [ ] **Multi-agente · sub-pieza 3 — Eliminar/desvincular agente** — el admin saca a un agente de su agencia. Al eliminarlo: sus propiedades se reasignan (la base ya tiene `ON DELETE SET NULL` en `properties.agent_id`), y el fallback de WhatsApp del lead va al teléfono de la agencia. Toca:
   - El último `ALTER` pendiente: agregar `phone_wa` a `agencies` (+ cargarlo en registro/preferencias).
@@ -98,3 +97,5 @@
 - [x] Multi-agente · sub-pieza 1: el admin de agencia crea agentes (con contraseña temporal, vía `createUser` service role) y ve la lista de su equipo en `/dashboard/equipo`. Gateado por `role === 'admin'` server-side. Columna `agents.email` denormalizada + ítem "Equipo" en el sidebar (solo admin).
 - [x] Pantalla de Consultas (`/dashboard/leads`): lista los leads, diferenciada por rol vía RLS (admin ve los de la agencia, agente los suyos). Tipo `Lead` extendido con relaciones `agent`/`property`. Ítem "Consultas" en el sidebar (ambos roles).
 - [x] Panel del dueño mejorado: 6 métricas de negocio (StatsCard) arriba de la tabla de agencias en `/admin`. Además, `/admin` ahora usa el sidebar del dashboard (layout propio con gating centralizado de `ADMIN_USER_ID`; "Panel admin" se resalta activo).
+- [x] Multi-agente · sub-pieza 2 (Paso 1): el admin gestiona (edita/elimina/cambia estado de) las propiedades de toda su agencia. Helper `authorizePropertyAccess` (owner/admin, elige el client de escritura); listado por `agency_id` con columna "Agente" para el admin. Service role + validación, sin tocar policies RLS. Probado: agente normal no toca lo ajeno, nadie cruza agencias.
+- [x] Multi-agente · sub-pieza 2 (Paso 2): el admin reasigna el `agent_id` de una propiedad a otro agente de su agencia, desde el `PropertyForm` (crear y editar). Helper `resolveAssignedAgent` con 3 barreras server-side (rol admin, destino dentro de la agencia, datos del server). Service role al reasignar (incluso reasignando propia propiedad, por el WITH CHECK implícito de la RLS). Probado + query de invariante (0 propiedades cruzadas).
