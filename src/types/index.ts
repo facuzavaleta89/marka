@@ -214,6 +214,11 @@ export interface Lead {
   message: string | null;
   source: string;
   created_at: string;
+  // Relaciones opcionales (joins). Mismo patrón que Property.
+  // agent puede ser null si la propiedad quedó sin agente (agente desvinculado,
+  // hoy no ocurre). Se usan en la pantalla de Consultas (/dashboard/leads).
+  agent?: Pick<Agent, "id" | "full_name"> | null;
+  property?: Pick<Property, "id" | "title" | "slug">;
 }
 
 // ─── Filtros del mapa ─────────────────────────────────────────

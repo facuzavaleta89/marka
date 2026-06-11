@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Building2,
+  Inbox,
   Users,
   User,
   Settings,
@@ -53,6 +54,7 @@ type NavItem = {
 const NAV_ITEMS: NavItem[] = [
   { label: "Inicio", href: "/dashboard", icon: LayoutDashboard, exact: true },
   { label: "Propiedades", href: "/dashboard/propiedades", icon: Building2 },
+  { label: "Consultas", href: "/dashboard/leads", icon: Inbox },
   { label: "Equipo", href: "/dashboard/equipo", icon: Users, adminOnly: true },
   { label: "Perfil", href: "/dashboard/perfil", icon: User },
   { label: "Preferencias", href: "/dashboard/preferencias", icon: Settings },
@@ -138,7 +140,12 @@ function NavContent({
           <Link
             href="/admin"
             onClick={onClose}
-            className="flex items-center gap-3 px-3 py-2.5 font-sans text-sm text-stone hover:text-paper transition-colors duration-100"
+            className={[
+              "flex items-center gap-3 py-2.5 rounded-md font-sans text-sm transition-colors duration-100",
+              pathname.startsWith("/admin")
+                ? "border-l-[3px] border-terracota text-paper bg-white/5 pl-[calc(0.75rem_-_3px)] pr-3"
+                : "text-stone hover:text-paper hover:bg-white/5 px-3",
+            ].join(" ")}
           >
             <ShieldCheck size={18} strokeWidth={1.75} />
             Panel admin

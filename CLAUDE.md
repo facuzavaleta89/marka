@@ -52,7 +52,7 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 
 ### Roles de agente (Fase 3 — parcial)
 - `agents.role` (`admin`/`agent`) **ya está migrado** en la base. Backfill aplicado: el admin de cada agencia es el agente más antiguo.
-- **`role` YA gatea la sección "Equipo"** (crear/listar agentes): la página `/dashboard/equipo` y la action `createAgentAction` validan `role === 'admin'` server-side, y el ítem del sidebar se muestra solo a admins (`isAgencyAdmin`). Otras distinciones admin/agent más finas (que un admin vea los leads de toda su agencia en el dashboard, etc.) siguen pendientes — la policy `Admin reads agency leads` existe pero el dashboard aún no la usa (ver PENDIENTES.md).
+- **`role` YA gatea la sección "Equipo"** (crear/listar agentes): la página `/dashboard/equipo` y la action `createAgentAction` validan `role === 'admin'` server-side, y el ítem del sidebar se muestra solo a admins (`isAgencyAdmin`). La pantalla **Consultas** (`/dashboard/leads`) también diferencia por rol: usa la policy `Admin reads agency leads` (un admin ve los leads de toda su agencia; un agente, solo los suyos) — la query filtra por `agency_id` y la RLS recorta sola. Falta aún: que el admin **gestione** (edite/elimine) las propiedades de su agencia, no solo las vea (ver PENDIENTES.md).
 - **Dos "admin" distintos, no mezclar:** `isAppAdmin` (dueño de la plataforma, por `ADMIN_USER_ID`, gatea `/admin`) vs `isAgencyAdmin` (`agent.role === 'admin'`, admin de su agencia, gatea "Equipo"). El layout del dashboard calcula ambos y los pasa al Sidebar.
 - **Gestión de equipo (`/dashboard/equipo`, solo admin de agencia):** el admin crea agentes de SU agencia y ve la lista del equipo. Agentes ilimitados. El alta usa `admin.auth.admin.createUser({ email, password, email_confirm: true })` (service role) — NO `signUp`, porque `signUp` pisaría la sesión del admin. Contraseña temporal que el admin comparte; el agente la cambia luego desde su perfil. Si el insert en `agents` falla tras crear el user de Auth, se hace rollback (`deleteUser`) para no dejar huérfanos. El `agency_id` del agente nuevo se deriva del admin logueado, nunca del cliente. Falta (piezas siguientes): eliminar/editar agentes, invitación por email.
 - Modelo previsto a futuro: `admin` además gestiona la suscripción y ve los leads de toda la agencia; `agent` hace CRUD de lo suyo.
@@ -89,10 +89,11 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 │   │   │       ├── page.tsx             ← Métricas (StatsCard) y últimos leads
 │   │   │       ├── propiedades/         ← Listado CRUD + nueva + [id]/editar + loading.tsx
 │   │   │       ├── equipo/              ← Gestión de agentes (solo admin de agencia): page (Server, gatea role) + actions (createAgentAction, service role)
+│   │   │       ├── leads/               ← Consultas (ambos roles; RLS recorta: agente ve los suyos, admin los de la agencia). page (Server) + LeadsContent (client)
 │   │   │       ├── perfil/
 │   │   │       ├── preferencias/
 │   │   │       └── suscripcion/
-│   │   ├── admin/                        ← Panel de plataforma (solo dueño, gateado por ADMIN_USER_ID): tabla de TODAS las agencias + filtros aditivos (pendientes/pagas/free) + activar planes. page (Server) + AgenciesTable (client) + actions. NO usa el sidebar del agente
+│   │   ├── admin/                        ← Panel de plataforma (solo dueño, gateado por ADMIN_USER_ID en admin/layout.tsx): 6 métricas de negocio (StatsCard) + tabla de TODAS las agencias + filtros aditivos + activar planes. layout (Server, gating + sidebar) + page (Server) + AgenciesTable (client) + actions. USA el sidebar del dashboard ("Panel admin" activo)
 │   │   └── api/og/[slug]/
 │   │
 │   ├── components/
@@ -260,7 +261,7 @@ Schema en `supabase/migrations/20240101000000_initial_schema.sql`.
 | `agents` | `id` = `auth.users.id`. `agency_id` NOT NULL. `role` (`admin`/`agent`) gatea la sección Equipo. `email` denormalizado de auth.users (copia de lectura) |
 | `properties` | `agency_id` y `city_id` NOT NULL; `location` GEOGRAPHY generada |
 | `property_images` | `is_cover` + `sort_order` |
-| `leads` | Contactos WA. Incluye `agency_id` |
+| `leads` | Contactos WA. Incluye `agency_id`. Se listan en `/dashboard/leads` (Consultas), diferenciado por rol vía RLS |
 
 **Policies RLS clave:** lectura pública de cities/agencies/properties activas; agentes ven y gestionan lo suyo + leen propiedades de su agencia (para el conteo); `Agent reads own leads` (un agent ve los suyos) + `Admin reads agency leads` (un admin ve los de toda su agencia — Fase 3, ya aplicada); `Public insert lead` valida que property+agent+agency coincidan (todavía no contempla `agent_id IS NULL`, eso llega con agente desvinculado); escritura de subscriptions solo service role.
 

@@ -2,7 +2,7 @@
 
 > Lista viva de pendientes, deuda técnica y decisiones de producto abiertas.
 > Se actualiza a medida que se cierran piezas o aparecen cosas nuevas.
-> Última actualización: 9 jun 2026 (multi-agente sub-pieza 1: crear + listar agentes).
+> Última actualización: 10 jun 2026 (Consultas + panel del dueño con métricas y sidebar).
 
 ---
 
@@ -11,7 +11,10 @@
 > Multi-agente es el marco que da sentido a varias de estas. Sub-pieza 1 (crear
 > agentes + listar equipo) YA está hecha. Las que siguen son sus continuaciones.
 
-- [ ] **Multi-agente · sub-pieza 2 — UI condicionada por rol (más allá de Equipo)** — la policy `Admin reads agency leads` ya existe (un admin puede leer los leads de toda su agencia), pero el dashboard todavía no la usa. Falta: mostrar en el dashboard los leads de toda la agencia si el usuario es `role = 'admin'` (¿agrupados por agente o en total? — decidir al implementar). El gating de la sección Equipo ya está hecho; esto es el resto de la UI por rol.
+- [ ] **Multi-agente · sub-pieza 2 — UI por rol: lo que falta** — la pantalla de Consultas (`/dashboard/leads`) YA diferencia por rol (admin ve los leads de toda la agencia, agente los suyos, vía RLS). Falta el resto:
+  - **Home del dashboard diferenciado**: hoy las 4 métricas del home filtran por `agent_id`. Para un admin deberían ser por `agency_id` (propiedades activas, leads, vistas de toda la agencia). Leer `role` en `dashboard/page.tsx` y condicionar.
+  - **Listado de propiedades por agencia para el admin**: hoy `propiedades/page.tsx` filtra por `agent_id`. El admin debería ver (y gestionar) las de toda su agencia.
+  - **El admin GESTIONA (edita/elimina) las propiedades de su agencia, no solo las ve** — decisión de producto ya tomada: el dueño es responsable de lo que se publica bajo su marca. Pero las policies actuales (`Agent manages own properties` = `agent_id = auth.uid()`) NO lo permiten. Hay que agregar policies/acciones (probablemente service role con validación de `role === 'admin'` y misma agencia). Es la parte más delicada (toca seguridad de escritura).
 
 - [ ] **Multi-agente · sub-pieza 3 — Eliminar/desvincular agente** — el admin saca a un agente de su agencia. Al eliminarlo: sus propiedades se reasignan (la base ya tiene `ON DELETE SET NULL` en `properties.agent_id`), y el fallback de WhatsApp del lead va al teléfono de la agencia. Toca:
   - El último `ALTER` pendiente: agregar `phone_wa` a `agencies` (+ cargarlo en registro/preferencias).
@@ -51,6 +54,8 @@
 
 ## Decisiones de producto abiertas
 
+- [ ] **¿Login opcional de visitantes?** — hoy el visitante NO se registra (favoritos en localStorage). Un login *opcional* (nunca obligatorio) habilitaría favoritos sincronizados entre dispositivos, historial y alertas ("bajó el precio de una que viste"). Decidido: NO ahora (el registro mata conversión, que es lo que más se cuida; el uso es corto e intenso). Solo evaluar a futuro como opt-in para usuarios recurrentes. NUNCA obligatorio. Nota: del visitante hoy solo se captura el nombre — el teléfono/email no, porque el agente ya recibe el número por WhatsApp (pedirlo sería fricción redundante).
+
 - [ ] **¿Un particular (free) puede pagar por destacar su única propiedad?** — decisión de modelo de negocio.
 - [ ] **Validar precios con el mercado** — cuánto pagan las inmobiliarias locales por Zonaprop, para calibrar los precios de los planes ($30k/$65k/$140k son placeholders).
 
@@ -66,7 +71,7 @@
 
 - [ ] Modo oscuro (esfuerzo grande: rediseñar paleta y revisar contraste).
 - [ ] Vista "Mis favoritos" (panel que liste todos los favoritos guardados).
-- [ ] Página SEO por propiedad (`/propiedades/[slug]`) + Open Graph dinámico.
+- [ ] Página SEO por propiedad (`/propiedades/[slug]`) + Open Graph dinámico. (Cuando exista: en la pantalla de Consultas, el título de la propiedad hoy es texto plano — envolverlo en `<Link href={\`/propiedades/${slug}\`}>`. Se dejó sin link a propósito para no romper con un 404.)
 - [ ] Dashboard analytics (gráficos de consultas y propiedades más vistas — plan premium).
 - [ ] Deduplicación de propiedades listadas por 2 agencias.
 - [ ] Notificaciones por email al agente ante nuevo lead (Resend).
@@ -92,3 +97,5 @@
 - [x] "Mejorar plan" funcional desde el dashboard (pide upgrade → pending → botón "Pendiente").
 - [x] Modelo `plan` (lo que rige) vs `pending_plan` (lo pedido) — separados en columnas distintas; el plan pedido ya no pisa el que rige. Coherencia en badge/dashboard/bloqueo de "Nueva propiedad".
 - [x] Multi-agente · sub-pieza 1: el admin de agencia crea agentes (con contraseña temporal, vía `createUser` service role) y ve la lista de su equipo en `/dashboard/equipo`. Gateado por `role === 'admin'` server-side. Columna `agents.email` denormalizada + ítem "Equipo" en el sidebar (solo admin).
+- [x] Pantalla de Consultas (`/dashboard/leads`): lista los leads, diferenciada por rol vía RLS (admin ve los de la agencia, agente los suyos). Tipo `Lead` extendido con relaciones `agent`/`property`. Ítem "Consultas" en el sidebar (ambos roles).
+- [x] Panel del dueño mejorado: 6 métricas de negocio (StatsCard) arriba de la tabla de agencias en `/admin`. Además, `/admin` ahora usa el sidebar del dashboard (layout propio con gating centralizado de `ADMIN_USER_ID`; "Panel admin" se resalta activo).
