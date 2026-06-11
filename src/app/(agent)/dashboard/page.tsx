@@ -29,10 +29,19 @@ export default async function DashboardPage() {
 
   const { data: agent } = await supabase
     .from("agents")
-    .select("agency_id")
+    .select("agency_id, role")
     .eq("id", user.id)
     .single();
   if (!agent) redirect("/login");
+
+  // Un admin de agencia ve los números de TODA su agencia; un agente normal,
+  // solo lo suyo (igual que hoy). Definimos el filtro una vez y lo aplicamos en
+  // cada query, para no repetir el condicional. La RLS deja pasar lo que
+  // corresponde a cada rol (lectura por agencia para el admin, propia para el agente).
+  const isAgencyAdmin = agent.role === "admin";
+  const scope = isAgencyAdmin
+    ? { col: "agency_id" as const, val: agent.agency_id }
+    : { col: "agent_id" as const, val: user.id };
 
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -47,24 +56,24 @@ export default async function DashboardPage() {
     supabase
       .from("properties")
       .select("*", { count: "exact", head: true })
-      .eq("agent_id", user.id)
+      .eq(scope.col, scope.val)
       .eq("status", "active"),
 
     supabase
       .from("leads")
       .select("*", { count: "exact", head: true })
-      .eq("agent_id", user.id)
+      .eq(scope.col, scope.val)
       .gte("created_at", thirtyDaysAgo.toISOString()),
 
     supabase
       .from("properties")
       .select("views_count")
-      .eq("agent_id", user.id),
+      .eq(scope.col, scope.val),
 
     supabase
       .from("properties")
       .select("id, title, property_type, price, currency, status")
-      .eq("agent_id", user.id)
+      .eq(scope.col, scope.val)
       .order("created_at", { ascending: false })
       .limit(3),
 
