@@ -79,6 +79,10 @@ export interface Agency {
   city_id: string;       // toda agencia pertenece a una ciudad
   name: string;
   slug: string;
+  // Teléfono de WhatsApp de la agencia (NOT NULL en la base). En el registro
+  // hereda el del admin fundador; editable luego en Preferencias (solo admin).
+  // A futuro: fallback de contacto del lead cuando una propiedad queda sin agente.
+  phone_wa: string;
   // Tipo de tenant (Fase 3, ya migrado en la base). 'agency' = inmobiliaria
   // (varios agentes); 'individual' = particular (una persona, plan free).
   // Internamente ambos son filas en agencies. La regla "individual → solo free"

@@ -51,6 +51,11 @@ export async function registerAction(
       name: agencyName,
       slug: generateSlug(agencyName),
       tenant_type: data.tenantType,
+      // La agencia hereda el WhatsApp de su admin fundador: el dueño es el
+      // contacto natural de la agencia recién creada. Es editable después en
+      // Preferencias si la agencia tiene otro número. phone_wa es NOT NULL en la
+      // base, así que setearlo acá es obligatorio (sin esto el insert fallaría).
+      phone_wa: data.phoneWa,
     })
     .select("id")
     .single();

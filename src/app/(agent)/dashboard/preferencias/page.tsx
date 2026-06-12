@@ -1,91 +1,37 @@
-"use client";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { PreferencesContent } from "@/components/dashboard/PreferencesContent";
+import { AgencyPhoneForm } from "@/components/dashboard/AgencyPhoneForm";
 
-import { useEffect, useState } from "react";
+export default async function PreferenciasPage() {
+  const supabase = await createClient();
 
-const STORAGE_KEY = "marka_preferences";
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
 
-type Preferences = {
-  email_weekly_summary: boolean;
-  dark_mode: boolean;
-  timezone: string;
-};
+  // Rol del user: solo el admin de agencia gestiona datos de la agencia (el
+  // teléfono de WhatsApp). Un agente normal ve solo sus preferencias personales.
+  const { data: agent } = await supabase
+    .from("agents")
+    .select("role, agency_id")
+    .eq("id", user.id)
+    .single();
+  if (!agent) redirect("/login");
 
-const DEFAULT_PREFERENCES: Preferences = {
-  email_weekly_summary: false,
-  dark_mode: false,
-  timezone: "America/Argentina/Buenos_Aires",
-};
+  const isAgencyAdmin = agent.role === "admin";
 
-const TIMEZONES = [
-  { value: "America/Argentina/Buenos_Aires", label: "Argentina (UTC-3)" },
-  { value: "America/Santiago", label: "Chile (UTC-4 / -3 verano)" },
-  { value: "America/Guayaquil", label: "Ecuador (UTC-5)" },
-  { value: "America/Mexico_City", label: "México (UTC-6 / -5 verano)" },
-  { value: "Europe/Madrid", label: "España (UTC+1 / +2 verano)" },
-];
-
-function Toggle({
-  enabled,
-  onToggle,
-  id,
-}: {
-  enabled: boolean;
-  onToggle: () => void;
-  id?: string;
-}) {
-  return (
-    <button
-      type="button"
-      id={id}
-      role="switch"
-      aria-checked={enabled}
-      onClick={onToggle}
-      className={[
-        "relative inline-flex w-11 h-6 rounded-full shrink-0 transition-colors duration-[120ms]",
-        enabled ? "bg-terracota" : "bg-stone",
-      ].join(" ")}
-    >
-      <span
-        className={[
-          "absolute top-1 left-1 w-4 h-4 bg-paper rounded-full shadow-sm transition-transform duration-[120ms]",
-          enabled ? "translate-x-5" : "translate-x-0",
-        ].join(" ")}
-      />
-    </button>
-  );
-}
-
-export default function PreferenciasPage() {
-  const [prefs, setPrefs] = useState<Preferences>(DEFAULT_PREFERENCES);
-  const [saved, setSaved] = useState(false);
-
-  // Seed desde localStorage después del mount. Es intencional hacerlo en un
-  // efecto (no en el initializer de useState) para que el render del server y
-  // el primer render del cliente coincidan y no haya mismatch de hidratación.
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setPrefs({ ...DEFAULT_PREFERENCES, ...JSON.parse(stored) });
-      }
-    } catch {
-      // localStorage unavailable o JSON inválido — usar defaults
-    }
-  }, []);
-
-  function toggle(key: "email_weekly_summary" | "dark_mode") {
-    setPrefs((prev) => ({ ...prev, [key]: !prev[key] }));
-    setSaved(false);
-  }
-
-  function handleSave() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
-      setSaved(true);
-    } catch {
-      // localStorage unavailable
-    }
+  // Solo si es admin traemos el teléfono actual de la agencia para precargar el
+  // form. La edición real se gatea de nuevo server-side en la action.
+  let agencyPhone = "";
+  if (isAgencyAdmin) {
+    const { data: agency } = await supabase
+      .from("agencies")
+      .select("phone_wa")
+      .eq("id", agent.agency_id)
+      .single();
+    agencyPhone = agency?.phone_wa ?? "";
   }
 
   return (
@@ -93,83 +39,11 @@ export default function PreferenciasPage() {
       <h1 className="font-serif text-4xl font-bold text-black mb-8">Preferencias</h1>
 
       <div className="space-y-6">
-        {/* Notificaciones */}
-        <section className="bg-paper border border-stone rounded-lg p-6 space-y-4">
-          <h2 className="font-serif text-2xl font-semibold text-black">Notificaciones</h2>
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="font-sans text-sm font-medium text-black">
-                Resumen semanal por email
-              </p>
-              <p className="font-sans text-xs text-graphite mt-0.5">
-                Recibí un resumen de tus propiedades y leads cada semana
-              </p>
-            </div>
-            <Toggle
-              enabled={prefs.email_weekly_summary}
-              onToggle={() => toggle("email_weekly_summary")}
-            />
-          </div>
-        </section>
+        {/* Datos de la agencia — solo el admin de agencia */}
+        {isAgencyAdmin && <AgencyPhoneForm initialPhone={agencyPhone} />}
 
-        {/* Apariencia */}
-        <section className="bg-paper border border-stone rounded-lg p-6 space-y-4">
-          <h2 className="font-serif text-2xl font-semibold text-black">Apariencia</h2>
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="font-sans text-sm font-medium text-black">Modo oscuro</p>
-              <p className="font-sans text-xs text-graphite mt-0.5">
-                Próximamente disponible
-              </p>
-            </div>
-            <Toggle
-              enabled={prefs.dark_mode}
-              onToggle={() => toggle("dark_mode")}
-            />
-          </div>
-        </section>
-
-        {/* Zona horaria */}
-        <section className="bg-paper border border-stone rounded-lg p-6 space-y-4">
-          <h2 className="font-serif text-2xl font-semibold text-black">Zona horaria</h2>
-          <div className="space-y-1.5">
-            <label
-              htmlFor="timezone"
-              className="font-sans text-sm font-medium text-black"
-            >
-              Tu zona horaria
-            </label>
-            <select
-              id="timezone"
-              value={prefs.timezone}
-              onChange={(e) => {
-                setPrefs((prev) => ({ ...prev, timezone: e.target.value }));
-                setSaved(false);
-              }}
-              className="w-full font-sans text-sm text-black bg-white border border-stone rounded-md h-11 px-3 focus:outline-none focus:border-graphite focus:ring-2 focus:ring-terracota focus:ring-offset-1"
-            >
-              {TIMEZONES.map((tz) => (
-                <option key={tz.value} value={tz.value}>
-                  {tz.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </section>
-
-        {/* Guardar */}
-        <div className="flex items-center gap-4">
-          <button
-            type="button"
-            onClick={handleSave}
-            className="h-11 px-4 rounded-md font-sans text-sm font-medium bg-terracota hover:bg-terracota-hover text-paper transition-colors duration-[120ms]"
-          >
-            Guardar preferencias
-          </button>
-          {saved && (
-            <p className="font-sans text-sm text-success">Preferencias guardadas</p>
-          )}
-        </div>
+        {/* Preferencias personales (localStorage) */}
+        <PreferencesContent />
       </div>
     </div>
   );

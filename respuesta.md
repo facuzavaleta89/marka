@@ -1,83 +1,107 @@
-# Implementación — Home del dashboard diferenciado por rol
+# Implementación — `agencies.phone_wa`: registro, Preferencias y tipo
 
-> Hecho el 11 jun 2026. Las métricas del home (`dashboard/page.tsx`) ahora
-> reflejan toda la agencia para un admin (`role === 'admin'`) y solo lo del
-> agente para un agente normal — igual que ya se hizo en el listado de propiedades.
+> Hecho el 12 jun 2026. La columna `agencies.phone_wa` (NOT NULL, ya migrada) se
+> setea en el registro (heredando el del admin fundador), se puede editar en
+> Preferencias (solo el admin de agencia) y se agregó al tipo `Agency`.
+> NO se tocaron las queries del modal/useProperties ni el fallback de WhatsApp
+> (eso es la Parte 2, junto con el borrado de agente).
 
 Build: `npx tsc --noEmit` → **0 errores**. `npm run lint` → solo los 5 problemas
 preexistentes conocidos (ClusterLayer ×2, StatsCard, PropertyForm, RegisterForm);
-**`dashboard/page.tsx` no aparece en el lint**.
+**ningún archivo tocado/nuevo aparece en el lint**.
 
 ---
 
-## Archivo modificado
+## Archivos creados
 
-`src/app/(agent)/dashboard/page.tsx` (único archivo tocado, solo lecturas).
+| Archivo | Qué es |
+|---|---|
+| `src/app/(agent)/dashboard/preferencias/actions.ts` | `updateAgencyPhoneAction` (server action, gateada por admin) |
+| `src/components/dashboard/AgencyPhoneForm.tsx` | Form client del teléfono de la agencia (rhf + zod) |
+| `src/components/dashboard/PreferencesContent.tsx` | Las preferencias personales (localStorage) extraídas a un client component |
 
----
+## Archivos modificados
 
-## Qué se hizo
-
-### 1. Lee el rol
-El select de `agents` pasó de `select("agency_id")` a `select("agency_id, role")`.
-`const isAgencyAdmin = agent.role === "admin"`.
-
-### 2. Un solo filtro reutilizado (`scope`)
-Para no repetir el condicional en cada query, defino el filtro una vez:
-
-```ts
-const scope = isAgencyAdmin
-  ? { col: "agency_id" as const, val: agent.agency_id }
-  : { col: "agent_id" as const, val: user.id };
-```
-
-y lo aplico con `.eq(scope.col, scope.val)` en las 4 queries que antes filtraban
-por `agent_id`:
-
-| Métrica | Antes | Ahora |
-|---|---|---|
-| Propiedades activas | `.eq("agent_id", user.id)` + `status='active'` | `.eq(scope.col, scope.val)` + `status='active'` |
-| Leads este mes | `.eq("agent_id", user.id)` + `created_at >= 30d` | `.eq(scope.col, scope.val)` + `created_at >= 30d` |
-| Vistas totales | `views_count` por `agent_id` (reduce en JS) | `views_count` por `scope` (reduce igual) |
-| Últimas 3 propiedades | `.eq("agent_id", user.id)` orden desc limit 3 | `.eq(scope.col, scope.val)` orden desc limit 3 |
-| Disponibles del plan | `getPlanUsage(supabase, agent.agency_id)` | **sin cambios** (ya por agencia) |
-
-- **Admin**: las 4 quedan por `agency_id` → números de toda la agencia.
-- **Agente normal**: las 4 quedan por `agent_id` → exactamente como hoy.
-
-El `as const` en `col` hace que TS infiera `"agency_id" | "agent_id"` (literales),
-así `.eq()` lo acepta sin fricción de tipos. `tsc` limpio.
-
-### 3. La RLS acompaña
-No hace falta nada extra: la RLS ya deja pasar lo correcto según el rol.
-- `properties` por `agency_id`: `Agency members read agency properties` permite al
-  admin leer todas las de su agencia.
-- `leads` por `agency_id`: `Admin reads agency leads` permite al admin contar los
-  de toda la agencia (un agente normal solo ve los suyos por `Agent reads own leads`,
-  pero acá filtra por `agent_id` igual).
-- `getPlanUsage` ya contaba por `agency_id` desde siempre.
+| Archivo | Cambio |
+|---|---|
+| `src/types/index.ts` | `phone_wa: string` (NOT NULL) en la interface `Agency` |
+| `src/app/(agent)/register/actions.ts` | El insert de `agencies` ahora setea `phone_wa: data.phoneWa` |
+| `src/app/(agent)/dashboard/preferencias/page.tsx` | De client puro → **Server Component**: lee rol + teléfono de la agencia y monta el form (admin) + las preferencias |
 
 ---
 
-## Lo que NO se tocó
-- **No se agregó "de quién es cada propiedad"** en las últimas 3 del home: el
-  prompt lo dejaba opcional y la tabla del home (inline, simple) no muestra agente.
-  El foco era que los números sean de la agencia; la columna "Agente" ya existe en
-  el listado completo (`/dashboard/propiedades`). Mantenerlo simple acá es más
-  coherente con el home como vista de resumen.
-- **`getPlanUsage`, las otras páginas, y toda escritura**: intactas. Solo se
-  condicionaron las lecturas del home.
+## 1. Registro (`register/actions.ts`)
+El insert de `agencies` pasó a setear `phone_wa: data.phoneWa` — **el mismo
+teléfono que el del agente admin que crea la agencia**. Razón (comentada en el
+código): el dueño es el contacto natural de la agencia recién creada, así no hace
+falta un campo nuevo en el form de registro; lo puede cambiar después en
+Preferencias si la agencia tiene otro número. Como `phone_wa` es NOT NULL, esto
+era obligatorio: sin setearlo, el insert fallaría.
+
+## 2. Tipo `Agency`
+`phone_wa: string` (no nullable, refleja el NOT NULL de la base), con comentario
+de su origen (hereda del admin / editable en Preferencias / futuro fallback).
+
+## 3. Preferencias — edición del teléfono de la agencia (lo central)
+
+### El gating por admin (en dos capas)
+- **Página (`preferencias/page.tsx`)**: ahora es **Server Component**. Lee la fila
+  `agents` del user (`role, agency_id`). `isAgencyAdmin = role === "admin"`. El
+  `AgencyPhoneForm` **solo se renderiza si `isAgencyAdmin`** — un agente normal ni
+  ve el campo. El teléfono actual de la agencia se trae solo en ese caso (para
+  precargar el form) y se pasa como `initialPhone`.
+- **Action (`updateAgencyPhoneAction`)**: la barrera real. Valida `phone_wa` con
+  zod (`/^\d{10,}$/`), saca el `user` del server, lee su fila `agents`
+  (`agency_id, role`), y si `role !== "admin"` → `{ error: "No autorizado" }`. El
+  **`agency_id` se deriva de la fila del caller, nunca del cliente**. Ocultar el
+  campo en la UI no alcanza; la action revalida igual.
+
+### Por qué service role
+No hay policy de UPDATE de `agencies` para usuarios (solo `Public read agencies`
+de SELECT). Así que la action escribe con `createAdminClient()` (service role),
+**acotando el UPDATE a `caller.agency_id`** (`.eq("id", caller.agency_id)`) — mismo
+patrón que las otras escrituras administrativas (registro, equipo, suscripción).
+
+### Separación agencia vs agente
+El teléfono de la **agencia** se edita en Preferencias (sección "Datos de la
+agencia"); el teléfono del **agente** sigue editándose en Perfil (`ProfileForm`).
+Son campos distintos (`agencies.phone_wa` vs `agents.phone_wa`). El copy del form
+lo aclara: "Es distinto del tuyo, que editás en Perfil."
+
+### Validación
+Mismo formato que el resto del proyecto: `/^\d{10,}$/` (solo dígitos, mín. 10, sin
++ ni espacios). Obligatorio (no puede quedar vacío, coherente con el NOT NULL). Se
+valida en el cliente (zod en el form, UX) y se revalida en la action (barrera real).
+
+### Refactor de la página (necesario)
+La página era `"use client"` entera (preferencias en localStorage). Para poder leer
+rol/agencia server-side hubo que volverla Server Component. Las preferencias
+personales se movieron tal cual a `PreferencesContent.tsx` (client, mismo
+localStorage, mismo comportamiento — el `eslint-disable` del seed en efecto viajó
+con el código). La página ahora renderiza, dentro del mismo `space-y-6`:
+`{isAgencyAdmin && <AgencyPhoneForm/>}` arriba y `<PreferencesContent/>` debajo.
+
+---
+
+## Lo que NO se tocó (Parte 2)
+- **Queries del modal y `useProperties`**: NO se agregó `agency:agencies(phone_wa)`
+  en el select. Se hará junto con la lógica de fallback (cuando una propiedad pueda
+  quedar sin agente), para no dejar el join sin usar.
+- **El fallback de WhatsApp** (`agent?.phone_wa ?? agency?.phone_wa`): sin cambios.
+- **La policy `Public insert lead`**, el borrado de agente, etc.: fuera de alcance.
 
 ---
 
 ## Para probar
-1. **Agente normal**: el home muestra sus números (propiedades activas, leads,
-   vistas, últimas 3) — idéntico a antes.
-2. **Admin de agencia**: las mismas 4 cards y la lista de últimas propiedades
-   ahora reflejan **toda la agencia** (propiedades y leads de todos los agentes).
-   "Disponibles del plan" no cambia (siempre fue por agencia).
+1. **Registro**: crear una agencia nueva → la fila `agencies` queda con
+   `phone_wa` = el teléfono que cargó el admin. (Antes el insert habría fallado por
+   el NOT NULL.)
+2. **Admin en Preferencias**: aparece la sección "Datos de la agencia" con el
+   teléfono precargado; editarlo y guardar lo actualiza.
+3. **Agente normal en Preferencias**: NO ve la sección de la agencia, solo sus
+   preferencias personales. Si forzara la action (tampering), recibe "No autorizado".
 
 > Nota: no verifiqué contra la base/Auth reales (sin conexión Supabase en este
-> entorno). `tsc` y `lint` pasan. La diferenciación se apoya en la RLS ya
-> aplicada (lectura por agencia para el admin), igual que en el listado y en la
-> pantalla de Consultas.
+> entorno). `tsc` y `lint` pasan. Lo que más conviene confirmar en vivo: que el
+> registro ya no rompa por el NOT NULL, y que el UPDATE con service role acotado a
+> la agencia del caller funcione (y que un agente normal sea rechazado).
