@@ -1,107 +1,139 @@
-# Implementación — `agencies.phone_wa`: registro, Preferencias y tipo
+# Implementación — Borrado de agente por el admin (Modelo B: reasignar → borrar)
 
-> Hecho el 12 jun 2026. La columna `agencies.phone_wa` (NOT NULL, ya migrada) se
-> setea en el registro (heredando el del admin fundador), se puede editar en
-> Preferencias (solo el admin de agencia) y se agregó al tipo `Agency`.
-> NO se tocaron las queries del modal/useProperties ni el fallback de WhatsApp
-> (eso es la Parte 2, junto con el borrado de agente).
+> Hecho el 12 jun 2026. El admin de agencia puede eliminar a un agente de su
+> equipo. Modelo B: las propiedades del agente se **reasignan al admin ANTES de
+> borrar**, así nunca quedan huérfanas. La Parte 1 (phone_wa de agencia) ya estaba.
 
 Build: `npx tsc --noEmit` → **0 errores**. `npm run lint` → solo los 5 problemas
 preexistentes conocidos (ClusterLayer ×2, StatsCard, PropertyForm, RegisterForm);
-**ningún archivo tocado/nuevo aparece en el lint**.
+**ningún archivo tocado aparece en el lint**.
 
 ---
-
-## Archivos creados
-
-| Archivo | Qué es |
-|---|---|
-| `src/app/(agent)/dashboard/preferencias/actions.ts` | `updateAgencyPhoneAction` (server action, gateada por admin) |
-| `src/components/dashboard/AgencyPhoneForm.tsx` | Form client del teléfono de la agencia (rhf + zod) |
-| `src/components/dashboard/PreferencesContent.tsx` | Las preferencias personales (localStorage) extraídas a un client component |
 
 ## Archivos modificados
 
 | Archivo | Cambio |
 |---|---|
-| `src/types/index.ts` | `phone_wa: string` (NOT NULL) en la interface `Agency` |
-| `src/app/(agent)/register/actions.ts` | El insert de `agencies` ahora setea `phone_wa: data.phoneWa` |
-| `src/app/(agent)/dashboard/preferencias/page.tsx` | De client puro → **Server Component**: lee rol + teléfono de la agencia y monta el form (admin) + las preferencias |
+| `src/app/(agent)/dashboard/equipo/actions.ts` | `deleteAgentAction` nueva |
+| `src/app/(agent)/dashboard/equipo/page.tsx` | Cuenta las propiedades por agente y las pasa a la tabla |
+| `src/components/dashboard/TeamContent.tsx` | Botón "Eliminar" por fila + AlertDialog de confirmación con el conteo |
 
 ---
 
-## 1. Registro (`register/actions.ts`)
-El insert de `agencies` pasó a setear `phone_wa: data.phoneWa` — **el mismo
-teléfono que el del agente admin que crea la agencia**. Razón (comentada en el
-código): el dueño es el contacto natural de la agencia recién creada, así no hace
-falta un campo nuevo en el form de registro; lo puede cambiar después en
-Preferencias si la agencia tiene otro número. Como `phone_wa` es NOT NULL, esto
-era obligatorio: sin setearlo, el insert fallaría.
+## El orden de operaciones (lo crítico) — `deleteAgentAction(agentId)`
 
-## 2. Tipo `Agency`
-`phone_wa: string` (no nullable, refleja el NOT NULL de la base), con comentario
-de su origen (hereda del admin / editable en Preferencias / futuro fallback).
+**Reasignar ANTES de borrar.** Si se borrara primero, la FK `ON DELETE SET NULL`
+dejaría las propiedades huérfanas (justo lo que el Modelo B evita). Secuencia:
 
-## 3. Preferencias — edición del teléfono de la agencia (lo central)
+1. **Validaciones de seguridad** (todas server-side, en este orden):
+   - `getUser()` → sin user, `"No autenticado"`.
+   - **Auto-borrado**: `agentId === user.id` → `"No podés eliminarte a vos mismo"`
+     (la agencia no puede quedar sin su admin). Va **antes** de leer nada más.
+   - **Autorización**: lee la fila `agents` del caller (`agency_id, role`); si
+     `role !== "admin"` → `"No autorizado"`. El **`agency_id` sale de acá, nunca
+     del cliente**.
+   - **Pertenencia del target**: `select id, agency_id from agents where id =
+     agentId`; si no existe o `agency_id !== caller.agency_id` →
+     `"Agente no encontrado"` (mismo mensaje que "no existe", para no revelar
+     agentes de otras agencias).
 
-### El gating por admin (en dos capas)
-- **Página (`preferencias/page.tsx`)**: ahora es **Server Component**. Lee la fila
-  `agents` del user (`role, agency_id`). `isAgencyAdmin = role === "admin"`. El
-  `AgencyPhoneForm` **solo se renderiza si `isAgencyAdmin`** — un agente normal ni
-  ve el campo. El teléfono actual de la agencia se trae solo en ese caso (para
-  precargar el form) y se pasa como `initialPhone`.
-- **Action (`updateAgencyPhoneAction`)**: la barrera real. Valida `phone_wa` con
-  zod (`/^\d{10,}$/`), saca el `user` del server, lee su fila `agents`
-  (`agency_id, role`), y si `role !== "admin"` → `{ error: "No autorizado" }`. El
-  **`agency_id` se deriva de la fila del caller, nunca del cliente**. Ocultar el
-  campo en la UI no alcanza; la action revalida igual.
+2. **Reasignación** (service role, porque toca filas de otro agente que la RLS no
+   permite con el client normal):
+   ```ts
+   admin.from("properties")
+     .update({ agent_id: user.id })       // ← pasan al admin (el caller)
+     .eq("agent_id", agentId)
+     .eq("agency_id", caller.agency_id);  // ← defensa en profundidad
+   ```
+   Si falla → corta acá con `"No se pudieron reasignar… No se eliminó nada."`
+   (**no se borra nada**). El conteo del plan no cambia (es por `agency_id`, misma
+   agencia) y el trigger de límite no se dispara (solo cambia `agent_id`, no el
+   `status`).
 
-### Por qué service role
-No hay policy de UPDATE de `agencies` para usuarios (solo `Public read agencies`
-de SELECT). Así que la action escribe con `createAdminClient()` (service role),
-**acotando el UPDATE a `caller.agency_id`** (`.eq("id", caller.agency_id)`) — mismo
-patrón que las otras escrituras administrativas (registro, equipo, suscripción).
+3. **Borrado** (recién ahora, con las propiedades ya reasignadas):
+   ```ts
+   admin.auth.admin.deleteUser(agentId);
+   ```
+   Cascadea por FK: borra la fila `agents` (CASCADE desde `auth.users`) y pone en
+   **NULL los leads VIEJOS** del agente (`leads.agent_id` SET NULL). Esos leads
+   quedan como **historial** (no se reasignan a propósito); el admin los ve por
+   agencia en Consultas como "Sin agente asignado". Si el borrado falla **después**
+   de reasignar, se avisa que las propiedades ya quedaron a nombre del admin
+   (estado consistente, reintentable) — no se intenta revertir la reasignación
+   (es un estado válido).
 
-### Separación agencia vs agente
-El teléfono de la **agencia** se edita en Preferencias (sección "Datos de la
-agencia"); el teléfono del **agente** sigue editándose en Perfil (`ProfileForm`).
-Son campos distintos (`agencies.phone_wa` vs `agents.phone_wa`). El copy del form
-lo aclara: "Es distinto del tuyo, que editás en Perfil."
+4. `revalidatePath("/dashboard/equipo")`.
 
-### Validación
-Mismo formato que el resto del proyecto: `/^\d{10,}$/` (solo dígitos, mín. 10, sin
-+ ni espacios). Obligatorio (no puede quedar vacío, coherente con el NOT NULL). Se
-valida en el cliente (zod en el form, UX) y se revalida en la action (barrera real).
-
-### Refactor de la página (necesario)
-La página era `"use client"` entera (preferencias en localStorage). Para poder leer
-rol/agencia server-side hubo que volverla Server Component. Las preferencias
-personales se movieron tal cual a `PreferencesContent.tsx` (client, mismo
-localStorage, mismo comportamiento — el `eslint-disable` del seed en efecto viajó
-con el código). La página ahora renderiza, dentro del mismo `space-y-6`:
-`{isAgencyAdmin && <AgencyPhoneForm/>}` arriba y `<PreferencesContent/>` debajo.
+### Por qué no quedan huérfanas
+Entre el paso 2 y el 3, toda propiedad del agente ya tiene `agent_id = admin`.
+Cuando el paso 3 borra al agente, no hay ninguna propiedad apuntando a él → el
+`SET NULL` no tiene nada que nulificar en `properties`. Solo los leads históricos
+caen a NULL, que es lo correcto.
 
 ---
 
-## Lo que NO se tocó (Parte 2)
-- **Queries del modal y `useProperties`**: NO se agregó `agency:agencies(phone_wa)`
-  en el select. Se hará junto con la lógica de fallback (cuando una propiedad pueda
-  quedar sin agente), para no dejar el join sin usar.
-- **El fallback de WhatsApp** (`agent?.phone_wa ?? agency?.phone_wa`): sin cambios.
-- **La policy `Public insert lead`**, el borrado de agente, etc.: fuera de alcance.
+## UI — Equipo (`TeamContent.tsx`)
+
+- **Botón "Eliminar" por fila** (ícono `Trash2`, hover a `error` sobre
+  `terracota-subtle`), en la columna de acciones (desktop) y junto al badge de rol
+  (mobile). **No aparece en la fila del admin logueado** (`m.id !==
+  currentUserId`) — no puede auto-borrarse, coherente con la barrera del server.
+- **AlertDialog de confirmación** (shadcn, mismo patrón que `PropertiesTable`).
+  Aviso según el conteo, en voz directa (DESIGN §10, sin alarmismo):
+  - Con propiedades: "Sus **N propiedades** pasan a tu nombre y vas a poder
+    reasignarlas. La cuenta del agente se elimina y no podrá ingresar."
+    (singular/plural correcto).
+  - Sin propiedades: "La cuenta del agente se elimina y no podrá ingresar. No
+    tiene propiedades a su nombre."
+- **Al confirmar** → `deleteAgentAction` con `useTransition`; en éxito
+  `router.refresh()` (el agente desaparece de la lista); en error, banner
+  descartable arriba de la tabla. La fila en proceso queda con el botón
+  deshabilitado (`pendingId`).
+
+### El conteo de propiedades (página)
+`equipo/page.tsx` ahora trae, en paralelo con los agentes, `properties.select
+("agent_id").eq("agency_id", …)` y arma un `Map` de `agent_id → cantidad`. Cada
+`TeamMember` lleva `property_count`. Una sola query extra (no N+1); RLS de lectura
+por agencia ya lo permite. Las propiedades huérfanas (NULL) no se cuentan (no hay
+con Modelo B, pero el guard está por las dudas).
+
+---
+
+## Tipos
+- `TeamMember` ganó `property_count: number` (para el aviso). Nada más hizo falta.
+- **NO se aflojó `Property.agent_id` ni `Lead.agent_id` a nullable**: con Modelo B
+  las propiedades nunca quedan en NULL (se reasignan), así que `Property.agent_id`
+  sigue siendo `string` sin problema. Los leads viejos sí caen a NULL por la FK,
+  pero la pantalla de Consultas ya contempla `agent` null ("Sin agente asignado")
+  vía el join opcional `Lead.agent` — el campo `Lead.agent_id` (string) no se usa
+  para renderizar ahí, así que no molesta. `tsc` limpio sin tocarlo.
+
+---
+
+## Lo que NO se implementó (fuera de alcance)
+- **Desactivar agente** (`is_active`) — es la pieza siguiente; no se tocó.
+- **Fallback de WhatsApp a la agencia** — no hace falta con Modelo B (las
+  propiedades siempre tienen dueño).
+- **Cambio a la policy `Public insert lead`** — tampoco hace falta (no hay
+  propiedades huérfanas, así que no hay leads con `agent_id` NULL en propiedades
+  activas).
 
 ---
 
 ## Para probar
-1. **Registro**: crear una agencia nueva → la fila `agencies` queda con
-   `phone_wa` = el teléfono que cargó el admin. (Antes el insert habría fallado por
-   el NOT NULL.)
-2. **Admin en Preferencias**: aparece la sección "Datos de la agencia" con el
-   teléfono precargado; editarlo y guardar lo actualiza.
-3. **Agente normal en Preferencias**: NO ve la sección de la agencia, solo sus
-   preferencias personales. Si forzara la action (tampering), recibe "No autorizado".
+1. **Admin elimina un agente con propiedades**: el AlertDialog avisa cuántas
+   pasan; al confirmar, esas propiedades quedan a nombre del admin y el agente
+   desaparece de la lista. En el listado de Propiedades del admin aparecen ahora
+   bajo su nombre.
+2. **Agente sin propiedades**: el aviso lo refleja; se borra sin reasignar nada.
+3. **El admin no puede borrarse a sí mismo**: su fila no tiene botón; y si forzara
+   la action con su propio id → "No podés eliminarte a vos mismo".
+4. **Seguridad**: un agente normal que invoque la action → "No autorizado". Un
+   admin con el id de un agente de otra agencia → "Agente no encontrado".
+5. **Leads del agente borrado**: siguen visibles para el admin en Consultas como
+   "Sin agente asignado" (no se borraron, cayeron a NULL).
 
 > Nota: no verifiqué contra la base/Auth reales (sin conexión Supabase en este
-> entorno). `tsc` y `lint` pasan. Lo que más conviene confirmar en vivo: que el
-> registro ya no rompa por el NOT NULL, y que el UPDATE con service role acotado a
-> la agencia del caller funcione (y que un agente normal sea rechazado).
+> entorno). `tsc`/`lint` pasan. Lo que más conviene confirmar en vivo: que el
+> `deleteUser` cascadee como se espera (fila agents borrada, leads a NULL) y que
+> la reasignación previa deje 0 propiedades apuntando al agente antes del borrado.

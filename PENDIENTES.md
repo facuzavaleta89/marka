@@ -2,7 +2,7 @@
 
 > Lista viva de pendientes, deuda técnica y decisiones de producto abiertas.
 > Se actualiza a medida que se cierran piezas o aparecen cosas nuevas.
-> Última actualización: 11 jun 2026 (Paso 2: admin reasigna el agente de una propiedad).
+> Última actualización: 12 jun 2026 (home por rol + phone_wa de agencia + borrado de agente, Modelo B).
 
 ---
 
@@ -11,16 +11,9 @@
 > Multi-agente es el marco que da sentido a varias de estas. Sub-pieza 1 (crear
 > agentes + listar equipo) YA está hecha. Las que siguen son sus continuaciones.
 
-- [ ] **Multi-agente · sub-pieza 2 — UI por rol: lo que falta** — YA hecho: Consultas diferenciadas por rol (RLS); el admin gestiona (edita/elimina/cambia estado/**reasigna el agente de**) las propiedades de toda su agencia, con el listado por agencia + columna "Agente" (Pasos 1 y 2, vía `authorizePropertyAccess` + `resolveAssignedAgent` + service role; las policies RLS no se tocaron). **Falta solo:**
-  - **Home del dashboard diferenciado**: hoy las 4 métricas del home filtran por `agent_id`. Para un admin deberían ser por `agency_id` (propiedades activas, leads, vistas de toda la agencia). Leer `role` en `dashboard/page.tsx` y condicionar. Es lo único que queda de esta sub-pieza.
+- [ ] **Multi-agente · sub-pieza 4 — Desactivar agente (soft delete, reversible)** — alternativa al borrado: marcar `agents.is_active = false` (la columna ya existe) en vez de eliminar. Un agente desactivado no puede loguearse, no aparece como activo, no recibe leads ni se le asignan propiedades — pero su historial queda intacto y es reversible. Es la pieza MÁS invasiva (hay que filtrar `is_active` en varios lados: login/proxy, lista de equipo, selector de reasignación, etc.), por eso se dejó después del borrado real (que ya está). Decidir qué pasa con sus propiedades al desactivar (¿quedan a su nombre ocultas, o se reasignan como en el borrado?).
 
-- [ ] **Multi-agente · sub-pieza 3 — Eliminar/desvincular agente** — el admin saca a un agente de su agencia. Al eliminarlo: sus propiedades se reasignan (la base ya tiene `ON DELETE SET NULL` en `properties.agent_id`), y el fallback de WhatsApp del lead va al teléfono de la agencia. Toca:
-  - El último `ALTER` pendiente: agregar `phone_wa` a `agencies` (+ cargarlo en registro/preferencias).
-  - Actualizar la policy `Public insert lead` para contemplar el caso `agent_id IS NULL` (hoy no lo contempla a propósito, porque el caso aún no puede ocurrir).
-  - Lógica de fallback en el modal: `agentPhone = agent?.phone_wa ?? agency?.phone_wa ?? ""` (traer `agency:agencies(phone_wa)` en la query del modal y de `useProperties`).
-  - Eliminar el agente requiere service role (no hay policy para que un admin toque la fila de otro).
-
-- [ ] **White-label** (planes profesional+) — URL por agencia (`marka.com.ar/[slug-agencia]`) con el mapa filtrado a esa agencia. Personalización (color, nombre, logo) en Preferencias, "apagada" si el plan no la incluye. Acá conviene el slug limpio (ver deuda técnica). Es la pieza más independiente del resto.
+- [ ] **White-label** (planes profesional+) — URL por agencia (`marka.com.ar/[slug-agencia]`) con el mapa filtrado a esa agencia. Personalización (color, nombre, logo) en Preferencias, "apagada" si el plan no la incluye. Acá conviene el slug limpio (ver deuda técnica). Es la pieza más independiente del resto. **Próxima pieza grande** (se hará en una conversación nueva).
 
 ---
 
@@ -99,3 +92,6 @@
 - [x] Panel del dueño mejorado: 6 métricas de negocio (StatsCard) arriba de la tabla de agencias en `/admin`. Además, `/admin` ahora usa el sidebar del dashboard (layout propio con gating centralizado de `ADMIN_USER_ID`; "Panel admin" se resalta activo).
 - [x] Multi-agente · sub-pieza 2 (Paso 1): el admin gestiona (edita/elimina/cambia estado de) las propiedades de toda su agencia. Helper `authorizePropertyAccess` (owner/admin, elige el client de escritura); listado por `agency_id` con columna "Agente" para el admin. Service role + validación, sin tocar policies RLS. Probado: agente normal no toca lo ajeno, nadie cruza agencias.
 - [x] Multi-agente · sub-pieza 2 (Paso 2): el admin reasigna el `agent_id` de una propiedad a otro agente de su agencia, desde el `PropertyForm` (crear y editar). Helper `resolveAssignedAgent` con 3 barreras server-side (rol admin, destino dentro de la agencia, datos del server). Service role al reasignar (incluso reasignando propia propiedad, por el WITH CHECK implícito de la RLS). Probado + query de invariante (0 propiedades cruzadas).
+- [x] Home del dashboard diferenciado por rol: las 4 métricas + últimas propiedades filtran por `agency_id` si el user es admin (toda la agencia) o `agent_id` si es agente (lo suyo). Cierra la sub-pieza 2 de multi-agente. Solo lecturas, vía un `scope` reusado en las queries.
+- [x] `agencies.phone_wa` (NOT NULL): WhatsApp obligatorio de la agencia. Migrado (nullable → backfill con el del admin fundador → NOT NULL). Se setea en el registro (hereda el del admin) y se edita en Preferencias (solo admin, `updateAgencyPhoneAction` service role). Agregado al tipo `Agency`.
+- [x] Multi-agente · sub-pieza 3: el admin elimina (borrado real) un agente de su agencia (`deleteAgentAction`). **Modelo B**: las propiedades del agente se reasignan al admin ANTES de borrar (nunca quedan huérfanas), después `deleteUser` cascadea (fila agents borrada, leads viejos a NULL = historial). Barreras: no auto-borrarse, ser admin, target de la misma agencia. Como las propiedades nunca quedan huérfanas, NO hizo falta el fallback de WhatsApp ni tocar la policy del lead (se evaluaron y se descartaron por el Modelo B). Probado + invariante (0 huérfanas, 0 cruzadas).

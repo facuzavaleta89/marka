@@ -25,7 +25,7 @@
 -- Fase 3 — estado actual:
 --   * role en agents: YA MIGRADO (incluido abajo).
 --   * tenant_type en agencies: YA MIGRADO (incluido abajo).
---   * phone_wa en agencies: NO existe todavía — se agregará por ALTER.
+--   * phone_wa en agencies: YA MIGRADO (nullable → backfill → NOT NULL). Incluido abajo.
 -- No incluyas phone_wa acá hasta que esté realmente migrada, para que el
 -- schema no mienta.
 -- ============================================================
@@ -69,8 +69,12 @@ CREATE TABLE agencies (
               CHECK (tenant_type IN ('individual', 'agency')),
   logo_url    TEXT,
   website     TEXT,
-  -- FASE 3 (no implementado aún): phone_wa de la agencia como fallback del lead
-  -- cuando el agente asignado ya no existe. Hoy la base NO tiene esta columna.
+  -- Teléfono de WhatsApp de la agencia (Fase 3, YA MIGRADO: agregado por ALTER
+  -- nullable → backfill con el phone_wa del admin fundador → SET NOT NULL).
+  -- Obligatorio: toda agencia tiene un WhatsApp de contacto. Se setea en el
+  -- registro (hereda el del admin que la crea) y se edita en Preferencias (solo
+  -- el admin de agencia). Mismo formato que agents.phone_wa ("5491112345678").
+  phone_wa    TEXT NOT NULL,
   -- Branding para la futura vista white-label (plan profesional/premium).
   brand_color TEXT,                       -- ej: "#A0522D" (override del acento)
   created_at  TIMESTAMPTZ DEFAULT now()

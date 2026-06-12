@@ -5,8 +5,21 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { UserPlus, X, Mail, Phone } from "lucide-react";
-import { createAgentAction } from "@/app/(agent)/dashboard/equipo/actions";
+import { UserPlus, X, Mail, Phone, Trash2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  createAgentAction,
+  deleteAgentAction,
+} from "@/app/(agent)/dashboard/equipo/actions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { Agent } from "@/types";
@@ -16,11 +29,15 @@ import type { Agent } from "@/types";
 export type TeamMember = Pick<
   Agent,
   "id" | "full_name" | "email" | "phone_wa" | "role" | "created_at"
->;
+> & {
+  // Cuántas propiedades tiene el agente. Se muestra en el aviso de borrado
+  // (esas propiedades pasan al admin). La calcula la página.
+  property_count: number;
+};
 
 interface TeamContentProps {
   members: TeamMember[];
-  // id del admin logueado: para marcar "Vos" en la lista.
+  // id del admin logueado: para marcar "Vos" y ocultar su propio botón de borrar.
   currentUserId: string;
 }
 
@@ -42,7 +59,30 @@ function RoleBadge({ role }: { role: Agent["role"] }) {
 // ─── Componente principal ─────────────────────────────────────
 
 export function TeamContent({ members, currentUserId }: TeamContentProps) {
+  const router = useRouter();
   const [showForm, setShowForm] = useState(false);
+  const [toDelete, setToDelete] = useState<TeamMember | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
+
+  const handleConfirmDelete = () => {
+    if (!toDelete) return;
+    const id = toDelete.id;
+    setToDelete(null);
+    setPendingId(id);
+    setError(null);
+    startTransition(async () => {
+      const result = await deleteAgentAction(id);
+      setPendingId(null);
+      if (result?.error) {
+        setError(result.error);
+      } else {
+        // El agente desapareció de la agencia → refrescar la lista.
+        router.refresh();
+      }
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -64,8 +104,68 @@ export function TeamContent({ members, currentUserId }: TeamContentProps) {
         <CreateAgentForm onClose={() => setShowForm(false)} />
       )}
 
+      {/* Banner de error de borrado */}
+      {error && (
+        <div className="flex items-start gap-3 bg-terracota-subtle border border-terracota/20 rounded-md px-4 py-3">
+          <p className="flex-1 font-sans text-sm text-error">{error}</p>
+          <button
+            onClick={() => setError(null)}
+            className="text-graphite hover:text-black shrink-0"
+            aria-label="Cerrar"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
       {/* Lista del equipo */}
-      <TeamList members={members} currentUserId={currentUserId} />
+      <TeamList
+        members={members}
+        currentUserId={currentUserId}
+        pendingId={pendingId}
+        onDeleteRequest={(member) => setToDelete(member)}
+      />
+
+      {/* Confirmación de borrado */}
+      <AlertDialog
+        open={!!toDelete}
+        onOpenChange={(open) => !open && setToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              ¿Eliminar a {toDelete?.full_name}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {toDelete && toDelete.property_count > 0 ? (
+                <>
+                  Sus{" "}
+                  <strong className="text-black">
+                    {toDelete.property_count}{" "}
+                    {toDelete.property_count === 1 ? "propiedad" : "propiedades"}
+                  </strong>{" "}
+                  pasan a tu nombre y vas a poder reasignarlas. La cuenta del
+                  agente se elimina y no podrá ingresar.
+                </>
+              ) : (
+                <>
+                  La cuenta del agente se elimina y no podrá ingresar. No tiene
+                  propiedades a su nombre.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              className="bg-error text-paper hover:bg-error/90 border-0"
+            >
+              Eliminar agente
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -75,9 +175,13 @@ export function TeamContent({ members, currentUserId }: TeamContentProps) {
 function TeamList({
   members,
   currentUserId,
+  pendingId,
+  onDeleteRequest,
 }: {
   members: TeamMember[];
   currentUserId: string;
+  pendingId: string | null;
+  onDeleteRequest: (member: TeamMember) => void;
 }) {
   if (members.length === 0) {
     return (
@@ -96,9 +200,9 @@ function TeamList({
         <table className="w-full">
           <thead>
             <tr className="border-b border-stone">
-              {["Nombre", "Email", "Teléfono", "Rol"].map((col) => (
+              {["Nombre", "Email", "Teléfono", "Rol", ""].map((col, i) => (
                 <th
-                  key={col}
+                  key={col || `col-${i}`}
                   className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite text-left px-4 py-3 first:pl-5 last:pr-5"
                 >
                   {col}
@@ -139,6 +243,20 @@ function TeamList({
                 <td className="px-4 py-3">
                   <RoleBadge role={m.role} />
                 </td>
+
+                {/* Acción: eliminar (no en la fila del admin logueado) */}
+                <td className="px-5 py-3 text-right">
+                  {m.id !== currentUserId && (
+                    <button
+                      onClick={() => onDeleteRequest(m)}
+                      disabled={pendingId === m.id}
+                      className="inline-flex items-center justify-center p-1.5 rounded-md text-graphite hover:text-error hover:bg-terracota-subtle transition-colors disabled:opacity-40"
+                      aria-label={`Eliminar a ${m.full_name}`}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -163,8 +281,18 @@ function TeamList({
                   )}
                 </p>
               </div>
-              <div className="shrink-0">
+              <div className="shrink-0 flex items-center gap-2">
                 <RoleBadge role={m.role} />
+                {m.id !== currentUserId && (
+                  <button
+                    onClick={() => onDeleteRequest(m)}
+                    disabled={pendingId === m.id}
+                    className="inline-flex items-center justify-center p-1.5 rounded-md text-graphite hover:text-error hover:bg-terracota-subtle transition-colors disabled:opacity-40"
+                    aria-label={`Eliminar a ${m.full_name}`}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
               </div>
             </div>
             <div className="mt-3 pt-3 border-t border-stone space-y-1.5">
