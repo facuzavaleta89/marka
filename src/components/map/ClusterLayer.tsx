@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet.markercluster";
@@ -57,9 +57,17 @@ export function ClusterLayer({ properties }: ClusterLayerProps) {
   // forzar recreación de markers cuando cambian (se aplican como estado live).
   const selectedIdRef = useRef<string | null>(selectedPropertyId);
   const isVisitedRef = useRef(isVisited);
-  isVisitedRef.current = isVisited;
   const isFavoriteRef = useRef(isFavorite);
-  isFavoriteRef.current = isFavorite;
+
+  // Mantener las refs "latest" sin escribirlas en render (eso es inseguro bajo
+  // render concurrente). useLayoutEffect corre sincrónico tras el commit y ANTES
+  // de los efectos pasivos de markers (los de abajo), así que cuando esos efectos
+  // leen isVisitedRef/isFavoriteRef ya tienen el valor fresco. Va declarado antes
+  // que ellos para garantizar ese orden.
+  useLayoutEffect(() => {
+    isVisitedRef.current = isVisited;
+    isFavoriteRef.current = isFavorite;
+  });
 
   // Inicializar el cluster group una sola vez
   useEffect(() => {

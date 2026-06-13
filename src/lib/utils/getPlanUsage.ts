@@ -40,13 +40,23 @@ export async function getPlanUsage(
 
   const subscription = sub as SubscriptionRow | null;
   const used = count ?? 0;
+  // Límite efectivo (default free si no hay fila). Se resuelve una sola vez para
+  // derivar available/over de forma consistente.
+  const limit = subscription?.property_limit ?? PLANS.free.propertyLimit;
+
+  // available/over saneados en un único lugar: ningún consumidor vuelve a restar
+  // limit - used suelto (eso era el footgun que dejaba pasar negativos).
+  const available = Math.max(0, limit - used); // cupos libres, nunca negativo
+  const over = Math.max(0, used - limit);      // excedente sobre el límite, 0 si dentro
 
   // Sin suscripción → default al plan free (límite y entitlements de PLANS.free).
   return {
     plan: subscription?.plan ?? "free",
     used,
-    limit: subscription?.property_limit ?? PLANS.free.propertyLimit,
-    canCreate: used < (subscription?.property_limit ?? PLANS.free.propertyLimit),
+    limit,
+    available,
+    over,
+    canCreate: used < limit,
     hasFeatured: subscription?.has_featured ?? PLANS.free.featured,
     hasWhiteLabel: subscription?.has_white_label ?? PLANS.free.whiteLabel,
     hasMetrics: subscription?.has_metrics ?? PLANS.free.metrics,

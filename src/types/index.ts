@@ -344,6 +344,8 @@ export interface PlanUsage {
   plan: SubscriptionPlan;
   used: number;          // propiedades activas/pausadas actuales
   limit: number;         // property_limit del plan
+  available: number;     // Math.max(0, limit - used). Saneado: NUNCA negativo (0 si used > limit)
+  over: number;          // Math.max(0, used - limit). 0 si dentro del límite; > 0 si se excedió (ej. tras downgrade)
   canCreate: boolean;    // used < limit
   hasFeatured: boolean;     // = subscription.has_featured
   hasWhiteLabel: boolean;   // = subscription.has_white_label

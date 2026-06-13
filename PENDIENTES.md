@@ -2,7 +2,7 @@
 
 > Lista viva de pendientes, deuda técnica y decisiones de producto abiertas.
 > Se actualiza a medida que se cierran piezas o aparecen cosas nuevas.
-> Última actualización: 12 jun 2026 (home por rol + phone_wa de agencia + borrado de agente, Modelo B).
+> Última actualización: 12 jun 2026 (limpieza: available/over saneados, slug limpio de agencia, 3 errores de lint resueltos).
 
 ---
 
@@ -36,8 +36,7 @@
 
 ## Deuda técnica
 
-- [ ] **3 errores de lint preexistentes** — `ClusterLayer.tsx` (x2, refs) y `StatsCard.tsx` (set-state-in-effect). No bloquean el build. Arreglar cuando se pueda.
-- [ ] **Slug de agencia "feo"** — `generateSlug` agrega un sufijo aleatorio (`inmobiliaria-lopez-a3f9k2`). Garantiza unicidad pero no es lindo. Para white-label conviene un slug limpio (base + reintento ante colisión). Resolver cuando se haga white-label.
+- [ ] **Editar el slug de agencia en Preferencias** — el slug limpio ya se autogenera al crear la agencia (base + `-2`/`-3` ante colisión). Falta permitir cambiarlo manualmente desde Preferencias (con check de disponibilidad). Se dejó para white-label: ahí el slug va a la URL pública, y cambiarlo implica decidir qué pasa con los links viejos (¿redirect del slug anterior?). Diseñarlo con white-label, no antes.
 - [ ] **Escalado del panel `/admin`** — hoy trae todas las agencias y filtra client-side (correcto para pocas agencias). Cuando haya muchas, mover el filtrado a la query (server-side) y paginar.
 - [ ] **Repo de migraciones**: RESUELTO (9 jun 2026). El `initial_schema.sql` ahora refleja la base real; se eliminó la bitácora parcial. El `03-schema.sql` del Project es la fuente de verdad documentada.
 
@@ -49,12 +48,6 @@
 
 - [ ] **¿Un particular (free) puede pagar por destacar su única propiedad?** — decisión de modelo de negocio.
 - [ ] **Validar precios con el mercado** — cuánto pagan las inmobiliarias locales por Zonaprop, para calibrar los precios de los planes ($30k/$65k/$140k son placeholders).
-
----
-
-## Bugs / observaciones menores
-
-- [ ] **Cálculo `available` negativo** en el dashboard home cuando una agencia bajó de plan (quedó con más propiedades activas que el límite del plan nuevo). Revisar el cálculo para que no muestre negativo.
 
 ---
 
@@ -95,3 +88,4 @@
 - [x] Home del dashboard diferenciado por rol: las 4 métricas + últimas propiedades filtran por `agency_id` si el user es admin (toda la agencia) o `agent_id` si es agente (lo suyo). Cierra la sub-pieza 2 de multi-agente. Solo lecturas, vía un `scope` reusado en las queries.
 - [x] `agencies.phone_wa` (NOT NULL): WhatsApp obligatorio de la agencia. Migrado (nullable → backfill con el del admin fundador → NOT NULL). Se setea en el registro (hereda el del admin) y se edita en Preferencias (solo admin, `updateAgencyPhoneAction` service role). Agregado al tipo `Agency`.
 - [x] Multi-agente · sub-pieza 3: el admin elimina (borrado real) un agente de su agencia (`deleteAgentAction`). **Modelo B**: las propiedades del agente se reasignan al admin ANTES de borrar (nunca quedan huérfanas), después `deleteUser` cascadea (fila agents borrada, leads viejos a NULL = historial). Barreras: no auto-borrarse, ser admin, target de la misma agencia. Como las propiedades nunca quedan huérfanas, NO hizo falta el fallback de WhatsApp ni tocar la policy del lead (se evaluaron y se descartaron por el Modelo B). Probado + invariante (0 huérfanas, 0 cruzadas).
+- [x] Limpieza (tanda 12 jun): (a) `getPlanUsage` ahora expone `available` (saneado, nunca negativo) y `over` (excedente); el home usa `available` directo + subtítulo claro cuando se excede el límite — cierra el footgun del negativo de raíz, listo para el downgrade. (b) Slug limpio de agencia al crear (`generateUniqueAgencySlug`: base + `-2`/`-3` ante colisión + reintento ante 23505); `generateSlug` y el slug de propiedades intactos. (c) Los 3 errores de lint preexistentes resueltos (ClusterLayer refs → `useLayoutEffect`; StatsCard count-up → disable comentado): `npm run lint` en 0 errores, quedan los 2 warnings RHF conocidos.

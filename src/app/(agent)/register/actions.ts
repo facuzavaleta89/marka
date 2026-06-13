@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { generateSlug } from "@/lib/utils/generateSlug";
+import { generateUniqueAgencySlug } from "@/lib/utils/agencySlug";
 import { translateAuthError } from "@/lib/utils/authErrors";
 import { redirect } from "next/navigation";
 import { PLANS, type TenantType } from "@/types";
@@ -44,23 +44,41 @@ export async function registerAction(
   const agencyName =
     data.tenantType === "agency" ? data.agencyName : data.fullName;
 
-  const { data: agency, error: agencyError } = await admin
-    .from("agencies")
-    .insert({
-      city_id: data.cityId,
-      name: agencyName,
-      slug: generateSlug(agencyName),
-      tenant_type: data.tenantType,
-      // La agencia hereda el WhatsApp de su admin fundador: el dueño es el
-      // contacto natural de la agencia recién creada. Es editable después en
-      // Preferencias si la agencia tiene otro número. phone_wa es NOT NULL en la
-      // base, así que setearlo acá es obligatorio (sin esto el insert fallaría).
-      phone_wa: data.phoneWa,
-    })
-    .select("id")
-    .single();
+  // Slug LIMPIO para la agencia (white-label lo usa en la URL): sin sufijo
+  // aleatorio, con -2/-3 solo ante colisión. El pre-chequeo de
+  // generateUniqueAgencySlug no es atómico, así que reintentamos el insert ante
+  // una violación de UNIQUE del slug (23505, race de dos registros con el mismo
+  // nombre): en el siguiente intento ve el slug recién tomado y prueba el
+  // siguiente número. agencies.slug UNIQUE es la garantía final.
+  let agency: { id: string } | null = null;
+  for (let attempt = 0; attempt < 3 && !agency; attempt++) {
+    const slug = await generateUniqueAgencySlug(admin, agencyName);
+    const { data: inserted, error: insertError } = await admin
+      .from("agencies")
+      .insert({
+        city_id: data.cityId,
+        name: agencyName,
+        slug,
+        tenant_type: data.tenantType,
+        // La agencia hereda el WhatsApp de su admin fundador: el dueño es el
+        // contacto natural de la agencia recién creada. Es editable después en
+        // Preferencias si la agencia tiene otro número. phone_wa es NOT NULL en la
+        // base, así que setearlo acá es obligatorio (sin esto el insert fallaría).
+        phone_wa: data.phoneWa,
+      })
+      .select("id")
+      .single();
 
-  if (agencyError || !agency) {
+    if (inserted) {
+      agency = inserted;
+      break;
+    }
+    // 23505 = unique_violation. En agencies el único UNIQUE relevante es el slug,
+    // así que reintentamos regenerando. Cualquier otro error: no insistir.
+    if (insertError?.code !== "23505") break;
+  }
+
+  if (!agency) {
     return { error: "No se pudo crear la agencia" };
   }
 

@@ -142,7 +142,8 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 │   │   │   └── useWhatsApp.ts
 │   │   └── utils/
 │   │       ├── formatPrice.ts           ← formatPrice + formatPriceCompact (pines)
-│   │       ├── generateSlug.ts          ← Slug con sufijo aleatorio
+│   │       ├── generateSlug.ts          ← slugifyBase (limpieza pura) + generateSlug (base + sufijo aleatorio, para propiedades)
+│   │       ├── agencySlug.ts            ← generateUniqueAgencySlug (async): slug limpio de agencia, colisión → -2/-3 (para white-label)
 │   │       ├── waMessage.ts             ← generateWaUrl(): string | null
 │   │       ├── getPlanUsage.ts          ← Helper server: cuenta por agency_id
 │   │       ├── authErrors.ts            ← translateAuthError: mapea errores de Supabase Auth a español (registro + alta de agente)
@@ -202,7 +203,8 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 
 ### ESLint
 - El patrón `setIsLoading(true)` al inicio de efectos: usar IIFE async dentro del efecto. No bajar la regla globalmente.
-- Hay dos warnings cosméticos no bloqueantes, ambos inherentes a react-hook-form + React Compiler (no se memoiza bien): en `PropertyForm.tsx` (cast `zodResolver`) y en `RegisterForm.tsx` (el `watch("tenantType")` del toggle Inmobiliaria/Particular). Son warnings, no errores; no bloquean el build.
+- `npm run lint` queda en **0 errores**. Los 3 errores preexistentes de `react-hooks` se resolvieron: ClusterLayer (refs escritas en render → movidas a `useLayoutEffect`) y StatsCard (`set-state-in-effect` del count-up → silenciado con `eslint-disable` comentado, es la rama benigna de reduced-motion).
+- Quedan dos warnings cosméticos no bloqueantes, ambos inherentes a react-hook-form + React Compiler (el `watch()` no se memoiza): en `RegisterForm.tsx` (el `watch("tenantType")` del toggle Inmobiliaria/Particular) y en `PropertyForm.tsx` (el `watch("currency")`). Son warnings, no errores; no bloquean el build.
 
 ### Estilos
 - Tailwind, sin CSS-in-JS ni módulos CSS. shadcn/ui para componentes base
@@ -221,7 +223,7 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 - `nearbyCityId` (campo del store) marca la ciudad detectada por geolocalización para el label "Cerca tuyo".
 
 ### Plan usage — getPlanUsage
-- Siempre `src/lib/utils/getPlanUsage.ts`. Cuenta por `agency_id`. Solo en server.
+- Siempre `src/lib/utils/getPlanUsage.ts`. Cuenta por `agency_id`. Solo en server. Expone `available` (cupos libres, **ya saneado, nunca negativo**) y `over` (excedente sobre el límite, 0 si está dentro) — el saneo vive en el helper, los consumidores no restan `limit - used` por su cuenta (evita el footgun del negativo, relevante cuando exista el downgrade).
 
 ### Etiquetas UI — labels.ts
 - Nunca definir mapas de etiquetas inline. Usar `PROPERTY_TYPE_LABELS`, `OPERATION_TYPE_LABELS`, `PROPERTY_STATUS_LABELS`, `AMENITY_LABELS`, `CURRENCY_LABELS`.

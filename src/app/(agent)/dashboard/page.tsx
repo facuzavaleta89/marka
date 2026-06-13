@@ -85,9 +85,13 @@ export default async function DashboardPage() {
     0
   );
 
-  const propertyLimit = planUsage.limit;
-  const used = planUsage.used;
-  const available = propertyLimit - used;
+  // available y over vienen ya saneados de getPlanUsage (available nunca negativo).
+  // El subtítulo cambia según si la agencia está dentro o por encima del límite,
+  // para que no se lea contradictorio junto al "0 disponibles" cuando se excedió.
+  const usageDescription =
+    planUsage.over > 0
+      ? `Límite del plan: ${planUsage.limit} · ${planUsage.used} activas`
+      : `${planUsage.used} de ${planUsage.limit} usadas`;
 
   return (
     <div className="p-8">
@@ -117,9 +121,9 @@ export default async function DashboardPage() {
         {/* La métrica más relevante para el agente — resaltada en terracota */}
         <StatsCard
           title="Disponibles del plan"
-          value={Math.max(0, available)}
+          value={planUsage.available}
           icon={<Layers size={20} />}
-          description={`${used} de ${propertyLimit} usadas`}
+          description={usageDescription}
           accent
         />
       </div>

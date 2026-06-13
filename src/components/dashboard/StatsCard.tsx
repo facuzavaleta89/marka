@@ -23,6 +23,10 @@ function useCountUp(target: number, durationMs = 600) {
       "(prefers-reduced-motion: reduce)"
     ).matches;
     if (reduce || target <= 0) {
+      // Count-up: salto directo al valor final sin animar (reduced-motion o
+      // target 0). Es seguro: sin loop (las deps no incluyen n) y un solo render
+      // extra, imperceptible. Animar con rAF requiere setState en efecto igual.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setN(target);
       return;
     }
