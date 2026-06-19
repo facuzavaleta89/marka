@@ -5,13 +5,12 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { SlidersHorizontal, MapIcon, List } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { useCityStore } from "@/store/cityStore";
 import { useMapFilters, selectActiveFiltersCount } from "@/store/mapFiltersStore";
-import { CityPicker } from "@/components/map/CityPicker";
 import { Wordmark } from "@/components/brand/Wordmark";
 import { FilterPanel } from "@/components/map/FilterPanel";
 import { PropertyModal } from "@/components/map/PropertyModal";
 import { PropertyList } from "@/components/properties/PropertyList";
+import type { City } from "@/types";
 
 const MapView = dynamic(
   () => import("@/components/map/MapView").then((m) => ({ default: m.MapView })),
@@ -21,25 +20,26 @@ const MapView = dynamic(
   }
 );
 
-export default function PublicPage() {
-  const city = useCityStore((s) => s.city);
-  const isLoading = useCityStore((s) => s.isLoading);
-  const initCity = useCityStore((s) => s.initCity);
+interface AgencyMapViewProps {
+  // Ciudad de la agencia, resuelta en el server (no por cityStore): la vista
+  // white-label es de UNA agencia en SU ciudad, no navegable a otras ciudades.
+  city: City;
+  agencyId: string;
+}
+
+// Vista del marketplace filtrada a una sola agencia (base de white-label). Misma
+// estructura y diseño que la home, sin CityPicker (la ciudad es fija) y con el
+// agencyId enhebrado al mapa y a la lista mobile. SIN personalización todavía
+// (logo/nombre): el mapa se ve con el diseño estándar.
+export function AgencyMapView({ city, agencyId }: AgencyMapViewProps) {
   const activeFilters = useMapFilters(selectActiveFiltersCount);
   const selectedPropertyId = useMapFilters((s) => s.selectedPropertyId);
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const [showMap, setShowMap] = useState(true);
   // Sesión del agente: si está logueado, el CTA del header pasa a "Ir al panel".
-  // Por defecto false → mostramos "Ingresar" sin layout shift mientras resuelve.
   const [isAuthed, setIsAuthed] = useState(false);
 
-  // Inicializa la ciudad activa una sola vez para toda la app
-  useEffect(() => {
-    initCity();
-  }, [initCity]);
-
-  // Detecta sesión client-side (sin volver dinámica la home ni fetchear el perfil).
-  // IIFE async dentro del efecto (CLAUDE.md: no bajar la regla de ESLint).
+  // Detecta sesión client-side (igual que la home). IIFE async dentro del efecto.
   useEffect(() => {
     const supabase = createClient();
     (async () => {
@@ -50,52 +50,6 @@ export default function PublicPage() {
     })();
   }, []);
 
-  // ── Estado de carga: skeleton del layout (header + panel + mapa) ──
-  if (isLoading) {
-    return (
-      <div className="flex flex-col h-dvh bg-paper overflow-hidden">
-        {/* Header */}
-        <header className="h-14 flex items-center justify-between px-4 md:px-6 bg-paper border-b border-stone shrink-0">
-          <Link href="/" aria-label="Ir al mapa">
-            <div className="h-5 w-24 rounded-sm bg-stone/30 animate-pulse" />
-          </Link>
-          <div className="h-7 w-32 rounded-md bg-stone/30 animate-pulse" />
-          <div className="h-5 w-16 rounded-sm bg-stone/30 animate-pulse" />
-        </header>
-
-        <div className="flex flex-1 overflow-hidden">
-          {/* FilterPanel skeleton (desktop) */}
-          <aside className="hidden md:flex flex-col gap-6 w-80 shrink-0 border-r border-stone bg-paper p-5">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="space-y-2.5">
-                <div className="h-2.5 w-24 rounded-sm bg-stone/30 animate-pulse" />
-                <div className="h-9 w-full rounded-md bg-stone/30 animate-pulse" />
-              </div>
-            ))}
-          </aside>
-
-          {/* Mapa skeleton */}
-          <div className="flex-1 bg-mist animate-pulse" />
-        </div>
-      </div>
-    );
-  }
-
-  if (!city) {
-    return (
-      <div className="h-dvh bg-paper flex items-center justify-center px-4">
-        <div className="text-center">
-          <p className="font-serif text-2xl font-semibold text-black mb-2">
-            Sin ciudades disponibles
-          </p>
-          <p className="font-sans text-sm text-graphite">
-            Configurá al menos una ciudad activa en el panel de administración.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col h-dvh bg-paper overflow-hidden">
       {/* ── Header ─────────────────────────────────────────────── */}
@@ -103,8 +57,6 @@ export default function PublicPage() {
         <Link href="/" aria-label="Ir al mapa">
           <Wordmark size="md" variant="dark" />
         </Link>
-
-        <CityPicker />
 
         <Link
           href={isAuthed ? "/dashboard" : "/login"}
@@ -123,22 +75,22 @@ export default function PublicPage() {
 
         {/* Área principal — z-0 crea un stacking context que contiene los panes de Leaflet */}
         <div className="flex-1 relative overflow-hidden z-0">
-          {/* MapView */}
+          {/* MapView filtrado a la agencia */}
           <div className={showMap ? "h-full" : "hidden md:block h-full"}>
             <MapView
               cityId={city.id}
               center={[city.center_lat, city.center_lng]}
               zoom={city.default_zoom}
+              agencyId={agencyId}
             />
           </div>
 
-          {/* Vista de lista (mobile, cuando showMap es false).
-              Mismos datos/filtros que el mapa (useProperties), cards-first. */}
-          {!showMap && <PropertyList city={city} />}
+          {/* Vista de lista (mobile). Mismos datos/filtros + agencyId que el mapa. */}
+          {!showMap && <PropertyList city={city} agencyId={agencyId} />}
         </div>
       </div>
 
-      {/* ── PropertyModal a nivel de página (no dentro del mapa) ── */}
+      {/* ── PropertyModal a nivel de página ───────────────────── */}
       <PropertyModal />
 
       {/* ── FilterPanel mobile: bottom sheet ───────────────────── */}
@@ -148,12 +100,10 @@ export default function PublicPage() {
         onClose={() => setFilterPanelOpen(false)}
       />
 
-      {/* ── FABs mobile (par coherente) ──────────────────────────
-          Se ocultan cuando el PropertyModal está abierto para no competir
-          con el botón de WhatsApp del bottom sheet. Respetan el safe-area. */}
+      {/* ── FABs mobile (par coherente) ────────────────────────── */}
       {!selectedPropertyId && (
         <>
-          {/* Filtros — secundario: paper + borde stone + texto graphite */}
+          {/* Filtros — secundario */}
           <button
             onClick={() => setFilterPanelOpen(true)}
             className="md:hidden fixed left-4 z-[610] flex items-center gap-2 h-11 px-4 font-sans text-sm font-medium text-graphite bg-paper border border-stone rounded-md shadow-lg hover:bg-mist transition-colors"
@@ -164,7 +114,7 @@ export default function PublicPage() {
             Filtros{activeFilters > 0 ? ` (${activeFilters})` : ""}
           </button>
 
-          {/* Ver lista / Ver mapa — primario: terracota + texto paper */}
+          {/* Ver lista / Ver mapa — primario */}
           <button
             onClick={() => setShowMap((v) => !v)}
             className="md:hidden fixed right-4 z-[610] flex items-center gap-2 h-11 px-5 font-sans text-sm font-medium text-paper bg-terracota hover:bg-terracota-hover rounded-md shadow-lg transition-colors"

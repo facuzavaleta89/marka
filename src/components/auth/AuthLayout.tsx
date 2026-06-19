@@ -17,10 +17,10 @@ interface AuthLayoutProps {
 
 export function AuthLayout({ claim, subclaim, children }: AuthLayoutProps) {
   return (
-    <div className="flex min-h-screen flex-col bg-paper md:flex-row md:items-start">
+    <div className="flex h-dvh flex-col overflow-y-auto bg-paper md:flex-row md:items-start">
       {/* ── Panel de identidad ──────────────────────────────────
           En mobile: franja superior corta. En desktop: columna a sangre. */}
-      <section className="relative flex h-44 shrink-0 flex-col justify-between overflow-hidden px-6 py-5 md:sticky md:top-0 md:h-screen md:w-[44%] md:px-10 md:py-10">
+      <section className="relative flex h-44 shrink-0 flex-col justify-between overflow-hidden px-6 py-5 md:sticky md:top-0 md:h-dvh md:w-[44%] md:px-10 md:py-10">
         {/* ════════════════════════════════════════════════════════════
             FONDO DEL PANEL — preparado para foto editorial.
             Cuando haya una fotografía real, reemplazar SOLO el <div> de
@@ -61,8 +61,13 @@ export function AuthLayout({ claim, subclaim, children }: AuthLayoutProps) {
       </section>
 
       {/* ── Panel del formulario ─────────────────────────────────── */}
-      <main className="flex flex-1 items-center justify-center px-6 py-10 md:px-10">
-        <div className="w-full max-w-sm">
+      {/* flex-col + m-auto en el hijo: centra el formulario cuando entra, pero si
+          es más alto que el viewport (register con el campo condicional + teclado)
+          el margen auto colapsa y el bloque fluye desde arriba, scrolleando dentro
+          del contenedor raíz (h-dvh overflow-y-auto). Evita el recorte del top que
+          produce justify-center con contenido que desborda. */}
+      <main className="flex flex-1 flex-col px-6 py-10 md:px-10">
+        <div className="m-auto w-full max-w-sm">
           {/* Salida explícita al mapa (navegación secundaria, no botón).
               Convive con el wordmark clickeable del panel de identidad. */}
           <Link

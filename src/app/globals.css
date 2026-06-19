@@ -150,6 +150,22 @@
   }
 }
 
+/* ─── Lock de scroll del documento ─────────────────────────────
+   El documento (html/body) NUNCA scrollea: cada pantalla full-height usa la
+   unidad dinámica dvh y maneja su propio scroll en contenedores internos
+   (la home/agencia con flex-1 overflow-hidden + sheets/listas internas; el
+   dashboard con main overflow-y-auto; login/register con su raíz h-dvh
+   overflow-y-auto). Sin scroll de documento, el "scroll into view" del
+   navegador al enfocar (input de WhatsApp, anchors de zoom de Leaflet) no
+   tiene a dónde desplazar, así que el header en flujo normal no se descoloca
+   en mobile. Regla a nivel raíz (fuera de @layer) para ganarle a las
+   utilidades de altura de Tailwind. */
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
 /* Contenemos el z-index de Leaflet para no interferir con el UI de la app.
    Los panes de Leaflet llegan hasta 700 por defecto; los bajamos a ≤ 401
    para que el header, modal y filtros (z ≥ 600) siempre queden por encima. */

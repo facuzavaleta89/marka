@@ -5,7 +5,14 @@ import { createClient } from "@/lib/supabase/client";
 import { useMapFilters } from "@/store/mapFiltersStore";
 import type { MapBounds, Property } from "@/types";
 
-export function useProperties(cityId: string, bounds: MapBounds | null) {
+// agencyId opcional: cuando viene (vista white-label /[slug]), restringe el mapa
+// a las propiedades de esa agencia, ADICIONAL al filtro de city_id + status active.
+// Sin agencyId (home) el comportamiento no cambia.
+export function useProperties(
+  cityId: string,
+  bounds: MapBounds | null,
+  agencyId?: string | null
+) {
   const [properties, setProperties] = useState<Property[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +41,11 @@ export function useProperties(cityId: string, bounds: MapBounds | null) {
         )
         .eq("city_id", cityId)
         .eq("status", "active");
+
+      // Vista por agencia (white-label): filtro adicional al de ciudad/estado.
+      if (agencyId) {
+        query = query.eq("agency_id", agencyId);
+      }
 
       // Filtros opcionales — solo se aplican si tienen valor
       if (filters.operation_type) {
@@ -113,7 +125,7 @@ export function useProperties(cityId: string, bounds: MapBounds | null) {
     return () => {
       cancelled = true;
     };
-  }, [cityId, bounds, filters]);
+  }, [cityId, bounds, filters, agencyId]);
 
   return { properties, isLoading, error };
 }

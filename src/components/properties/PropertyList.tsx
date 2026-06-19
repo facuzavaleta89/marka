@@ -55,11 +55,13 @@ function CardSkeleton() {
 
 interface PropertyListProps {
   city: City;
+  // Vista white-label: filtra la lista a una sola agencia (igual que el mapa).
+  agencyId?: string | null;
 }
 
-export function PropertyList({ city }: PropertyListProps) {
+export function PropertyList({ city, agencyId }: PropertyListProps) {
   // Mismos datos y filtros que el mapa, pero sin bounds (toda la ciudad).
-  const { properties, isLoading } = useProperties(city.id, null);
+  const { properties, isLoading } = useProperties(city.id, null, agencyId);
   const setSelectedProperty = useMapFilters((s) => s.setSelectedProperty);
   const resetFilters = useMapFilters((s) => s.resetFilters);
   const activeCount = useMapFilters(selectActiveFiltersCount);

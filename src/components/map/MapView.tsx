@@ -51,11 +51,14 @@ interface MapViewProps {
   cityId: string;
   center: [number, number];
   zoom: number;
+  // Vista white-label: filtra el mapa a una sola agencia. Sin prop, el mapa
+  // muestra todas las agencias de la ciudad (comportamiento de la home).
+  agencyId?: string | null;
 }
 
-export function MapView({ cityId, center, zoom }: MapViewProps) {
+export function MapView({ cityId, center, zoom, agencyId }: MapViewProps) {
   const [bounds, setBounds] = useState<MapBounds | null>(null);
-  const { properties } = useProperties(cityId, bounds);
+  const { properties } = useProperties(cityId, bounds, agencyId);
 
   return (
     <MapContainer

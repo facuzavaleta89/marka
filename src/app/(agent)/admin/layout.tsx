@@ -50,7 +50,7 @@ export default async function AdminLayout({
     : (agencyRaw as { name: string } | null)?.name ?? null;
 
   return (
-    <div className="flex h-screen bg-mist overflow-hidden">
+    <div className="flex h-dvh bg-mist overflow-hidden">
       <Sidebar
         agent={{
           full_name: agent.full_name,

@@ -224,7 +224,7 @@ export function Sidebar({ agent, planUsage, isAppAdmin, isAgencyAdmin }: Sidebar
       </aside>
 
       {/* Sidebar desktop */}
-      <aside className="hidden md:flex flex-col w-64 shrink-0 bg-black h-screen sticky top-0">
+      <aside className="hidden md:flex flex-col w-64 shrink-0 bg-black h-dvh sticky top-0">
         <NavContent
           agent={agent}
           planUsage={planUsage}
