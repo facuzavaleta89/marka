@@ -26,6 +26,14 @@ export default async function AgencyPage({
     return <AgencyUnavailable />;
   }
 
-  // Activa → mapa estándar filtrado a las propiedades de esta agencia en su ciudad.
-  return <AgencyMapView city={result.city} agencyId={result.agency.id} />;
+  // Activa → mapa filtrado a las propiedades de esta agencia, con su marca
+  // (logo/nombre) en el header. Si no hay logo, el header cae al nombre en texto.
+  return (
+    <AgencyMapView
+      city={result.city}
+      agencyId={result.agency.id}
+      agencyName={result.agency.name}
+      agencyLogoUrl={result.agency.logo_url}
+    />
+  );
 }

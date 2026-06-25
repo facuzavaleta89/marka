@@ -6,8 +6,8 @@ import { cn } from "@/lib/utils";
 // las cabeceras de revista) que aporta carácter sin ser decorativo.
 
 interface WordmarkProps {
-  /** Tamaño según contexto: sm (sidebar), md (header), lg (login/register) */
-  size?: "sm" | "md" | "lg";
+  /** Tamaño: xs (atribución "powered by"), sm (sidebar), md (header), lg (login/register) */
+  size?: "xs" | "sm" | "md" | "lg";
   /** dark = texto black sobre fondos claros · light = texto paper sobre fondos oscuros */
   variant?: "dark" | "light";
   className?: string;
@@ -15,6 +15,7 @@ interface WordmarkProps {
 
 // El tracking ligeramente negativo cierra el wordmark y lo hace más sólido.
 const SIZE_CLASSES: Record<NonNullable<WordmarkProps["size"]>, string> = {
+  xs: "text-sm",
   sm: "text-xl",
   md: "text-2xl",
   lg: "text-4xl",

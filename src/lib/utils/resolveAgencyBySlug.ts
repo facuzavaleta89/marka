@@ -17,8 +17,8 @@ import type { Agency, City } from "@/types";
 // suscripción a los agentes de esa agencia, así que un visitante anónimo NO puede
 // leer has_white_label: la query volvería null y TODA agencia parecería 'disabled'.
 // Para leer el flag hace falta omitir esa RLS → admin client. La lectura es de
-// solo unos pocos campos no sensibles (id, name, city_id, el flag, y el centro de
-// la ciudad para el mapa); nunca llega al cliente (esta función es server-only).
+// solo unos pocos campos no sensibles (id, name, city_id, logo_url, el flag, y el
+// centro de la ciudad para el mapa); nunca llega al cliente (función server-only).
 // No se tocó ninguna policy (decisión de la pieza).
 
 // Fila tal como la devuelve el embed de PostgREST. La relación agency→subscription
@@ -28,6 +28,7 @@ type AgencyRow = {
   id: string;
   name: string;
   city_id: string;
+  logo_url: string | null;
   subscription:
     | { has_white_label: boolean }
     | { has_white_label: boolean }[]
@@ -40,7 +41,7 @@ export type AgencyResolution =
   | { status: "disabled" }
   | {
       status: "active";
-      agency: Pick<Agency, "id" | "name" | "city_id">;
+      agency: Pick<Agency, "id" | "name" | "city_id" | "logo_url">;
       // City completa: la ruta la usa para centrar el mapa (center_lat/lng/zoom)
       // y la lista mobile la consume entera (city.name, city.id).
       city: City;
@@ -64,7 +65,7 @@ export async function resolveAgencyBySlug(
   const { data, error } = await supabase
     .from("agencies")
     .select(
-      "id, name, city_id, subscription:subscriptions(has_white_label), city:cities(*)"
+      "id, name, city_id, logo_url, subscription:subscriptions(has_white_label), city:cities(*)"
     )
     .eq("slug", slug)
     .maybeSingle();
@@ -84,7 +85,12 @@ export async function resolveAgencyBySlug(
 
   return {
     status: "active",
-    agency: { id: row.id, name: row.name, city_id: row.city_id },
+    agency: {
+      id: row.id,
+      name: row.name,
+      city_id: row.city_id,
+      logo_url: row.logo_url,
+    },
     city,
   };
 }

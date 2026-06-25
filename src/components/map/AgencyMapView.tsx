@@ -25,13 +25,21 @@ interface AgencyMapViewProps {
   // white-label es de UNA agencia en SU ciudad, no navegable a otras ciudades.
   city: City;
   agencyId: string;
+  // Marca de la agencia para el header (white-label B2a).
+  agencyName: string;
+  agencyLogoUrl: string | null;
 }
 
-// Vista del marketplace filtrada a una sola agencia (base de white-label). Misma
-// estructura y diseño que la home, sin CityPicker (la ciudad es fija) y con el
-// agencyId enhebrado al mapa y a la lista mobile. SIN personalización todavía
-// (logo/nombre): el mapa se ve con el diseño estándar.
-export function AgencyMapView({ city, agencyId }: AgencyMapViewProps) {
+// Vista del marketplace filtrada a una sola agencia (white-label). Misma estructura
+// y diseño que la home, sin CityPicker (la ciudad es fija) y con el agencyId
+// enhebrado al mapa y a la lista mobile. El header lleva la MARCA DE LA AGENCIA
+// (logo o nombre), no el Wordmark de Marka; éste queda como "powered by" discreto.
+export function AgencyMapView({
+  city,
+  agencyId,
+  agencyName,
+  agencyLogoUrl,
+}: AgencyMapViewProps) {
   const activeFilters = useMapFilters(selectActiveFiltersCount);
   const selectedPropertyId = useMapFilters((s) => s.selectedPropertyId);
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
@@ -52,15 +60,40 @@ export function AgencyMapView({ city, agencyId }: AgencyMapViewProps) {
 
   return (
     <div className="flex flex-col h-dvh bg-paper overflow-hidden">
-      {/* ── Header ─────────────────────────────────────────────── */}
-      <header className="relative h-14 flex items-center justify-between px-4 md:px-6 bg-paper border-b border-stone shrink-0 z-50">
-        <Link href="/" aria-label="Ir al mapa">
-          <Wordmark size="md" variant="dark" />
-        </Link>
+      {/* ── Header (marca de la AGENCIA, no de Marka) ──────────────
+          Izquierda: logo si hay, si no el nombre en texto serif.
+          Centro: el nombre en texto, SOLO cuando hay logo (no duplicar).
+          Derecha: CTA al panel/login. */}
+      <header className="relative h-14 flex items-center justify-between gap-3 px-4 md:px-6 bg-paper border-b border-stone shrink-0 z-50">
+        {/* Izquierda — marca de la agencia */}
+        <div className="flex items-center min-w-0">
+          {agencyLogoUrl ? (
+            // Altura fija + ancho automático: tolera cualquier proporción de logo
+            // sin alterar la altura del header. max-w acota los logos muy anchos.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={agencyLogoUrl}
+              alt={agencyName}
+              className="h-9 w-auto max-w-[160px] object-contain"
+            />
+          ) : (
+            <span className="font-serif text-xl font-semibold text-black truncate">
+              {agencyName}
+            </span>
+          )}
+        </div>
 
+        {/* Centro — nombre en texto, solo si la izquierda muestra el logo */}
+        {agencyLogoUrl && (
+          <span className="hidden sm:block font-serif text-lg font-semibold text-black truncate">
+            {agencyName}
+          </span>
+        )}
+
+        {/* Derecha — CTA */}
         <Link
           href={isAuthed ? "/dashboard" : "/login"}
-          className="font-sans text-sm font-medium text-graphite hover:text-black transition-colors"
+          className="shrink-0 font-sans text-sm font-medium text-graphite hover:text-black transition-colors"
         >
           {isAuthed ? "Ir al panel" : "Ingresar"}
         </Link>
@@ -88,6 +121,18 @@ export function AgencyMapView({ city, agencyId }: AgencyMapViewProps) {
           {/* Vista de lista (mobile). Mismos datos/filtros + agencyId que el mapa. */}
           {!showMap && <PropertyList city={city} agencyId={agencyId} />}
         </div>
+      </div>
+
+      {/* ── "Powered by Marka." ────────────────────────────────
+          Atribución discreta al pie, centrada: libre de los FABs (left-4 /
+          right-4) y de los controles de Leaflet (zoom top-left, atribución
+          bottom-right). pointer-events-none para no robar clicks al mapa. */}
+      <div
+        className="pointer-events-none fixed left-1/2 z-[600] flex -translate-x-1/2 items-center gap-1 rounded-sm bg-paper/80 px-2 py-0.5 backdrop-blur-sm"
+        style={{ bottom: "calc(0.5rem + env(safe-area-inset-bottom, 0px))" }}
+      >
+        <span className="font-sans text-xs text-graphite">Powered by</span>
+        <Wordmark size="xs" variant="dark" />
       </div>
 
       {/* ── PropertyModal a nivel de página ───────────────────── */}
