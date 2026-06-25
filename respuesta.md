@@ -1,190 +1,193 @@
-# Fix: la navbar superior se scrollea fuera de vista en mobile
+# Diagnóstico: loop de redirección en /dashboard — SOLO RELEVAMIENTO
 
-Implementados los DOS cambios complementarios: (1) `100vh` → `dvh` en los wrappers de
-pantalla completa, y (2) lock de scroll del documento (`html, body { height:100%; overflow:hidden }`).
-El header en flujo normal ya no se descoloca porque el documento no tiene a dónde
-scrollear cuando el navegador hace "scroll into view" al enfocar.
-
----
-
-## Paso 0 — Relevamiento de TODOS los wrappers de pantalla completa
-
-Búsqueda en todo `src/` de `h-screen` / `min-h-screen` / `100vh` (más `h-full`/`min-h-full`
-para descartar usos legítimos). Resultado clasificado:
-
-### Wrappers de pantalla completa → SÍ se tocan (cambiados a `dvh`)
-
-| # | Archivo | Línea | Antes | Después | Notas |
-|---|---------|-------|-------|---------|-------|
-| 1 | `src/app/(public)/page.tsx` | 100 | `flex flex-col h-screen ... overflow-hidden` | `h-dvh` | wrapper principal home (el del bug) |
-| 2 | `src/app/(public)/page.tsx` | 56 | `flex flex-col h-screen ... overflow-hidden` | `h-dvh` | estado de carga (skeleton) de la home |
-| 3 | `src/app/(public)/page.tsx` | 86 | `h-screen bg-paper flex items-center ...` | `h-dvh` | estado "sin ciudades" |
-| 4 | `src/components/map/AgencyMapView.tsx` | 54 | `flex flex-col h-screen ... overflow-hidden` | `h-dvh` | vista white-label `/[slug]` (mismo patrón que la home) |
-| 5 | `src/app/(agent)/dashboard/layout.tsx` | 45 | `flex h-screen ... overflow-hidden` | `h-dvh` | shell del dashboard (main interno scrollea) |
-| 6 | `src/app/(agent)/admin/layout.tsx` | 53 | `flex h-screen ... overflow-hidden` | `h-dvh` | shell del panel admin (mismo patrón) |
-| 7 | `src/components/dashboard/Sidebar.tsx` | 227 | `... bg-black h-screen sticky top-0` | `h-dvh` | sidebar desktop (consistencia con el shell dvh) |
-
-### Casos `min-h-screen` → evaluados uno por uno
-
-| # | Archivo | Línea | Decisión | Justificación |
-|---|---------|-------|----------|---------------|
-| 8 | `src/components/agency/AgencyUnavailable.tsx` | 10 | `min-h-screen` → `min-h-dvh` | Página de estado simple, no interactiva (sin teclado/zoom). Contenido chico que entra en cualquier viewport real → el lock del body no lo recorta. Se pasa a `dvh` por consistencia. |
-| 9 | `src/components/auth/AuthLayout.tsx` | 20 | `min-h-screen` → **`h-dvh overflow-y-auto`** (+ ajuste del form, ver Paso 3) | **CASO QUE DEPENDÍA DEL SCROLL DEL DOCUMENTO.** login/register no tienen contenedor interno con scroll: el form largo (register con el campo condicional "nombre de inmobiliaria" + teclado) hacía scrollear el documento. Con el lock se cortaría → se le da su propio contenedor scrolleable. |
-| 10 | `src/components/auth/AuthLayout.tsx` | 23 | `md:h-screen` → `md:h-dvh` | Panel de identidad sticky (solo desktop). En desktop `dvh == vh`; cambio por consistencia. Se preservan `md:sticky md:top-0` y el `md:items-start` del root (DESIGN §14). |
-
-### Usos NO tocados (legítimos, no son wrappers de pantalla completa)
-
-- `layout.tsx` html `h-full` / body `min-h-full`: las reglas de altura/overflow del lock
-  se agregan en `globals.css` (ver Paso 3); las clases quedan, no estorban.
-- `h-full` de relleno dentro de contenedores ya acotados: `PropertyList.tsx:27`
-  (`h-full overflow-y-auto`, scroll interno de la lista mobile), `PropertyModal.tsx`
-  (140, 232 — cuerpo del sheet), `FilterPanel.tsx` (183, 401), `Sidebar.tsx:73`
-  (`NavContent`), `PropertyCard.tsx` / `ImageUploader.tsx` / `ProfileForm.tsx` (imágenes),
-  `SubscriptionContent.tsx:237` (barra de progreso), `slider.tsx` (interno de shadcn),
-  `AuthLayout.tsx:29` (imagen a sangre del panel). Todos llenan un padre ya dimensionado.
-- `fixed`/`sticky` que ya funcionan y NO se tocan (el diagnóstico confirmó que se reanclan
-  bien): bottom sheet del modal `h-[82vh]` (`PropertyModal.tsx:508`), FABs (`page.tsx` 159/170,
-  `AgencyMapView.tsx`), marco editorial `fixed inset-0 z-[9999]` (`layout.tsx:55`), sidebar
-  mobile `fixed inset-y-0` y hamburguesa `fixed` (`Sidebar.tsx`), barra sticky de acción del
-  form (`PropertyForm.tsx`).
+> No se modificó nada. Causa raíz: **loop de redirección auth** entre el middleware
+> (`proxy.ts`) y los Server Components del dashboard. El `replaceState` rate-limited
+> (`DOMException: The operation is insecure`, `app-router.tsx:364`) es el **síntoma
+> cliente** de que el App Router sigue una cadena de redirects que rebota en bucle.
+> **El white-label `/[slug]` NO está involucrado** (lo confirmo abajo).
 
 ---
 
-## Paso 1 — Clase `dvh` en este setup
+## 1. `proxy.ts` — el guard
 
-**Usé `h-dvh` / `min-h-dvh` (utilidad nativa), NO el valor arbitrario `h-[100dvh]`.**
+```ts
+import { updateSession } from "@/lib/supabase/middleware";
+import { NextResponse, type NextRequest } from "next/server";
 
-Motivo: el proyecto usa **Tailwind CSS v4** (`"tailwindcss": "^4"`, `@tailwindcss/postcss`,
-`@import "tailwindcss"` en `globals.css`). Tailwind v4 trae de fábrica las utilidades de
-viewport dinámico (`h-dvh`, `min-h-dvh`, `h-svh`, `h-lvh`, etc.). No hace falta el arbitrario.
-Aplicado de forma consistente en todos los wrappers.
+const PROTECTED_PREFIXES = ["/dashboard", "/perfil", "/preferencias", "/suscripcion", "/admin"];
 
----
+export async function proxy(request: NextRequest) {
+  const { supabaseResponse, user } = await updateSession(request);
+  const { pathname } = request.nextUrl;
 
-## Paso 2 — `100vh` → `dvh` en los wrappers
+  // (A) Protegida sin sesión → /login
+  if (PROTECTED_PREFIXES.some((p) => pathname.startsWith(p)) && !user) {
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    return NextResponse.redirect(loginUrl);        // ← respuesta NUEVA
+  }
 
-Cambios #1–#7 de la tabla (todos `h-screen` → `h-dvh`) y #10 (`md:h-screen` → `md:h-dvh`).
-Cada uno es un wrapper que DEBE ocupar exactamente la pantalla y que ya maneja su scroll
-internamente (`overflow-hidden` + hijos con scroll propio, o `main overflow-y-auto` en los
-shells). No se tocó ningún `fixed`/`sticky` que ya andaba.
+  // (B) Con sesión y va a /login o /register → /dashboard
+  if (user && (pathname === "/login" || pathname === "/register")) {
+    const dashboardUrl = request.nextUrl.clone();
+    dashboardUrl.pathname = "/dashboard";
+    return NextResponse.redirect(dashboardUrl);    // ← respuesta NUEVA
+  }
 
-`min-h-screen`: el único que requería `min-h-dvh` "puro" es `AgencyUnavailable` (#8, página
-que puede crecer pero con contenido chico). `AuthLayout` (#9) NO quedó como `min-h-*`: pasó a
-ser contenedor de scroll fijo (`h-dvh overflow-y-auto`), ver Paso 3.
+  return supabaseResponse;                          // ← pass-through (con cookies)
+}
 
----
+export const config = {
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+};
+```
 
-## Paso 3 — Lock de scroll del documento
+- **Matcher:** matchea **todo** salvo estáticos (`_next/*`, favicon, imágenes). `/dashboard`,
+  `/login`, `/`, y `/[slug]` **todos** pasan por el guard.
+- **Redirects (cada uno con su condición):**
+  - **(A)** `pathname` empieza con un prefijo protegido (incluye `/dashboard`) **y `!user`** →
+    `/login`.
+  - **(B)** `user` presente **y** `pathname === "/login" || "/register"` → `/dashboard`.
+- **EL CICLO EN EL GRAFO:** (A) manda `/dashboard`(sin user)→`/login`; (B) manda
+  `/login`(con user)→`/dashboard`. Si el veredicto "¿hay user?" **cambia entre `/dashboard` y
+  `/login`**, se forma `/dashboard ⇄ /login` infinito. Eso es exactamente lo que pasa.
+- **BUG HABILITANTE (footgun documentado de `@supabase/ssr`):** en **ambas** ramas de redirect
+  se devuelve un `NextResponse.redirect(...)` **nuevo** que **NO copia las cookies** que
+  `updateSession` dejó en `supabaseResponse`. Cuando `getUser()` dispara un **refresh** del token
+  (rotación del refresh-token), las cookies nuevas viajan en `supabaseResponse` pero se **pierden**
+  en el redirect → el navegador conserva el refresh-token viejo (ya **consumido** server-side) →
+  en el siguiente request el auth "se da vuelta". La doc de Supabase exige copiar las cookies al
+  `NextResponse.redirect` (`response.cookies.setAll(...)`); acá no se hace.
 
-En `src/app/globals.css`, regla a nivel raíz (fuera de `@layer`, para ganarle a las utilidades
-de altura de Tailwind), justo después del bloque `@layer base`:
+**Conclusión:** el guard tiene un ciclo `/dashboard ⇄ /login` y, al no reenviar las cookies
+refrescadas en sus redirects, deja el auth en estado inconsistente que dispara el rebote.
 
-```css
-html,
-body {
-  height: 100%;
-  overflow: hidden;
+### `updateSession` (`src/lib/supabase/middleware.ts`) — confirma el origen de las cookies
+
+```ts
+export async function updateSession(request: NextRequest) {
+  let supabaseResponse = NextResponse.next({ request });
+  const supabase = createServerClient(URL, KEY, {
+    cookies: {
+      getAll() { return request.cookies.getAll(); },
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+        supabaseResponse = NextResponse.next({ request });
+        cookiesToSet.forEach(({ name, value, options }) =>
+          supabaseResponse.cookies.set(name, value, options));   // ← cookies SOLO en supabaseResponse
+      },
+    },
+  });
+  const { data: { user } } = await supabase.auth.getUser();      // ← puede ROTAR el refresh token
+  return { supabaseResponse, user };
 }
 ```
 
-La app entera scrollea en contenedores internos, así que el documento nunca necesita scrollear.
-Verificación de que NO se rompe el scroll interno de cada pantalla:
-
-- **Home / vista agencia:** wrapper `h-dvh overflow-hidden` → cuerpo `flex-1 overflow-hidden` →
-  el mapa llena; la lista mobile (`PropertyList`) es `h-full overflow-y-auto`; el bottom sheet
-  del modal es `fixed` con cuerpo `overflow-y-auto`. Todo scroll interno. ✔
-- **Dashboard / admin:** shell `h-dvh overflow-hidden` con `main` `relative flex-1 overflow-y-auto`
-  → los formularios largos (nueva/editar propiedad) scrollean dentro del `main`. El `relative`
-  del `main` (load-bearing, CLAUDE.md) se mantiene → no hay segundo scroll fantasma. ✔
-- **login / register (caso especial resuelto):** raíz pasó a `h-dvh overflow-y-auto` (su propio
-  contenedor scrolleable). Además cambié el panel del formulario de
-  `flex flex-1 items-center justify-center` + hijo `w-full max-w-sm` a
-  `flex flex-1 flex-col` + hijo `m-auto w-full max-w-sm`. Por qué: con un contenedor de scroll
-  de alto fijo, `justify-center` recorta el TOP del contenido cuando desborda (no se puede
-  scrollear hacia arriba). `m-auto` en el hijo centra cuando entra, pero si el form supera el
-  viewport el margen colapsa y el bloque fluye desde arriba, scrolleando dentro de la raíz.
-  Se preservaron `md:items-start` (root) y `md:sticky md:top-0` (panel) → no se reintroduce el
-  bug del wordmark de DESIGN §14. ✔
-
-### Caso de scroll de documento que hubo que resolver
-
-**`AuthLayout` (login/register)** era la única pantalla que dependía del scroll del DOCUMENTO
-(no tenía contenedor interno scrolleable). Sin tratamiento, el lock habría cortado el form de
-register en pantallas cortas / con teclado. Resuelto dándole su propio contenedor de scroll
-(`h-dvh overflow-y-auto`) y el centrado por `m-auto` para que el contenido alto sea alcanzable.
-Es el único componente cuya estructura interna (más allá de `vh`→`dvh`) hubo que ajustar.
+Las cookies refrescadas se setean **solo** en `supabaseResponse`. El `proxy` las honra en el
+pass-through (`return supabaseResponse`) pero **las tira** en las dos ramas de redirect. **Una
+línea para confirmar:** `Set-Cookie` se pierde en cada 307 del proxy.
 
 ---
 
-## Archivos tocados (resumen)
+## 2. Interacción con `/[slug]` (white-label) — DESCARTADA
 
-1. `src/app/(public)/page.tsx` — 3× `h-screen` → `h-dvh` (líneas 56, 86, 100).
-2. `src/components/map/AgencyMapView.tsx` — `h-screen` → `h-dvh` (54).
-3. `src/app/(agent)/dashboard/layout.tsx` — `h-screen` → `h-dvh` (45).
-4. `src/app/(agent)/admin/layout.tsx` — `h-screen` → `h-dvh` (53).
-5. `src/components/dashboard/Sidebar.tsx` — `h-screen` → `h-dvh` (227, sidebar desktop).
-6. `src/components/agency/AgencyUnavailable.tsx` — `min-h-screen` → `min-h-dvh` (10).
-7. `src/components/auth/AuthLayout.tsx` — root `min-h-screen` → `h-dvh overflow-y-auto`;
-   panel `md:h-screen` → `md:h-dvh`; form `items-center justify-center` → `flex-col` + hijo `m-auto`.
-8. `src/app/globals.css` — lock `html, body { height:100%; overflow:hidden }`.
+- **Precedencia de rutas:** existe `src/app/(agent)/dashboard/page.tsx` (segmento **estático**).
+  En el App Router un segmento estático **gana** sobre uno dinámico (`(public)/[slug]`). Los
+  grupos `(agent)`/`(public)` son transparentes para la URL. Por lo tanto `/dashboard` resuelve a
+  `(agent)/dashboard`, **no** a `/[slug]`. No hay colisión.
+- **`/[slug]/page.tsx` no tiene NINGÚN `redirect()`** — solo `notFound()` (slug inexistente) o
+  renderiza `<AgencyUnavailable/>` / `<AgencyMapView/>`:
+  ```ts
+  if (result.status === "not_found") notFound();      // 404, NO redirect
+  if (result.status === "disabled")  return <AgencyUnavailable/>;
+  return <AgencyMapView .../>;
+  ```
+- **`resolveAgencyBySlug` no redirige** (solo lee la agencia y devuelve `not_found/disabled/active`).
+- Grep confirmó: **0** `redirect()`/`permanentRedirect()` en `[slug]/`, `resolveAgencyBySlug.ts`,
+  `AgencyMapView.tsx`, `AgencyUnavailable.tsx`.
+- Aunque hipotéticamente `/dashboard` cayera en `/[slug]` (no cae), `resolveAgencyBySlug("dashboard")`
+  daría `not_found` → `notFound()` → **404**, que **no** es un 307/redirect → no podría loopear.
 
-NO se tocó: lógica de componentes (foco del input de WhatsApp y zoom de Leaflet intactos),
-`position` del header (sigue en flujo normal `relative`), ni los `fixed`/`sticky` que ya andaban.
-Ningún parche sobre síntomas (no hay `preventDefault` ni listeners de scroll).
-
----
-
-## Verificación automática
-
-- `npx tsc --noEmit` → **limpio** (0 errores).
-- `npm run lint` → **0 errores** (solo los 2 warnings cosméticos preexistentes de `watch()` en
-  `RegisterForm.tsx` y `PropertyForm.tsx`, documentados en CLAUDE.md; no los introdujo este cambio).
-- Grep final: **0** ocurrencias de `h-screen`/`min-h-screen` en `src/`.
+**Conclusión:** `/[slug]` no captura `/dashboard` y no contiene redirects; **no es la causa del loop**.
 
 ---
 
-# Pruebas manuales (NO ejecutadas — para probar a mano)
+## 3. ¿Qué cambió entre "andaba" y "no andaba"?
 
-Probar en teléfono real o emulación mobile **con la barra de URL visible** (DevTools mobile no
-siempre reproduce el hueco de la barra; mejor un device real o el modo responsive con la barra del
-navegador). Idealmente recargar con caché limpia para tomar el `globals.css` nuevo.
+- **`proxy.ts` y `middleware.ts` NO los tocó el commit 2b72162** (white-label + fix navbar).
+  `git log` de esos archivos: último cambio en `ea0b2bd` ("creada pagina de admin") y `1293aad`.
+  `git show --stat 2b72162` → "NOT touched by 2b72162". Los **redirects del dashboard**
+  (`layout.tsx`, `page.tsx`) tampoco están en ese commit.
+- Lo que tocó 2b72162 en materia de rutas/redirects: **agregó** `(public)/[slug]/page.tsx`
+  (sin redirects, punto 2) y el fix de viewport (`globals.css`, `h-dvh`, layouts) — **CSS y
+  estructura, nada de auth/redirect**.
+- **Redirects en layouts (Server Components) que SÍ participan del ciclo** —
+  `(agent)/dashboard/layout.tsx`:
+  ```ts
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");                 // l.16
+  const { data: agent } = await supabase.from("agents")...eq("id", user.id).single();
+  if (!agent) redirect("/login");                // l.24  ← segundo disparador
+  ```
+  y lo mismo en `(agent)/dashboard/page.tsx` (l.28 `!user`, l.35 `!agent`). **No hay
+  `(public)/layout.tsx`** (confirmado).
+- **DOS autoridades de redirect que pueden discrepar:** el middleware decide solo con **`user`**;
+  el RSC del dashboard exige **`user` Y una fila `agent`**. Si el RSC ve `user` null (desync de
+  cookies del punto 1) **o** la query de `agents` vuelve null (RLS/transitorio porque el client
+  del RSC quedó sin sesión), el RSC hace `redirect("/login")`; el middleware en `/login` ve `user`
+  (rama B) y manda de vuelta a `/dashboard`. **Loop.**
+- **La pista del `/dashboard? 307` (con `?`):** el proxy hace `request.nextUrl.clone()` (preserva
+  el `search`) y solo reescribe `pathname`; al redirigir a `/dashboard` con un search vacío/heredado
+  queda `/dashboard?`. Es decorativo del clone, no manipula searchParams a propósito (no hay
+  redirect que toque query strings).
 
-### 1. Los dos disparadores originales, en la home (`/`)
+**Conclusión:** el código de redirect/auth es **preexistente** (no lo introdujo el white-label);
+el loop es un footgun **latente** del manejo de cookies en `proxy.ts` que se dispara por timing de
+sesión (token vencido / refresh-token rotado / `.next` y cookies limpiadas), no por `/[slug]`.
 
-- **Zoom del mapa:** tocá los botones **+ / −** del control de zoom (abajo a la izquierda) varias
-  veces. **El header (Marka. + CityPicker + Ingresar) NO debe desaparecer** ni moverse.
-- **Input de WhatsApp:** abrí una propiedad (tocá un pin) → "Consultar por WhatsApp" → al aparecer
-  el campo "Tu nombre" se enfoca y **abre el teclado**. **El header NO debe desaparecer.** Cerrá el
-  teclado y el header sigue en su lugar.
+---
 
-### 2. Vista white-label (`/[slug]` de una agencia con `has_white_label = true`)
+## 4. HistoryUpdater / client-side — NO hay loop de router en efectos
 
-- Repetí los DOS disparadores (zoom +/− y el flujo de WhatsApp) en `/SLUG-AGENCIA-A`.
-  **El header tampoco debe desaparecer** (usa el mismo patrón `h-dvh` que la home).
+- Todos los `router.push/replace/refresh` están en **handlers**, ninguno en `useEffect`:
+  - `AgenciesTable.tsx:168` `router.refresh()` → dentro de un handler de activación.
+  - `SubscriptionContent.tsx:219`, `TeamContent.tsx:82/349` `router.refresh()` → en
+    `handleConfirm...` (handlers).
+  - `PropertyForm.tsx:327` `router.push("/dashboard/propiedades")` → en `handleSubmit`.
+  - (`useRouter()` se declara a nivel de componente, pero las **llamadas** son todas en eventos.)
+- La **home del dashboard** (`page.tsx`) y su `layout.tsx` son Server Components; el `Sidebar`
+  (client) usa `usePathname`, sin `router.push/replace`. No hay ningún `router.replace/push` ni
+  `history.*` en un `useEffect` que corra al entrar a `/dashboard`.
 
-### 3. Scroll interno sigue vivo (que el lock no rompió nada)
+**Conclusión:** no hay loop client-side propio de la app. El `replaceState` en
+`HistoryUpdater` (`app-router.tsx:364`) es **código de Next** sincronizando el historial en **cada
+salto** de la cadena de redirects del servidor; el rate-limit del navegador lo convierte en el
+`DOMException`. Es síntoma, no causa.
 
-- **Dashboard — form largo:** entrá a `/dashboard/propiedades/nueva` (o `/[id]/editar`) en mobile.
-  El formulario debe **scrollear dentro de su área (`main`)** con normalidad, **sin un segundo
-  scroll fantasma** del documento por debajo del form, y la barra de acción sticky abajo debe
-  quedar bien anclada.
-- **Lista mobile de propiedades:** en la home, tocá el FAB "Ver lista" → la lista de cards debe
-  **scrollear normal** de arriba a abajo, con la última card visible por encima de los FABs.
-- **Cuerpo de un modal/sheet largo:** abrí una propiedad con descripción larga + amenities → el
-  **cuerpo del bottom sheet debe scrollear** internamente; el footer con el botón de WhatsApp queda
-  fijo abajo.
-- **login / register en mobile:** abrí `/register`, tocá "Inmobiliaria" (aparece el campo extra) y
-  enfocá los inputs (teclado). **Todo el formulario debe seguir siendo alcanzable scrolleando**
-  (no debe quedar contenido cortado arriba ni abajo).
+---
 
-### 4. Desktop no se rompió (pantalla grande)
+## El ciclo exacto (paso a paso)
 
-- Home, dashboard (con su sidebar desktop fijo y `main` scrolleable), panel admin, vista de agencia
-  y login/register deben **verse y comportarse igual que antes**. En desktop `dvh == vh`, así que no
-  hay cambio visual; verificá que el sidebar del dashboard quede a alto completo y el contenido
-  scrollee a su lado.
+Estado: hay una sesión cuyo access-token necesita refresh (o cuyas cookies quedaron
+desincronizadas por un redirect previo del proxy).
 
-### 5. Checks automáticos
+1. **`GET /dashboard`** → `proxy` → `updateSession.getUser()` refresca y **rota** el refresh-token
+   (RT0→RT1); RT1 queda en `supabaseResponse`. El proxy, con `user` presente, **pasa**
+   (`return supabaseResponse`).
+2. El **RSC `dashboard/layout`** corre `getUser()` con el client de servidor. Por el desfase de
+   cookies (RT1 no llegó al navegador en algún hop previo, o la fila `agents` vuelve null) ve
+   **`!user`** (o `!agent`) → **`redirect("/login")`** → **307**. (En la terminal: `GET /dashboard 307`.)
+3. **`GET /login`** → `proxy` → `updateSession.getUser()` ve `user` presente (rama **B**) →
+   **`NextResponse.redirect("/dashboard")`** → **307**, pero **sin copiar las cookies** refrescadas
+   (RT se vuelve a perder).
+4. **`GET /dashboard`** otra vez → vuelve al paso 1/2 con el token aún más desincronizado →
+   **307** de nuevo. → **Ráfaga `GET /dashboard 307`**.
+5. Client-side, el App Router sigue cada 307 y llama `history.replaceState` en cada salto →
+   el navegador lo **rate-limitea** → `DOMException: The operation is insecure` →
+   "This page couldn't load".
 
-- `npx tsc --noEmit` → limpio.
-- `npm run lint` → 0 errores (2 warnings preexistentes de `watch()`).
+**Eslabón que cierra el ciclo:** el proxy reenvía cookies en el pass-through pero **las descarta en
+sus dos `NextResponse.redirect`**, y hay **dos autoridades de redirect** (middleware = solo `user`;
+RSC del dashboard = `user` + `agent`) que, al discrepar, se rebotan `/dashboard ⇄ /login`.
+
+> No se propone arreglo (pedido explícito). Confirmado el mecanismo; `/[slug]` queda descartado.

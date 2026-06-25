@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { PreferencesContent } from "@/components/dashboard/PreferencesContent";
 import { AgencyPhoneForm } from "@/components/dashboard/AgencyPhoneForm";
+import { AgencyLogoForm } from "@/components/dashboard/AgencyLogoForm";
 
 export default async function PreferenciasPage() {
   const supabase = await createClient();
@@ -22,16 +23,18 @@ export default async function PreferenciasPage() {
 
   const isAgencyAdmin = agent.role === "admin";
 
-  // Solo si es admin traemos el teléfono actual de la agencia para precargar el
-  // form. La edición real se gatea de nuevo server-side en la action.
+  // Solo si es admin traemos los datos actuales de la agencia para precargar los
+  // forms. La edición real se gatea de nuevo server-side en cada action.
   let agencyPhone = "";
+  let agencyLogoUrl: string | null = null;
   if (isAgencyAdmin) {
     const { data: agency } = await supabase
       .from("agencies")
-      .select("phone_wa")
+      .select("phone_wa, logo_url")
       .eq("id", agent.agency_id)
       .single();
     agencyPhone = agency?.phone_wa ?? "";
+    agencyLogoUrl = agency?.logo_url ?? null;
   }
 
   return (
@@ -39,8 +42,16 @@ export default async function PreferenciasPage() {
       <h1 className="font-serif text-4xl font-bold text-black mb-8">Preferencias</h1>
 
       <div className="space-y-6">
-        {/* Datos de la agencia — solo el admin de agencia */}
-        {isAgencyAdmin && <AgencyPhoneForm initialPhone={agencyPhone} />}
+        {/* Datos de la agencia — solo el admin de agencia (teléfono + logo juntos) */}
+        {isAgencyAdmin && (
+          <>
+            <AgencyPhoneForm initialPhone={agencyPhone} />
+            <AgencyLogoForm
+              initialLogoUrl={agencyLogoUrl}
+              agencyId={agent.agency_id}
+            />
+          </>
+        )}
 
         {/* Preferencias personales (localStorage) */}
         <PreferencesContent />

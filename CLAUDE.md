@@ -18,7 +18,7 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 
 **Distribución:** web responsive + PWA instalable. No hay app nativa ni stores.
 
-**Estado:** MVP completo y revisado (seguridad, performance, cleanup) + plan visual editorial completo. Build verde, 0 errores de TypeScript/ESLint. Listo para deploy.
+**Estado:** En producción (deployado en Vercel). MVP + multi-agente completos. White-label en curso: Sub-pieza A (ruta `/[slug]` + mapa filtrado + gate de plan) y Sub-pieza B1 (subir logo en Preferencias) hechas; faltan B2 (mostrar logo+nombre en el white-label) y C (slug editable). Build verde, 0 errores de TypeScript/ESLint.
 
 ---
 
@@ -81,9 +81,8 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 ├── src/
 │   ├── app/
 │   │   ├── (public)/
-│   │   │   ├── page.tsx                 ← Mapa principal + lista mobile
-│   │   │   ├── [ciudad]/page.tsx        ← Marketplace de una ciudad
-│   │   │   └── propiedades/[slug]/      ← Página SEO por propiedad
+│   │   │   ├── page.tsx                 ← Mapa principal + lista mobile (home: todas las agencias de la ciudad activa)
+│   │   │   └── [slug]/page.tsx          ← Vista white-label por agencia (resuelve slug → 404 / no-disponible / mapa filtrado). Sub-pieza A
 │   │   ├── (agent)/
 │   │   │   ├── login/                    ← Split-screen editorial (AuthLayout)
 │   │   │   ├── register/                  ← page.tsx (Server: trae ciudades) + RegisterForm.tsx (client). Paso 2: plan/ (page Server + PlanSelector client + actions: elige plan, pago→pending)
@@ -93,7 +92,7 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 │   │   │       ├── equipo/              ← Gestión de agentes (solo admin de agencia): page (Server, gatea role, cuenta props por agente) + actions (createAgentAction + deleteAgentAction, service role). Borrar reasigna props al admin (Modelo B) antes de borrar
 │   │   │       ├── leads/               ← Consultas (ambos roles; RLS recorta: agente ve los suyos, admin los de la agencia). page (Server) + LeadsContent (client)
 │   │   │       ├── perfil/
-│   │   │       ├── preferencias/         ← Preferencias personales (localStorage) + teléfono de la agencia (solo admin, AgencyPhoneForm + updateAgencyPhoneAction service role). page Server
+│   │   │       ├── preferencias/         ← Preferencias personales (localStorage) + datos de la agencia (solo admin): teléfono (AgencyPhoneForm + updateAgencyPhoneAction) y logo (AgencyLogoForm + updateAgencyLogoAction), ambos service role. page Server. Sub-pieza B1
 │   │   │       └── suscripcion/
 │   │   ├── admin/                        ← Panel de plataforma (solo dueño, gateado por ADMIN_USER_ID en admin/layout.tsx): 6 métricas de negocio (StatsCard) + tabla de TODAS las agencias + filtros aditivos + activar planes. layout (Server, gating + sidebar) + page (Server) + AgenciesTable (client) + actions. USA el sidebar del dashboard ("Panel admin" activo)
 │   │   └── api/og/[slug]/
@@ -109,7 +108,10 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 │   │   │   ├── PropertyModal.tsx        ← Drawer/sheet + flujo WA + carrusel
 │   │   │   ├── FilterPanel.tsx          ← Filtros (checkboxes shadcn, commit on-blur)
 │   │   │   ├── CityPicker.tsx           ← Selector de ciudad (lee cityStore)
+│   │   │   ├── AgencyMapView.tsx        ← Mapa filtrado a una agencia (white-label, mirror de la home SIN CityPicker). Sub-pieza A
 │   │   │   └── ClusterLayer.tsx         ← Clustering, diff por id, estados live
+│   │   ├── agency/
+│   │   │   └── AgencyUnavailable.tsx    ← Página "sitio no disponible" (estado disabled: agencia existe sin has_white_label). Sub-pieza A
 │   │   ├── properties/
 │   │   │   ├── PropertyCard.tsx         ← Card editorial reutilizable
 │   │   │   ├── PropertyList.tsx         ← Lista mobile (cards-first)
@@ -122,7 +124,9 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 │   │   │   ├── StatsCard.tsx            ← tabular-nums, count-up, acento en métrica clave
 │   │   │   ├── PropertiesTable.tsx      ← Tabla desktop + cards mobile + skeleton
 │   │   │   ├── PlanBadge.tsx            ← Plan + micro-barra de uso
-│   │   │   ├── ProfileForm.tsx
+│   │   │   ├── ProfileForm.tsx           ← Perfil del agente: avatar (upload client-side, upsert) + nombre + teléfono
+│   │   │   ├── AgencyPhoneForm.tsx       ← Teléfono de la agencia (solo admin). Sub-pieza B1
+│   │   │   ├── AgencyLogoForm.tsx        ← Logo de la agencia (solo admin): upload client-side + updateAgencyLogoAction. Valida tipo/tamaño, cache-buster en preview. Sub-pieza B1
 │   │   │   └── SubscriptionContent.tsx  ← Cards de planes (4 planes, flex-wrap) + Dialog shadcn
 │   │   └── ui/                          ← shadcn/ui components
 │   │
@@ -135,17 +139,17 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 │   │   ├── map/
 │   │   │   └── tiles.ts                 ← Config de tiles compartida (mapa + LocationPicker)
 │   │   ├── hooks/
-│   │   │   ├── useProperties.ts         ← Fetch reactivo con debounce + diff + SELECT acotado
+│   │   │   ├── useProperties.ts         ← Fetch reactivo con debounce + diff + SELECT acotado. Params: (cityId, bounds, agencyId?). Con agencyId filtra a una sola agencia (white-label)
 │   │   │   ├── useMapFilters.ts         ← Lee mapFiltersStore
 │   │   │   ├── useFavorites.ts          ← Favoritos en localStorage (sync entre instancias)
 │   │   │   ├── useVisitedProperties.ts  ← Pines visitados en localStorage
 │   │   │   └── useWhatsApp.ts
 │   │   └── utils/
 │   │       ├── formatPrice.ts           ← formatPrice + formatPriceCompact (pines)
-│   │       ├── generateSlug.ts          ← slugifyBase (limpieza pura) + generateSlug (base + sufijo aleatorio, para propiedades)
-│   │       ├── agencySlug.ts            ← generateUniqueAgencySlug (async): slug limpio de agencia, colisión → -2/-3 (para white-label)
+│   │       ├── generateSlug.ts          ← Slug con sufijo aleatorio
 │   │       ├── waMessage.ts             ← generateWaUrl(): string | null
 │   │       ├── getPlanUsage.ts          ← Helper server: cuenta por agency_id
+│   │       ├── resolveAgencyBySlug.ts   ← Resuelve slug → agencia + suscripción + ciudad (service role). 3 estados: not_found / disabled / active. White-label. Sub-pieza A
 │   │       ├── authErrors.ts            ← translateAuthError: mapea errores de Supabase Auth a español (registro + alta de agente)
 │   │       └── labels.ts                ← Etiquetas UI compartidas
 │   │
@@ -203,8 +207,7 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 
 ### ESLint
 - El patrón `setIsLoading(true)` al inicio de efectos: usar IIFE async dentro del efecto. No bajar la regla globalmente.
-- `npm run lint` queda en **0 errores**. Los 3 errores preexistentes de `react-hooks` se resolvieron: ClusterLayer (refs escritas en render → movidas a `useLayoutEffect`) y StatsCard (`set-state-in-effect` del count-up → silenciado con `eslint-disable` comentado, es la rama benigna de reduced-motion).
-- Quedan dos warnings cosméticos no bloqueantes, ambos inherentes a react-hook-form + React Compiler (el `watch()` no se memoiza): en `RegisterForm.tsx` (el `watch("tenantType")` del toggle Inmobiliaria/Particular) y en `PropertyForm.tsx` (el `watch("currency")`). Son warnings, no errores; no bloquean el build.
+- Hay dos warnings cosméticos no bloqueantes, ambos inherentes a react-hook-form + React Compiler (no se memoiza bien): en `PropertyForm.tsx` (cast `zodResolver`) y en `RegisterForm.tsx` (el `watch("tenantType")` del toggle Inmobiliaria/Particular). Son warnings, no errores; no bloquean el build.
 
 ### Estilos
 - Tailwind, sin CSS-in-JS ni módulos CSS. shadcn/ui para componentes base
@@ -223,7 +226,7 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 - `nearbyCityId` (campo del store) marca la ciudad detectada por geolocalización para el label "Cerca tuyo".
 
 ### Plan usage — getPlanUsage
-- Siempre `src/lib/utils/getPlanUsage.ts`. Cuenta por `agency_id`. Solo en server. Expone `available` (cupos libres, **ya saneado, nunca negativo**) y `over` (excedente sobre el límite, 0 si está dentro) — el saneo vive en el helper, los consumidores no restan `limit - used` por su cuenta (evita el footgun del negativo, relevante cuando exista el downgrade).
+- Siempre `src/lib/utils/getPlanUsage.ts`. Cuenta por `agency_id`. Solo en server.
 
 ### Etiquetas UI — labels.ts
 - Nunca definir mapas de etiquetas inline. Usar `PROPERTY_TYPE_LABELS`, `OPERATION_TYPE_LABELS`, `PROPERTY_STATUS_LABELS`, `AMENITY_LABELS`, `CURRENCY_LABELS`.
@@ -234,6 +237,21 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 ### Favoritos y visitados
 - `useFavorites` y `useVisitedProperties` en localStorage. Se reflejan en vivo en el mapa, el modal y las cards (sync entre instancias vía CustomEvent + storage). Sin login.
 
+### White-label por agencia — `/[slug]` (Sub-pieza A)
+- **Ruta pública `src/app/(public)/[slug]/page.tsx`** (Server Component, `params` es Promise → `await`): una URL por agencia (`marka.com.ar/[slug]`) que muestra el mapa filtrado SOLO a las propiedades de esa agencia. El root `/[slug]` es **exclusivo de agencias** — NO hay ruta `/[ciudad]` (la ciudad se resuelve por `cityStore`, nunca por URL). Cualquier ruta pública futura de primer nivel (`/precios`, etc.) compite con este `[slug]`; las estáticas ganan a la dinámica, pero tenerlo presente.
+- **`resolveAgencyBySlug(slug)`** (`src/lib/utils/resolveAgencyBySlug.ts`, server-only): resuelve el slug en **3 estados** y la ruta bifurca: `not_found` → `notFound()` (404 real); `disabled` (la agencia existe pero su suscripción NO tiene `has_white_label`) → `AgencyUnavailable`; `active` (existe + `has_white_label = true`) → `AgencyMapView`. **No colapsar `disabled` en `not_found`**: un slug que no existe y una agencia que existe sin plan son páginas distintas (la segunda no debe parecer "rota" para una agencia que bajó de plan).
+- **Usa service role** (admin client), NO el client público. Motivo: la policy `Agency members read own subscription` solo deja leer `subscriptions` a los agentes de esa agencia; el visitante white-label es **anónimo**, así que con el anon client `has_white_label` volvería vacío y TODA agencia parecería `disabled` (el estado `active` sería inalcanzable). Es seguro: función server-only, lee pocos campos no sensibles (id, name, city_id, el flag, centro de la ciudad). **No se tocó ninguna policy.** Una sola query con embeds de PostgREST (`agencies` + `subscriptions` + `cities`); helper `firstOf` normaliza el embed to-one (objeto vs array de uno).
+- **`AgencyMapView`** es mirror de la home pero **sin `CityPicker`**: la vista es de UNA agencia en SU ciudad (resuelta en server), no navegable a otras ciudades. Incluye lista mobile (cards-first) como la home. Sin personalización visual todavía (logo/nombre llegan en Sub-pieza B) — se ve con el diseño estándar de Marka.
+- **Filtrado:** el `agencyId` opcional de `useProperties` agrega `.eq("agency_id", agencyId)` ADICIONAL a `city_id` + `status = 'active'`. Threadeado desde `AgencyMapView` → `MapView`/`PropertyList`. Sin el parámetro (la home), nada cambia.
+- **Sub-pieza B1 — Subir el logo en Preferencias (HECHA):** `AgencyLogoForm` (solo admin) sube el logo **client-side** (browser client, como el avatar de `ProfileForm`) al bucket `property-images`, path `logos/{agency_id}/logo.{ext}`, `upsert: true`. La **URL** se persiste con `updateAgencyLogoAction` (server action que clona `updateAgencyPhoneAction`: gate `role === "admin"` + service role + `.eq("id", caller.agency_id)`). Decisión de diseño: lo sensible es la escritura en `agencies` (gateada a admin), no el archivo en Storage (bucket público, archivo huérfano inocuo) → no hace falta upload por server action/FormData. **Validación REAL** (más estricta que el avatar, porque el logo es público): solo PNG/JPG/WEBP (NO SVG, riesgo XSS), máx 2 MB, chequeado en JS antes de subir. La extensión sale del MIME validado (`ACCEPTED_TYPES[file.type]`), no de `file.name` sin sanear. **Cache-buster** (`?t={Date.now()}`) solo en la preview tras guardar (la URL en la DB queda limpia) — necesario porque el path es fijo con `upsert`, sin el buster el navegador mostraría el logo cacheado. El logo **NO se muestra en el white-label todavía** (eso es B2): en B1 solo se ve de vuelta en el form para verificar.
+- **Pendiente (Sub-piezas B2 y C):** B2 = mostrar logo + nombre en el header del white-label (con fallback al nombre si no hay logo) + "powered by Marka." discreto abajo + variante "admin logueado en `disabled` ve invitación a reactivar". C = slug editable. El **nombre** de la agencia se muestra desde `agencies.name` (read-only en white-label); su *edición* es pieza aparte con aprobación del dueño (no campo libre — es dato semi-regulado por el colegio de corredores). Ver PENDIENTES.md.
+
+### Viewport mobile — altura y lock de scroll
+- **Wrappers de pantalla completa van con `h-dvh`/`min-h-dvh`, NUNCA `h-screen`/`100vh`.** `100vh` en mobile es el viewport grande (ignora la barra de URL), lo que dejaba el documento scrolleable por ese hueco; cualquier "scroll into view" del navegador (foco en un anchor de zoom de Leaflet, o en un input que abre el teclado) desplazaba el documento y sacaba el header (que está en flujo normal) fuera de vista, sin restituirlo. `dvh` sigue a la barra de URL y no deja hueco.
+- **El documento tiene lock de scroll:** `globals.css` fija `html, body { height: 100%; overflow: hidden }`. Toda la app scrollea en **contenedores internos** (el `main` del dashboard con `overflow-y-auto`, la lista mobile, el cuerpo de los sheets), nunca el documento. Si creás una pantalla nueva, dale su propio contenedor scrolleable interno — NO dependas del scroll del documento (lo hace `AuthLayout` con `h-dvh overflow-y-auto`, el único caso que lo necesitaba).
+- Tailwind v4 trae `h-dvh`/`min-h-dvh` nativas (no hace falta el arbitrario `h-[100dvh]`).
+- Los `fixed`/`sticky` (bottom sheets, FABs, marco editorial, sidebar mobile) se reanclan bien y NO se tocan; el problema era solo el chrome en flujo normal sobre wrappers `100vh`.
+
 ### WhatsApp
 - `phone_wa` en formato `"5491112345678"`. `generateWaUrl()` retorna `string | null` — verificar antes de usar; si null, deshabilitar botón con mensaje.
 - Registrar lead (con `agency_id`) antes de abrir WhatsApp.
@@ -241,9 +259,12 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 ### Ubicación — pin manual
 - `LocationPicker`, sin geocoding. Si el agente no movió el pin, el form bloquea el submit.
 
-### Imágenes
-- Bucket `property-images`, path `{agent_id}/{property_id}/{filename}`. Avatares: `avatars/{agent_id}/avatar.{ext}`.
-- Primera imagen `sort_order = 0`, `is_cover = true`. Si falla el insert: avisar, no hacer rollback.
+### Imágenes y Storage
+- Bucket **`property-images`** (público), tres tipos de path: propiedades `{agent_id}/{property_id}/{filename}`, avatares `avatars/{agent_id}/avatar.{ext}`, logos de agencia `logos/{agency_id}/logo.{ext}`.
+- Primera imagen de propiedad `sort_order = 0`, `is_cover = true`. Si falla el insert: avisar, no hacer rollback.
+- **Policies de Storage (`storage.objects`) — estado real, importante:** son **laxas y consistentes** — INSERT, UPDATE y DELETE permiten a cualquier usuario `authenticated` operar sobre el bucket, sin restringir por path. SELECT es público. **La policy de UPDATE se agregó tarde** (un upload con `upsert` sobre un archivo que YA existe es un UPDATE, no un INSERT; sin policy de UPDATE, RLS lo negaba → 403 "new row violates row-level security policy" al *reemplazar* avatar/logo, mientras la primera subida —INSERT— sí pasaba). Si en el futuro se reemplaza un archivo y da 403, revisar que exista la policy de UPDATE.
+- **Deuda de seguridad (ver PENDIENTES):** las policies laxas son aceptables en desarrollo pero permiten que cualquier autenticado toque archivos ajenos. Antes de producción real conviene un repaso de RLS de Storage con seguridad fina (validar uid/agencia por path). La policy de DELETE vieja intentaba seguridad fina (`uid` = primera carpeta) pero nunca matcheaba para `avatars/`/`logos/` (la primera carpeta es la palabra literal) — quedó reemplazada por la laxa.
+- Reemplazar (no acumular) es el comportamiento deseado para avatar y logo: `upsert: true` sobre path fijo. Para logos, ojo que si cambia la extensión (`logo.png` → `logo.webp`) quedan 2 objetos; el `logo_url` apunta al último, el anterior queda huérfano (inocuo).
 
 ### Precios
 - `formatPrice(price, currency)` → `$250.000`. `formatPriceCompact` → `USD 250k` (pines).
@@ -326,6 +347,10 @@ npx shadcn@latest add [componente]
 | Leaflet en lugar de Mapbox | Tiles OSM gratuitos sin límite |
 | `amenities` como JSONB | Flexible, sin migraciones al agregar amenities |
 | `proxy.ts` (no middleware.ts) | Convención Next.js 16 |
+| White-label en `/[slug]` del root (no prefijo, no subdominio) | Es lo que se vende: URL limpia. Las ciudades salen del root → sin colisión de namespace |
+| `resolveAgencyBySlug` con service role | El visitante white-label es anónimo y la RLS de `subscriptions` le ocultaría `has_white_label`; sin service role, toda agencia parecería `disabled`. Server-only, campos no sensibles, sin tocar policies |
+| `h-dvh` + lock de scroll del body (no `h-screen`) | `100vh` deja el documento scrolleable en mobile; el "scroll into view" al enfocar saca el header de flujo normal. `dvh` + lock atacan las dos condiciones de raíz, no los síntomas |
+| Logo de agencia: upload client-side + escritura de `logo_url` por service role (no upload por server action) | Lo sensible es la escritura en `agencies` (gateada a admin), no el archivo en Storage (bucket público). Reusa el patrón del avatar, no estrena upload server-side con FormData |
 
 ---
 
