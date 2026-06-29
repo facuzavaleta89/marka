@@ -136,3 +136,49 @@ intactos.
   "Ingresar" del CTA sigue igual.)
 - **`logo_url` no se ensanchó en `disabled`** (correcto para B2a): el header con marca
   solo aplica al estado `active`; `disabled` se aborda en B2b.
+
+---
+
+# Ajuste B2a — Nombre de la agencia visible también en mobile
+
+> Seguimiento del header de arriba: el nombre del centro estaba oculto en mobile
+> (`hidden sm:block`). Ahora se muestra SIEMPRE, en fuente chica que crece en `sm+`.
+
+## Qué cambié
+
+`src/components/map/AgencyMapView.tsx`, span del **nombre centrado** (el que se
+muestra solo cuando hay logo a la izquierda):
+
+**Antes:**
+```
+hidden sm:block font-serif text-lg font-semibold text-black truncate
+```
+
+**Después:**
+```
+min-w-0 font-serif text-base sm:text-lg font-semibold text-black truncate
+```
+
+- **Quité `hidden sm:block`** → el nombre aparece en todos los tamaños.
+- **`text-base sm:text-lg`** → chico en mobile (16px, escala "Subtítulo" de DESIGN
+  §3) para convivir con logo (izq) + CTA (der) sin apretarse; crece a `text-lg` en
+  `sm+` (su tamaño de desktop de antes, sin cambios).
+- **Agregué `min-w-0`** al span y mantuve `truncate`: como flex item, sin `min-w-0`
+  el `truncate` no recorta y un nombre largo empujaría el CTA. Ahora un nombre largo
+  se corta con elipsis.
+- Mantuve `font-serif font-semibold text-black`. El CTA conserva su `shrink-0`.
+
+No toqué nada más del header ni del resto del white-label.
+
+## Pruebas
+
+1. **Mobile angosto (~360px) con logo:** logo (h-9, izq) + nombre `text-base` serif
+   (centro) + CTA (der). El `justify-between` distribuye los tres; con
+   `min-w-0 + truncate` un nombre largo se corta con elipsis en vez de desbordar o
+   empujar al CTA (`shrink-0`). ✅
+2. **Desktop con logo:** el nombre se ve en `text-lg` (idéntico a antes), centrado. ✅
+3. **Sin logo (mobile y desktop):** sin cambios — el bloque central no se renderiza
+   (`{agencyLogoUrl && ...}`); el nombre va a la izquierda en su `text-xl`, centro
+   vacío. ✅
+4. **`npx tsc --noEmit`** ✅ limpio (0 errores). **`npm run lint`** ✅ 0 errores
+   (solo los 2 warnings cosméticos preexistentes de CLAUDE.md, ajenos a este cambio).

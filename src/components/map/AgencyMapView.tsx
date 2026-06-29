@@ -83,9 +83,13 @@ export function AgencyMapView({
           )}
         </div>
 
-        {/* Centro — nombre en texto, solo si la izquierda muestra el logo */}
+        {/* Centro — nombre en texto, solo si la izquierda muestra el logo.
+            Visible en todos los tamaños: en mobile va chico (text-base) para
+            convivir con el logo y el CTA sin apretarse; crece a text-lg en sm+.
+            min-w-0 + truncate: un nombre largo se corta con elipsis en vez de
+            empujar al CTA. */}
         {agencyLogoUrl && (
-          <span className="hidden sm:block font-serif text-lg font-semibold text-black truncate">
+          <span className="min-w-0 font-serif text-base sm:text-lg font-semibold text-black truncate">
             {agencyName}
           </span>
         )}
