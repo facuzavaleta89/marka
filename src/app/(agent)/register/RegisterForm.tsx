@@ -29,10 +29,11 @@ type CityOption = { id: string; name: string };
 
 const schema = z
   .object({
-    tenantType: z.enum(["agency", "individual"]),
     fullName: z.string().min(1, "El nombre es requerido"),
-    // Requerido solo si es inmobiliaria (validado en superRefine más abajo).
-    agencyName: z.string().optional(),
+    // La app solo registra inmobiliarias, así que siempre hay razón social.
+    // .trim() conserva el rechazo de un nombre de solo espacios que antes hacía
+    // el superRefine con `!d.agencyName?.trim()`.
+    agencyName: z.string().trim().min(1, "El nombre de la inmobiliaria es requerido"),
     cityId: z.string().min(1, "Elegí una ciudad"),
     email: z.string().email("Email inválido"),
     password: z.string().min(8, "Mínimo 8 caracteres"),
@@ -49,21 +50,9 @@ const schema = z
         path: ["confirmPassword"],
       });
     }
-    if (d.tenantType === "agency" && !d.agencyName?.trim()) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "El nombre de la inmobiliaria es requerido",
-        path: ["agencyName"],
-      });
-    }
   });
 
 type RegisterFormValues = z.infer<typeof schema>;
-
-const ACCOUNT_TYPES = [
-  { value: "agency", label: "Inmobiliaria" },
-  { value: "individual", label: "Particular" },
-] as const;
 
 function Field({
   id,
@@ -95,22 +84,18 @@ export function RegisterForm({ cities }: { cities: CityOption[] }) {
     register,
     control,
     handleSubmit,
-    watch,
     formState: { errors },
   } = useForm<RegisterFormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { tenantType: "agency", cityId: "" },
+    defaultValues: { cityId: "" },
   });
-
-  const tenantType = watch("tenantType");
 
   const onSubmit = async (data: RegisterFormValues) => {
     setLoading(true);
     setServerError(null);
     const result = await registerAction({
-      tenantType: data.tenantType,
       fullName: data.fullName,
-      agencyName: data.agencyName ?? "",
+      agencyName: data.agencyName,
       cityId: data.cityId,
       email: data.email,
       password: data.password,
@@ -133,55 +118,22 @@ export function RegisterForm({ cities }: { cities: CityOption[] }) {
       </p>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
-        {/* Tipo de cuenta — primer control. Define si hay agencia con razón
-            social (inmobiliaria) o un particular (se usa su nombre). */}
-        <Field id="tenantType" label="Tipo de cuenta" error={errors.tenantType?.message}>
-          <Controller
-            control={control}
-            name="tenantType"
-            render={({ field }) => (
-              <div className="grid grid-cols-2 gap-2">
-                {ACCOUNT_TYPES.map((opt) => {
-                  const active = field.value === opt.value;
-                  return (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => field.onChange(opt.value)}
-                      aria-pressed={active}
-                      className={cn(
-                        "h-11 rounded-md border font-sans text-sm font-medium transition-colors duration-[120ms] ease-out",
-                        active
-                          ? "border-terracota bg-terracota text-paper"
-                          : "border-stone bg-transparent text-graphite hover:bg-mist"
-                      )}
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+        {/* Razón social de la inmobiliaria. Siempre requerida: la app solo
+            registra inmobiliarias (ya no existen las cuentas de particular). */}
+        <Field
+          id="agencyName"
+          label="Nombre de la inmobiliaria"
+          error={errors.agencyName?.message}
+        >
+          <Input
+            id="agencyName"
+            type="text"
+            autoComplete="organization"
+            placeholder="Inmobiliaria López"
+            {...register("agencyName")}
+            className={cn(errors.agencyName && "border-error")}
           />
         </Field>
-
-        {/* Nombre de la inmobiliaria — solo para tenantType "agency". */}
-        {tenantType === "agency" && (
-          <Field
-            id="agencyName"
-            label="Nombre de la inmobiliaria"
-            error={errors.agencyName?.message}
-          >
-            <Input
-              id="agencyName"
-              type="text"
-              autoComplete="organization"
-              placeholder="Inmobiliaria López"
-              {...register("agencyName")}
-              className={cn(errors.agencyName && "border-error")}
-            />
-          </Field>
-        )}
 
         <Field id="fullName" label="Nombre completo" error={errors.fullName?.message}>
           <Input
