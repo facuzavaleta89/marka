@@ -279,6 +279,22 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 
 ## Base de Datos — Referencia Rápida
 
+### Acceso a la base — MCP de Supabase (solo lectura)
+
+El repo tiene configurado el MCP oficial de Supabase (`.mcp.json`, transporte HTTP,
+hosted). Está **acotado a este proyecto** (`project_ref`) y en **modo solo lectura**
+(`read_only=true`): todas las consultas corren como usuario de Postgres de solo lectura.
+
+- **Para medir la base, usar las tools de MCP** (`list_tables`, `execute_sql`). No pedirle
+  al usuario que corra queries a mano ni asumir el contenido de la base a partir de la
+  documentación: la documentación puede estar desactualizada, la base no.
+- **Toda escritura rebota en el motor**, no por convención: `INSERT`/`UPDATE`/`DELETE`/
+  `ALTER` fallan con "read-only transaction". No intentar rodearlo.
+- **Los cambios de schema los ejecuta el usuario a mano** en el SQL Editor de Supabase.
+  Si una tarea necesita un `ALTER`, dejarlo escrito en el informe; nunca ejecutarlo.
+- Grupos de tools habilitados: `database`, `debugging`, `development`, `docs`. Storage,
+  branching, edge functions y gestión de cuenta están deshabilitados a propósito.
+
 Schema en `supabase/migrations/20240101000000_initial_schema.sql`.
 
 | Tabla | Descripción |
