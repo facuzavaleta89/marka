@@ -23,20 +23,27 @@ export type Currency = "USD" | "ARS";
 // Rol del agente dentro de su agencia (Fase 3, ya migrado en la base).
 // 'admin': gestiona la suscripción, invita/elimina agentes y ve los leads de
 // toda la agencia. 'agent': CRUD de sus propias propiedades.
-// IMPORTANTE: hoy la columna 'role' EXISTE en la base, pero todavía NO gatea
-// permisos (las RLS policies admin/agent son una pieza posterior de Fase 3).
+// 'role' YA gatea permisos: la sección Equipo (crear/eliminar agentes), el
+// alcance de Consultas (el admin ve los leads de toda su agencia) y la gestión
+// de propiedades de la agencia por el admin (authorizePropertyAccess).
 export type AgentRole = "admin" | "agent";
 
 // Planes y estados de suscripción.
 // Modelo unificado de 4 planes. Límites de propiedades: free=1, inicial=20,
 // profesional=60, premium=200 (ver constante PLANS más abajo).
-// 'free' es el plan del tenant_type 'individual' (particular); el resto, 'agency'.
+// 'free' NO es un plan que se venda: es el ESTADO DE ATERRIZAJE de toda alta.
+// Cada agencia nueva nace en 'free'/'active' y sigue rigiendo free mientras un
+// plan pago pedido espera activación manual (plan='free' + pending_plan=<pedido>
+// + status='pending'). Los tres planes ofrecibles son inicial/profesional/premium.
 export type SubscriptionPlan = "free" | "inicial" | "profesional" | "premium";
 // 'pending' = plan pago elegido pero todavía no activado, esperando la
 // activación manual del admin (se usa en la selección de plan de Fase 3).
 export type SubscriptionStatus = "active" | "pending" | "past_due" | "canceled";
 
-// Tipo de cuenta/tenant: particular individual (plan free) o agencia (resto).
+// Tipo de cuenta/tenant, tal como está en la base. El alta ya NO ofrece
+// 'individual': la app opera solo con inmobiliarias y el registro escribe
+// 'agency' fijo. 'individual' sobrevive solo para leer filas históricas
+// (lo muestra la columna "Tipo" del panel /admin).
 export type TenantType = "individual" | "agency";
 
 // Amenities disponibles en el sistema
@@ -79,10 +86,10 @@ export interface Agency {
   city_id: string;       // toda agencia pertenece a una ciudad
   name: string;
   slug: string;
-  // Tipo de tenant (Fase 3, ya migrado en la base). 'agency' = inmobiliaria
-  // (varios agentes); 'individual' = particular (una persona, plan free).
-  // Internamente ambos son filas en agencies. La regla "individual → solo free"
-  // se valida en el registro (backend), no en la base.
+  // Tipo de tenant. Hoy el registro escribe siempre 'agency': la app dejó de
+  // aceptar cuentas de particular. 'individual' solo aparece en filas
+  // históricas anteriores al cambio. La columna se conserva (nada en la base
+  // —policy, función o trigger— la lee) y el panel /admin la sigue mostrando.
   tenant_type: TenantType;
   // WhatsApp de la agencia (NOT NULL en la base). Obligatorio: se setea en el
   // registro (hereda el del admin fundador) y se edita en Preferencias (solo el
@@ -304,7 +311,6 @@ export type PropertyUpdate = Partial<PropertyInsert> & { id: string };
 export interface PlanInfo {
   id: SubscriptionPlan;
   name: string;            // nombre visible
-  tenantType: TenantType;  // 'individual' (free) | 'agency' (resto)
   propertyLimit: number;
   priceLabel: string;      // placeholder editable
   featured: boolean;
@@ -313,29 +319,36 @@ export interface PlanInfo {
 }
 
 export const PLANS: Record<SubscriptionPlan, PlanInfo> = {
+  // 'free' NO es un plan que se venda: es el estado de aterrizaje de toda alta
+  // (ver SubscriptionPlan). Sus valores —límite 1 y los tres flags en false— son
+  // los que el registro, la selección de plan y getPlanUsage escriben/asumen
+  // mientras la agencia todavía no tiene un plan pago activado. No tocarlos.
   free: {
-    id: "free", name: "Particular", tenantType: "individual",
+    id: "free", name: "Gratis",
     propertyLimit: 1, priceLabel: "Gratis",
     featured: false, whiteLabel: false, metrics: false,
   },
   inicial: {
-    id: "inicial", name: "Inicial", tenantType: "agency",
+    id: "inicial", name: "Inicial",
     propertyLimit: 20, priceLabel: "$30.000",
     featured: false, whiteLabel: false, metrics: false,
   },
   profesional: {
-    id: "profesional", name: "Profesional", tenantType: "agency",
+    id: "profesional", name: "Profesional",
     propertyLimit: 60, priceLabel: "$65.000",
     featured: false, whiteLabel: true, metrics: false,
   },
   premium: {
-    id: "premium", name: "Premium", tenantType: "agency",
+    id: "premium", name: "Premium",
     propertyLimit: 200, priceLabel: "$140.000",
     featured: true, whiteLabel: true, metrics: true,
   },
 };
 
 // Orden ascendente de planes (free → premium). Para mostrar "el plan siguiente".
+// Es el DOMINIO de la columna `plan`, no el catálogo de venta: incluye 'free'
+// porque es un valor real en la base. Quien liste planes OFRECIBLES debe
+// excluirlo (ver PAID_PLANS en register/plan/PlanSelector.tsx).
 export const PLAN_ORDER = ["free", "inicial", "profesional", "premium"] as const;
 
 // Estado de uso del plan, para mostrar en el dashboard y bloquear el alta.

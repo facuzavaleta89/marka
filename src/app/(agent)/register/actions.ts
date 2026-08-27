@@ -5,13 +5,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { generateUniqueAgencySlug } from "@/lib/utils/agencySlug";
 import { translateAuthError } from "@/lib/utils/authErrors";
 import { redirect } from "next/navigation";
-import { PLANS, type TenantType } from "@/types";
+import { PLANS } from "@/types";
 
 type RegisterData = {
-  tenantType: TenantType;
   fullName: string;
-  // Nombre de la inmobiliaria. Solo se usa cuando tenantType === "agency";
-  // para un particular ("individual") la agencia toma el fullName.
+  // Razón social de la inmobiliaria. Siempre presente: la app solo registra
+  // inmobiliarias (las cuentas de particular ya no se ofrecen en el alta).
   agencyName: string;
   cityId: string;
   email: string;
@@ -39,10 +38,9 @@ export async function registerAction(
   const admin = createAdminClient();
 
   // Crea una agencia nueva para este registro (ya no se cuelga de una demo).
-  // Una inmobiliaria usa su razón social; un particular usa su nombre completo.
+  // El nombre es siempre la razón social de la inmobiliaria.
   // El insert va con service role porque no hay policy de INSERT en agencies.
-  const agencyName =
-    data.tenantType === "agency" ? data.agencyName : data.fullName;
+  const agencyName = data.agencyName;
 
   // Slug LIMPIO para la agencia (white-label lo usa en la URL): sin sufijo
   // aleatorio, con -2/-3 solo ante colisión. El pre-chequeo de
@@ -59,7 +57,10 @@ export async function registerAction(
         city_id: data.cityId,
         name: agencyName,
         slug,
-        tenant_type: data.tenantType,
+        // Fijo en el servidor: la app solo opera con inmobiliarias. El cliente
+        // ya no manda este dato (se eliminó el selector de tipo de cuenta del
+        // registro). La columna sigue existiendo para las filas históricas.
+        tenant_type: "agency",
         // La agencia hereda el WhatsApp de su admin fundador: el dueño es el
         // contacto natural de la agencia recién creada. Es editable después en
         // Preferencias si la agencia tiene otro número. phone_wa es NOT NULL en la
@@ -118,7 +119,7 @@ export async function registerAction(
 
   // Si Supabase requiere confirmación de email, el usuario llega aquí sin sesión
   // → Desactivar "Confirm email" en Supabase > Auth > Settings para desarrollo.
-  // Un particular ya tiene su plan (free) → directo al dashboard. Una inmobiliaria
-  // pasa por el paso de selección de plan.
-  redirect(data.tenantType === "individual" ? "/dashboard" : "/register/plan");
+  // Toda alta pasa por el paso de selección de plan: la cuenta queda en free
+  // (estado de aterrizaje) y ahí elige el plan pago, o lo deja para después.
+  redirect("/register/plan");
 }

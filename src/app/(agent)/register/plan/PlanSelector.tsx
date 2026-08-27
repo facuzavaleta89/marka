@@ -12,7 +12,13 @@ import { selectPlanAction } from "./actions";
 // Claim del panel de identidad (voz DESIGN §10: directo, sin marketing).
 const CLAIM = "Elegí el plan de tu inmobiliaria.";
 const SUBCLAIM =
-  "Free se activa al instante. Los planes pagos quedan pendientes hasta que confirmemos la activación.";
+  "El plan queda pendiente hasta que confirmemos la activación. Mientras tanto podés empezar a usar la cuenta.";
+
+// Planes OFRECIBLES en el alta: los tres pagos. Se derivan de PLAN_ORDER
+// excluyendo 'free', que no es un producto sino el estado de aterrizaje de la
+// suscripción (ver PLANS en types). PLAN_ORDER queda intacto: es el dominio de
+// la columna `plan`, no el catálogo de venta.
+const PAID_PLANS = PLAN_ORDER.filter((id) => id !== "free");
 
 // Features visibles de un plan, derivadas del catálogo PLANS. Selector propio:
 // no se reusa el PlanCard del dashboard (queda intacto).
@@ -33,11 +39,18 @@ export function PlanSelector({
 }: {
   currentPlan: SubscriptionPlan;
 }) {
-  const [selected, setSelected] = useState<SubscriptionPlan>(currentPlan);
+  // Preselección: solo si el plan que trae la página es uno de los ofrecibles.
+  // Con el estado de aterrizaje (plan 'free', sin pedido) no hay card que
+  // preseleccionar → arranca en null y "Continuar" queda deshabilitado hasta
+  // que la agencia elija. Nunca se manda 'free' a la action.
+  const [selected, setSelected] = useState<SubscriptionPlan | null>(
+    currentPlan === "free" ? null : currentPlan
+  );
   const [loading, setLoading] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
   const onContinue = async () => {
+    if (!selected) return;
     setLoading(true);
     setServerError(null);
     const result = await selectPlanAction(selected);
@@ -54,13 +67,13 @@ export function PlanSelector({
         Elegí tu plan
       </h2>
       <p className="font-sans text-sm text-graphite mb-7">
-        Podés empezar en free y pasar a un plan pago cuando quieras.
+        Si preferís, podés decidirlo más tarde desde tu panel.
       </p>
 
       {/* Cards seleccionables — mismo estilo que el selector del registro
           (activo terracota/paper, inactivo stone/hover mist). */}
       <div className="space-y-3" role="radiogroup" aria-label="Plan">
-        {PLAN_ORDER.map((id) => {
+        {PAID_PLANS.map((id) => {
           const plan = PLANS[id];
           const active = selected === id;
           return (
@@ -125,19 +138,20 @@ export function PlanSelector({
       <Button
         type="button"
         onClick={onContinue}
-        disabled={loading}
-        className="w-full bg-terracota hover:bg-terracota-hover text-paper border-0 mt-6"
+        disabled={loading || !selected}
+        className="w-full bg-terracota hover:bg-terracota-hover text-paper border-0 mt-6 disabled:opacity-40"
       >
         {loading ? "Guardando..." : "Continuar"}
       </Button>
 
-      {/* Omitir: el registro ya dejó la cuenta en free/active, así que ir al
-          dashboard sin guardar deja el plan free tal cual. */}
+      {/* Omitir: el registro ya dejó la cuenta en su estado de aterrizaje
+          (free/active), así que ir al dashboard sin guardar la deja igual. El
+          plan se puede elegir después desde /dashboard/suscripcion. */}
       <Link
         href="/dashboard"
         className="mt-4 block text-center font-sans text-sm text-graphite transition-colors duration-[120ms] ease-out hover:text-terracota"
       >
-        Por ahora sigo en free
+        Decidir más tarde
       </Link>
     </AuthLayout>
   );
