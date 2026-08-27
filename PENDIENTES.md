@@ -2,11 +2,44 @@
 
 > Lista viva de pendientes, deuda técnica y decisiones de producto abiertas.
 > Se actualiza a medida que se cierran piezas o aparecen cosas nuevas.
-> Última actualización: 19 jun 2026 (white-label sub-pieza B1: subir logo en Preferencias; arreglada policy de UPDATE de Storage que faltaba).
+> Última actualización: 29 jun 2026 (cierre fase White-label: B2a hecha, B2b/C en pausa; + hoja de ruta NUEVA FASE tras validación con el rubro y el colegio de corredores, y entrada de socio/financiamiento).
 
 ---
 
-## Fase 3 — piezas que faltan
+## 🚀 NUEVA FASE — Cambios profundos de modelo (post-validación con el rubro)
+
+> Contexto: tras reuniones con inmobiliarias del rubro y con el presidente del colegio
+> de corredores de Santiago, + entrada de un socio que financia la startup (sueldo +
+> dedicación full-time + participa en decisiones), surge una hoja de ruta nueva. Varios
+> de estos cambios REVIERTEN o AJUSTAN decisiones del modelo actual. Nada de esto rompe
+> la arquitectura (mapa, propiedades, dashboard, roles, panel admin, white-label se
+> mantienen); son cambios de MODELO DE ENTRADA y de RIQUEZA del listado. Casi todo se
+> apoya en infraestructura que ya existe o estaba anotada.
+>
+> Agrupados en 3 bloques temáticos. Orden sugerido: arrancar por el BLOQUE A (define
+> quién entra a la plataforma; es lo que el colegio mira y da legitimidad). Las
+> decisiones ahora se toman entre el usuario, el socio y Claude (criterio técnico).
+
+### BLOQUE A — Modelo de agencias (legitimidad) — arrancar por acá
+
+- [ ] **A1 · Eliminar particulares (SÍ O SÍ).** La app pasa a ser **solo agencias**. Razón de negocio: las inmobiliarias que pagan no quieren competir con particulares gratis (les socava el negocio) ni con corredores no matriculados. Impacto acotado: el particular nunca fue entidad separada — es `tenant_type = 'individual'` en `agencies` (una agencia de un miembro). Eliminar = cerrar la puerta de entrada: sacar la opción "particular" del registro y el plan `free` como auto-registro. A decidir al diseñar: qué se hace con `tenant_type` y el plan `free` en el schema (borrar / código muerto / reutilizar). Toca sobre todo el flujo de REGISTRO; no toca mapa, white-label ni propiedades.
+
+- [ ] **A2 · Matrícula + alta manual de agencias (SÍ O SÍ, ver la forma).** Dos partes: (a) **número de matrícula** como dato de la agencia (campo nuevo en `agencies` + probablemente estado de verificación → `ALTER` aditivo). (b) **Alta manual**: las agencias ya NO se dan de alta solas. Razón: el padrón es público, así que verificar la matrícula automáticamente probaría que la matrícula EXISTE, no que quien la carga es su dueño — cualquiera con los datos públicos podría hacerse pasar por una agencia. Por eso el alta la aprueba el dueño de la app manualmente. **Buena noticia: ya existe casi toda la infraestructura** — el dueño hoy activa planes pagos manualmente desde `/admin`; el alta de agencias es el mismo patrón (aprobación del dueño) un paso antes. Se EXTIENDE, no se inventa. **Conecta con** la deuda ya anotada "Edición del nombre de la agencia con aprobación del dueño" — misma familia (datos de agencia semi-regulados que el dueño valida); conviene diseñarlas juntas. La pieza "Selección de plan post-registro" actual y el flujo de registro de dos pasos se van a tener que repensar con esto.
+
+### BLOQUE B — Datos de la propiedad (riqueza del listado)
+
+- [ ] **B1 · Precio opcional / "Consultar" (EN EVALUACIÓN).** Problema real del rubro: el precio en el mapa filtra la tasación por m² de la zona, dato competitivo que las inmobiliarias no quieren regalar (es por lo que muchas no suben a Redfira, la competencia, que OBLIGA a poner precio). Tensión: el visitante quiere ver precio (es lo primero que mira), pero la agencia no siempre quiere mostrarlo. **Dirección propuesta (no cerrada):** que sea una decisión POR PROPIEDAD — cada propiedad puede ser "precio visible" o "precio a convenir / Consultar". El pin del mapa, cuando no hay precio, muestra "Consultar" (o ícono) en vez del número — nunca un hueco ni "SIN PRECIO". Convierte un problema ("obligo o no") en una feature diferenciadora vs Redfira ("en Marka vos decidís"). Riesgo a vigilar: si TODAS ocultan, el mapa pierde valor para el visitante — apuesta: no pasa (alquileres tienden a mostrar; ventas de alto valor tienden a ocultar → mix natural). Toca: campo en `properties`, el pin (`formatPriceCompact`/marker) y el modal. Acotado.
+
+- [ ] **B2 · Requisitos para alquiler (feature nueva, fácil).** El agente, al crear/editar la propiedad, marca con checkboxes qué requisitos pide para alquilar (recibo de sueldo, fotos de DNI, garantía propietaria, etc.) + una opción **"otro"** de texto libre. **NO se cargan archivos** — son solo las opciones que la propiedad requiere. Se muestran en el **modal**. **Mismo patrón que `amenities`** (lista flexible JSONB marcada en la propiedad, mostrada como chips en el modal) — molde ya existente; el "otro" de texto libre es el único agregado. Toca: campo en `properties` (JSONB tipo amenities), el form de propiedad y el modal. La más fácil de todas.
+
+### BLOQUE C — Crecimiento y monetización (ideas del socio)
+
+- [ ] **C1 · Registro OPCIONAL de visitantes + base para monetización de datos (EN EVALUACIÓN).** El socio quiere monetizar datos. Parte técnica viable y ya medio pensada (ver "¿Login opcional de visitantes?" en Decisiones de producto): auth de visitantes opcional (NUNCA obligatorio — el registro mata conversión), habilita favoritos sincronizados, alertas de precio, etc. **Parte de venta de datos — NOTA LEGAL IMPORTANTE (criterio técnico, no decisión tomada):** vender datos personales identificables está fuertemente regulado en Argentina (Ley 25.326): requiere consentimiento explícito e informado + registro de la base ante la autoridad. Distinguir: (a) datos personales identificables → alto riesgo legal y de confianza; (b) **datos de mercado AGREGADOS y anónimos** (precio/m² por zona, evolución, demanda por barrio) → más seguros, igual o más valiosos, vendibles a tasadoras/bancos/desarrolladores/colegio. Recomendación a discutir con el socio: sí al registro opcional, sí a monetizar — orientado primero a datos de mercado agregados (valor grande y limpio); venta de datos personales solo con aparato legal completo. **Diseñar el registro PREPARADO para consentimiento desde el día 1** (checkbox claro de uso de datos) — barato ahora, caro de retrofittear. NO documentar como decisión tomada; es para discutir entre los tres.
+
+- [ ] **C2 · Página + link por propiedad (viable, alto retorno).** Cada propiedad con su URL propia para compartir (caso de uso: una inmobiliaria habla con un cliente FUERA de Marka y le pasa el link de esa propiedad). **Ya medio caminado:** cada propiedad YA tiene `slug` único; y ya estaba anotada como "Página SEO por propiedad" (`/propiedades/[slug]` + Open Graph) en V2. El modal NO tiene URL (se abre sobre el mapa) → la solución es una **página propia** en `/propiedades/[slug]` (página real, indexable, con fotos+datos+WhatsApp y botón "ver en el mapa"), no "darle URL al modal". Bonus enorme: esa página es **SEO** — cada propiedad indexable en Google (difusión orgánica gratis). El `slug` ya existente resuelve la base. Toca: ruta nueva + botón compartir + Open Graph (link lindo al pegarlo en WhatsApp).
+
+---
+
 
 > Multi-agente es el marco que da sentido a varias de estas. Sub-pieza 1 (crear
 > agentes + listar equipo) YA está hecha. Las que siguen son sus continuaciones.
@@ -16,8 +49,9 @@
 - [ ] **White-label** (planes profesional+) — URL por agencia (`marka.com.ar/[slug]`) con el mapa filtrado a esa agencia. Partido en sub-piezas; A ya está hecha:
   - [x] **Sub-pieza A — Ruta pública + resolución por slug + mapa filtrado + gate de plan.** `/[slug]` en el root (exclusivo de agencias; las ciudades salen del root). `resolveAgencyBySlug` (service role, 3 estados: `not_found`→404 / `disabled`→página "sitio no disponible" / `active`→mapa). `AgencyMapView` (mirror de la home sin CityPicker) + `AgencyUnavailable`. `agencyId` opcional en `useProperties`/`MapView`/`PropertyList`. SIN personalización todavía. Probado (3 caminos + filtrado con contraste de 2 agencias en la misma ciudad). Ver CLAUDE.md "White-label por agencia".
   - [x] **Sub-pieza B1 — Subir el logo en Preferencias.** `AgencyLogoForm` (admin-only) sube el logo **client-side** (como el avatar) a `logos/{agency_id}/logo.{ext}` con `upsert`; la URL se persiste con `updateAgencyLogoAction` (gate admin + service role + `.eq("id", caller.agency_id)`). Enfoque híbrido decidido: lo sensible es la escritura en `agencies`, no el archivo (bucket público) → no hace falta upload por server action/FormData. Validación real (PNG/JPG/WEBP, no SVG, máx 2 MB), extensión del MIME, cache-buster en preview. El logo NO se muestra en el white-label todavía (es B2). Probado: subir, persistir tras reload, reemplazar, validaciones. Ver CLAUDE.md "White-label · B1".
-  - [ ] **Sub-pieza B2 — Mostrar logo + nombre en el white-label.** `AgencyMapView` lee `logo_url` y lo muestra en el header (fallback al nombre en texto si es null), más **"powered by Marka."** discreto abajo (esquina inferior, tipo atribución de Google Maps; reusar el `Wordmark` chico). Más la variante: si el visitante es el **admin logueado** de esa agencia y la vista está en `disabled` (bajó de plan), en vez de `AgencyUnavailable` genérica ve una **invitación a reactivar** (requiere resolver sesión + rol en la ruta; solo admin, no agente). **Color queda afuera** (futuro: paletas prearmadas, nunca color libre).
-  - [ ] **Sub-pieza C — Slug editable en Preferencias.** Admin-only, server-side; check de disponibilidad contra `generateUniqueAgencySlug`; advertencia clara de que los links viejos mueren (sin historial de slugs por ahora). Es la más independiente; no bloquea a las demás.
+  - [x] **Sub-pieza B2a — Logo + nombre en el header.** `AgencyMapView` muestra el logo de la agencia (izquierda, `object-contain` altura fija, tolera cualquier proporción) + nombre (centro, visible en mobile). Sin logo → nombre a la izquierda, centro vacío, nunca Wordmark de Marka. "Powered by Marka." discreto centrado al pie (`size="xs"` nuevo del Wordmark, aditivo). `resolveAgencyBySlug` ahora trae `logo_url` en `active`. Probado en reunión real con el rubro. Ver CLAUDE.md "Sub-pieza B2a".
+  - [ ] **EN PAUSA — Sub-pieza B2b — Variante admin en `disabled`.** Cuando el admin logueado de una agencia caída entra a su propia URL, ve invitación a reactivar en vez de `AgencyUnavailable` genérica. Requiere: meterle resolución de sesión a la ruta `/[slug]` (hoy 100% anónima) SIN guard de redirect, + ensanchar el estado `disabled` de `resolveAgencyBySlug` para que devuelva `id`+`name` (hoy es `{ status: "disabled" }` pelado), + comparar `agent.agency_id === id de la agencia del slug`. Diagnóstico ya relevado. **PAUSADA** hasta resolver los cambios de modelo (matrícula/alta manual tocan agencias/roles).
+  - [ ] **EN PAUSA — Sub-pieza C — Slug editable en Preferencias.** Admin-only, server-side; check de disponibilidad contra `generateUniqueAgencySlug`; advertencia de que los links viejos mueren. **PAUSADA** por la misma razón.
   - Nota de namespace: si a futuro se quiere URL de ciudad (SEO/compartir), va con **prefijo** (`/ciudad/[slug]`), nunca en el root — el root es de las agencias. La extensión de `generateUniqueAgencySlug` para chequear también `cities` se descartó: al salir las ciudades del root, no hay colisión posible.
 
 ---
@@ -53,9 +87,9 @@
 
 ## Decisiones de producto abiertas
 
-- [ ] **¿Login opcional de visitantes?** — hoy el visitante NO se registra (favoritos en localStorage). Un login *opcional* (nunca obligatorio) habilitaría favoritos sincronizados entre dispositivos, historial y alertas ("bajó el precio de una que viste"). Decidido: NO ahora (el registro mata conversión, que es lo que más se cuida; el uso es corto e intenso). Solo evaluar a futuro como opt-in para usuarios recurrentes. NUNCA obligatorio. Nota: del visitante hoy solo se captura el nombre — el teléfono/email no, porque el agente ya recibe el número por WhatsApp (pedirlo sería fricción redundante).
+- [ ] **¿Login opcional de visitantes?** — hoy el visitante NO se registra (favoritos en localStorage). Un login *opcional* (nunca obligatorio) habilitaría favoritos sincronizados entre dispositivos, historial y alertas ("bajó el precio de una que viste"). Decidido en su momento: NO ahora. **REABIERTO por C1 de la nueva fase** (el socio quiere monetizar datos) — ahora SÍ se va a evaluar en serio, siempre opt-in, nunca obligatorio, y preparado para consentimiento de datos desde el día 1. Ver "🚀 NUEVA FASE → C1".
 
-- [ ] **¿Un particular (free) puede pagar por destacar su única propiedad?** — decisión de modelo de negocio.
+- [ ] ~~**¿Un particular (free) puede pagar por destacar su única propiedad?**~~ — **OBSOLETA por A1 de la nueva fase** (se eliminan los particulares). Sin particulares, la pregunta no aplica.
 - [ ] **Validar precios con el mercado** — cuánto pagan las inmobiliarias locales por Zonaprop, para calibrar los precios de los planes ($30k/$65k/$140k son placeholders).
 
 ---
@@ -70,7 +104,7 @@
 
 - [ ] Modo oscuro (esfuerzo grande: rediseñar paleta y revisar contraste).
 - [ ] Vista "Mis favoritos" (panel que liste todos los favoritos guardados).
-- [ ] Página SEO por propiedad (`/propiedades/[slug]`) + Open Graph dinámico. (Cuando exista: en la pantalla de Consultas, el título de la propiedad hoy es texto plano — envolverlo en `<Link href={\`/propiedades/${slug}\`}>`. Se dejó sin link a propósito para no romper con un 404.)
+- [ ] Página SEO por propiedad (`/propiedades/[slug]`) + Open Graph dinámico. **PROMOVIDA a C2 de la nueva fase** (el socio la pidió como link-para-compartir; sube de prioridad). (Cuando exista: en la pantalla de Consultas, el título de la propiedad hoy es texto plano — envolverlo en `<Link href={\`/propiedades/${slug}\`}>`. Se dejó sin link a propósito para no romper con un 404.)
 - [ ] Dashboard analytics (gráficos de consultas y propiedades más vistas — plan premium).
 - [ ] Deduplicación de propiedades listadas por 2 agencias.
 - [ ] Notificaciones por email al agente ante nuevo lead (Resend).
@@ -107,3 +141,4 @@
 - [x] **Fix viewport mobile**: la navbar superior se scrolleaba fuera de vista al enfocar (zoom de Leaflet o input de WhatsApp). Causa raíz: `h-screen` (`100vh`) dejaba el documento scrolleable en mobile + header en flujo normal. Arreglo parejo en toda la app: `h-screen`→`h-dvh` en todos los wrappers de pantalla completa + lock de scroll del documento (`html, body { overflow: hidden }`). `AuthLayout` (login/register) era el único que dependía del scroll del documento → se le dio contenedor scrolleable propio (`h-dvh overflow-y-auto` + centrado por `m-auto`), preservando el sticky del split-screen (DESIGN §14). Tailwind v4 trae `h-dvh` nativo. Probado en mobile real (los 2 disparadores + register + scroll interno del dashboard).
 - [x] **White-label · Sub-pieza B1**: subir el logo de la agencia en Preferencias (admin-only). `AgencyLogoForm` (upload client-side a `logos/{agency_id}/logo.{ext}` con `upsert`) + `updateAgencyLogoAction` (gate admin + service role persiste `logo_url`). Validación real (PNG/JPG/WEBP, no SVG, máx 2 MB), extensión del MIME, cache-buster en preview. El logo aún NO se muestra en el white-label (eso es B2). Probado: subir, persistir tras reload, reemplazar N veces, validaciones de tipo y tamaño.
 - [x] **Arreglo policy UPDATE de Storage**: al reemplazar avatar/logo daba 403 "new row violates row-level security policy". Causa: un `upsert` sobre archivo existente es un UPDATE, y **no existía policy de UPDATE** en `storage.objects` (solo INSERT/DELETE/SELECT) → RLS lo negaba por defecto. La primera subida (INSERT) sí pasaba; el reemplazo (UPDATE) no. Arreglado agregando policy de UPDATE laxa (cualquier `authenticated`, igual que el INSERT). Corrido a mano en Supabase. NO confundir con el problema de loop del dashboard (ese fue por borrado manual de la agencia, no por Storage). La seguridad fina de las policies quedó como deuda (ver arriba).
+- [x] **White-label · Sub-pieza B2a**: logo + nombre de la agencia en el header del white-label. `AgencyMapView` recibe `agencyName`+`agencyLogoUrl`; `resolveAgencyBySlug` trae `logo_url` en `active`. Logo izquierda (`object-contain`, altura fija, tolera cualquier proporción), nombre centro (visible en mobile, `text-base sm:text-lg`); sin logo → nombre a la izquierda. "Powered by Marka." discreto al pie (`size="xs"` nuevo del Wordmark, aditivo). La marca de la agencia no es link. Probado en reunión real con el rubro. B2b (variante admin) y C (slug editable) quedaron EN PAUSA por los cambios de modelo entrantes.
