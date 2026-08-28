@@ -155,7 +155,7 @@ Marketplace inmobiliario por ciudad, vendido como SaaS a inmobiliarias.
 
 ## 3. Modelo de Base de Datos (Supabase)
 
-> El schema completo y ejecutable está en `03-schema.sql`. Acá va el resumen de las tablas y sus relaciones.
+> El schema completo y ejecutable está en `supabase/migrations/20240101000000_initial_schema.sql`. Acá va el resumen de las tablas y sus relaciones.
 
 ```
 cities ──┬──< agencies ──< agents ──< properties ──< property_images
@@ -171,7 +171,7 @@ cities ──┬──< agencies ──< agents ──< properties ──< prope
 |---|---|---|
 | `cities` | Mercados | Centro del mapa (`center_lat`/`center_lng`) y `default_zoom` por ciudad |
 | `agencies` | Inmobiliarias | Pertenecen a una ciudad (`city_id` NOT NULL); `brand_color` para futuro white-label |
-| `subscriptions` | Plan por agencia | `plan` (free/pro), `status`, `property_limit`; una por agencia |
+| `subscriptions` | Plan por agencia | `plan` (free/pro) *(desactualizado: hoy son 4 valores, 3 de venta)*, `status`, `property_limit`; una por agencia |
 | `agents` | Agentes | `id` = `auth.users.id`; pertenecen a una agencia (`agency_id` NOT NULL) |
 | `properties` | Inmuebles | `agency_id` y `city_id` NOT NULL; `city_id` denormalizado para filtrar sin JOIN; `location` GEOGRAPHY generada desde lat/lng |
 | `property_images` | Fotos | Vinculadas a una propiedad; portada = `sort_order 0` + `is_cover` |
@@ -322,7 +322,7 @@ export function generateWaUrl(params: {
 Creá un **Project en Claude.ai** para esta app. Subí al contexto del proyecto:
 - Las instrucciones del proyecto (`01-instrucciones-proyecto.md`)
 - Este archivo de plan
-- El schema SQL (`03-schema.sql`)
+- El schema SQL (`supabase/migrations/20240101000000_initial_schema.sql`)
 - Los types de TypeScript (`04-types.ts`)
 - El `CLAUDE.md` y el `DESIGN.md`
 

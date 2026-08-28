@@ -34,6 +34,10 @@
 --     colegio de corredores y aprobación a mano del dueño desde /admin.
 --     Backfill aplicado: las 10 agencias existentes quedaron en 'approved' y sin
 --     matrícula. Incluidos abajo con sus índices y su RLS.
+--   * check_agency_approved() + trg_check_agency_approved sobre properties, y
+--     check_property_limit() actualizada (sin fila de suscripción → límite 0):
+--     YA MIGRADOS (28 ago 2026). Son los DOS gates de publicación, incluidos
+--     abajo con el porqué de que sean triggers y no policies.
 -- ============================================================
 
 -- Extensiones necesarias (PostGIS ya viene activado en Supabase)
@@ -344,6 +348,12 @@ BEGIN
   FROM subscriptions
   WHERE agency_id = NEW.agency_id;
 
+  -- Sin fila de suscripción NO hay cupo: antes max_allowed quedaba NULL, la
+  -- comparación daba NULL y el insert pasaba sin límite alguno.
+  IF max_allowed IS NULL THEN
+    max_allowed := 0;
+  END IF;
+
   -- En INSERT, o en UPDATE que reactiva una propiedad
   IF (TG_OP = 'INSERT' AND NEW.status IN ('active', 'paused'))
      OR (TG_OP = 'UPDATE' AND NEW.status IN ('active', 'paused')
@@ -361,6 +371,50 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER trg_check_property_limit
   BEFORE INSERT OR UPDATE ON properties
   FOR EACH ROW EXECUTE FUNCTION check_property_limit();
+
+-- ─── FUNCIÓN: agencia aprobada para publicar ─────────────────
+-- Impide publicar propiedades si la agencia no pasó la aprobación manual del
+-- dueño de la plataforma (agencies.approval_status).
+--
+-- ⚠ POR QUÉ ES UN TRIGGER Y NO UNA POLICY RLS: la server action que crea
+-- propiedades usa SERVICE ROLE cuando un admin de agencia publica a nombre de
+-- otro agente (la RLS `agent_id = auth.uid()` rechazaría ese agent_id), y el
+-- service role SALTEA las policies. Un trigger corre siempre, sin importar el
+-- rol: es la única barrera que cubre los dos caminos.
+--
+-- ⚠ SOLO EN INSERT, a propósito: editar una propiedad ya cargada sigue
+-- permitido aunque la agencia se rechace después. A nadie se le quitan las
+-- propiedades que ya publicó; lo que se bloquea es publicar nuevas.
+--
+-- Comparte ERRCODE con check_property_limit (23514), así que la aplicación los
+-- distingue por el TEXTO del mensaje. Si se cambia este texto, hay que tocar
+-- translatePropertyWriteError en dashboard/propiedades/actions.ts.
+CREATE OR REPLACE FUNCTION check_agency_approved()
+RETURNS TRIGGER AS $$
+DECLARE
+  agency_state TEXT;
+BEGIN
+  SELECT approval_status INTO agency_state
+  FROM agencies
+  WHERE id = NEW.agency_id;
+
+  -- Sin fila de agencia no se publica: es un estado inconsistente, no un permiso.
+  IF agency_state IS NULL OR agency_state <> 'approved' THEN
+    RAISE EXCEPTION 'La agencia no está aprobada para publicar propiedades'
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Nombre load-bearing: Postgres dispara los triggers en ORDEN ALFABÉTICO, y
+-- "trg_check_agency_approved" va antes que "trg_check_property_limit". Es el
+-- orden correcto: a una agencia sin aprobar hay que decirle que le falta la
+-- aprobación, no que alcanzó un límite de plan que nunca alcanzó.
+CREATE TRIGGER trg_check_agency_approved
+  BEFORE INSERT ON properties
+  FOR EACH ROW EXECUTE FUNCTION check_agency_approved();
 
 -- ─── ÍNDICES ─────────────────────────────────────────────────
 
