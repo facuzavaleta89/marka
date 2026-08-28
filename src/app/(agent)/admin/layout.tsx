@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { getPlanUsage } from "@/lib/utils/getPlanUsage";
+import { resolveAgentSession } from "@/lib/utils/resolveAgentSession";
 
 // Layout del panel de plataforma (solo el dueño). Comparte el shell del dashboard
 // (sidebar + área de contenido) pero centraliza acá el gating: este layout envuelve
@@ -15,26 +16,25 @@ export default async function AdminLayout({
 }) {
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  // Se resuelve la sesión con el helper compartido, pero los cortes se hacen a
+  // mano para CONSERVAR EL ORDEN original: primero sesión, después identidad del
+  // dueño, y recién al final la cuenta huérfana. Así un no-admin sigue yendo a
+  // /dashboard sin que el estado de su agencia influya en nada.
+  const session = await resolveAgentSession();
+  if (session.status === "no_session") redirect("/login");
 
   // Fail-closed: sin ADMIN_USER_ID, nadie es admin. No revelamos que la ruta
   // existe — redirigimos al dashboard como cualquier no-admin.
   const adminUserId = process.env.ADMIN_USER_ID;
-  if (!adminUserId || user.id !== adminUserId) {
+  if (!adminUserId || session.userId !== adminUserId) {
     redirect("/dashboard");
   }
 
-  // Mismos datos que alimenta dashboard/layout.tsx al Sidebar.
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("full_name, avatar_url, agency_id, role, agency:agencies(name)")
-    .eq("id", user.id)
-    .single();
+  // Cuenta con sesión pero sin agencia resoluble: cerrar sesión (ver
+  // requireAgentSession — es la salida del bucle de redirecciones).
+  if (session.status === "unlinked") redirect("/logout?reason=no_agency");
 
-  if (!agent) redirect("/login");
+  const { agent, agency } = session;
 
   const planUsage = await getPlanUsage(supabase, agent.agency_id);
 
@@ -43,19 +43,13 @@ export default async function AdminLayout({
   const isAppAdmin = true;
   const isAgencyAdmin = agent.role === "admin";
 
-  // Supabase devuelve agency como array cuando se usa join; normalizamos.
-  const agencyRaw = agent.agency;
-  const agencyName = Array.isArray(agencyRaw)
-    ? agencyRaw[0]?.name ?? null
-    : (agencyRaw as { name: string } | null)?.name ?? null;
-
   return (
     <div className="flex h-dvh bg-mist overflow-hidden">
       <Sidebar
         agent={{
           full_name: agent.full_name,
           avatar_url: agent.avatar_url,
-          agency: agencyName ? { name: agencyName } : null,
+          agency: { name: agency.name },
         }}
         planUsage={planUsage}
         isAppAdmin={isAppAdmin}

@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { requireAgentSession } from "@/lib/utils/resolveAgentSession";
 import { createClient } from "@/lib/supabase/server";
 import { PlanBadge } from "@/components/dashboard/PlanBadge";
 import { NewPropertyButton } from "@/components/dashboard/NewPropertyButton";
@@ -8,17 +8,7 @@ import { getPlanUsage } from "@/lib/utils/getPlanUsage";
 export default async function PropiedadesPage() {
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("agency_id, role")
-    .eq("id", user.id)
-    .single();
-  if (!agent) redirect("/login");
+  const { userId, agent } = await requireAgentSession();
 
   // Un admin de agencia ve (y gestiona) las propiedades de TODA su agencia; un
   // agente normal, solo las suyas (igual que hoy). El admin además trae el
@@ -38,7 +28,7 @@ export default async function PropiedadesPage() {
     : supabase
         .from("properties")
         .select(baseSelect)
-        .eq("agent_id", user.id)
+        .eq("agent_id", userId)
         .order("created_at", { ascending: false });
 
   const [{ data: properties }, planUsage] = await Promise.all([

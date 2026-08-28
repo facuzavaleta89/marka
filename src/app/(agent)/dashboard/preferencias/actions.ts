@@ -1,9 +1,9 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { resolveAgentSession } from "@/lib/utils/resolveAgentSession";
 
 type ActionResult = { error: string } | undefined;
 
@@ -35,19 +35,12 @@ export async function updateAgencyPhoneAction(input: {
   }
   const { phone_wa } = parsed.data;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "No autenticado" };
-
-  const { data: caller } = await supabase
-    .from("agents")
-    .select("agency_id, role")
-    .eq("id", user.id)
-    .single();
-
-  if (!caller) return { error: "No autenticado" };
+  // Es una action: ante sesión inválida devuelve error, NO redirige (redirigir
+  // desde un submit rompe el manejo de errores del formulario que la llama).
+  // Mismos mensajes que antes.
+  const session = await resolveAgentSession();
+  if (session.status !== "ok") return { error: "No autenticado" };
+  const caller = session.agent;
   if (caller.role !== "admin") return { error: "No autorizado" };
 
   const admin = createAdminClient();
@@ -79,19 +72,12 @@ export async function updateAgencyLogoAction(input: {
   }
   const { logo_url } = parsed.data;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "No autenticado" };
-
-  const { data: caller } = await supabase
-    .from("agents")
-    .select("agency_id, role")
-    .eq("id", user.id)
-    .single();
-
-  if (!caller) return { error: "No autenticado" };
+  // Es una action: ante sesión inválida devuelve error, NO redirige (redirigir
+  // desde un submit rompe el manejo de errores del formulario que la llama).
+  // Mismos mensajes que antes.
+  const session = await resolveAgentSession();
+  if (session.status !== "ok") return { error: "No autenticado" };
+  const caller = session.agent;
   if (caller.role !== "admin") return { error: "No autorizado" };
 
   const admin = createAdminClient();

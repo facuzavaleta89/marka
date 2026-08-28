@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { translateAuthError } from "@/lib/utils/authErrors";
 import { revalidatePath } from "next/cache";
+import { resolveAgentSession } from "@/lib/utils/resolveAgentSession";
 import { z } from "zod";
 
 type ActionResult = { error: string } | undefined;
@@ -35,21 +36,12 @@ export async function createAgentAction(
   const { full_name, email, phone_wa, password } = parsed.data;
 
   // 2) Sesión: tiene que haber un usuario logueado
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "No autenticado" };
-
   // 3) Autorización: el usuario tiene que ser admin DE SU agencia.
   // El agency_id sale de acá (la fila del admin), jamás del cliente.
-  const { data: caller } = await supabase
-    .from("agents")
-    .select("agency_id, role")
-    .eq("id", user.id)
-    .single();
-
-  if (!caller) return { error: "No autenticado" };
+  // Action: devuelve error, no redirige. Mismos mensajes que antes.
+  const session = await resolveAgentSession();
+  if (session.status !== "ok") return { error: "No autenticado" };
+  const caller = session.agent;
   if (caller.role !== "admin") return { error: "No autorizado" };
 
   const agencyId = caller.agency_id;
@@ -107,23 +99,18 @@ export async function deleteAgentAction(agentId: string): Promise<ActionResult> 
   }
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "No autenticado" };
+
+  // Action: devuelve error, no redirige. Mismos mensajes que antes.
+  const session = await resolveAgentSession();
+  if (session.status !== "ok") return { error: "No autenticado" };
 
   // Auto-borrado: una agencia no puede quedar sin su admin.
-  if (agentId === user.id) {
+  if (agentId === session.userId) {
     return { error: "No podés eliminarte a vos mismo" };
   }
 
   // Autorización: el caller tiene que ser admin. agency_id sale de acá.
-  const { data: caller } = await supabase
-    .from("agents")
-    .select("agency_id, role")
-    .eq("id", user.id)
-    .single();
-  if (!caller) return { error: "No autenticado" };
+  const caller = session.agent;
   if (caller.role !== "admin") return { error: "No autorizado" };
 
   // El agente a borrar tiene que pertenecer a la agencia del caller. Mismo
@@ -146,7 +133,7 @@ export async function deleteAgentAction(agentId: string): Promise<ActionResult> 
   // trigger de límite no se dispara (solo cambia agent_id, no el status).
   const { error: reassignError } = await admin
     .from("properties")
-    .update({ agent_id: user.id })
+    .update({ agent_id: session.userId })
     .eq("agent_id", agentId)
     .eq("agency_id", caller.agency_id);
   if (reassignError) {

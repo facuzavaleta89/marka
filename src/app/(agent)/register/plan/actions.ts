@@ -1,9 +1,9 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import { PLANS, PLAN_ORDER, type SubscriptionPlan } from "@/types";
+import { resolveAgentSession } from "@/lib/utils/resolveAgentSession";
 
 // Guarda el plan elegido en el paso 2 del registro (/register/plan).
 // La agencia se deriva SIEMPRE del agente logueado (auth.uid()); nunca se
@@ -19,19 +19,11 @@ export async function selectPlanAction(
     return { error: "Plan inválido" };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
   // La agencia objetivo es la del usuario logueado, leída server-side.
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("agency_id")
-    .eq("id", user.id)
-    .single();
-  if (!agent) redirect("/login");
+  const session = await resolveAgentSession();
+  if (session.status === "no_session") redirect("/login");
+  if (session.status === "unlinked") redirect("/logout?reason=no_agency");
+  const { agent } = session;
 
   // GUARDA DE REENTRADA (misma condición que page.tsx, repetida acá porque una
   // server action se puede invocar sin pasar por la página). Este paso solo
