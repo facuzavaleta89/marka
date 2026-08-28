@@ -1,13 +1,15 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { Agency, City } from "@/types";
+import type { Agency, ApprovalStatus, City } from "@/types";
 
 // Resolución de una agencia por su slug para la URL pública white-label
 // (`marka.com.ar/[slug]`). Devuelve TRES estados deliberadamente distintos:
 //
 //   - not_found : no existe ninguna agencia con ese slug → la ruta hace 404 real.
-//   - disabled  : la agencia existe pero su suscripción NO tiene has_white_label
-//                 (nunca lo tuvo, o bajó de plan) → página de "sitio no disponible".
-//   - active    : existe y tiene white-label habilitado → mapa filtrado a la agencia.
+//   - disabled  : la agencia existe pero NO está disponible al público, por
+//                 cualquiera de dos motivos independientes: su suscripción no
+//                 tiene has_white_label (nunca lo tuvo, o bajó de plan), o la
+//                 agencia todavía no está aprobada → "sitio no disponible".
+//   - active    : aprobada y con white-label habilitado → mapa filtrado a la agencia.
 //
 // No colapsar disabled en not_found: son páginas distintas (un 404 vs un estado).
 //
@@ -29,6 +31,7 @@ type AgencyRow = {
   name: string;
   city_id: string;
   logo_url: string | null;
+  approval_status: ApprovalStatus;
   subscription:
     | { has_white_label: boolean }
     | { has_white_label: boolean }[]
@@ -65,7 +68,7 @@ export async function resolveAgencyBySlug(
   const { data, error } = await supabase
     .from("agencies")
     .select(
-      "id, name, city_id, logo_url, subscription:subscriptions(has_white_label), city:cities(*)"
+      "id, name, city_id, logo_url, approval_status, subscription:subscriptions(has_white_label), city:cities(*)"
     )
     .eq("slug", slug)
     .maybeSingle();
@@ -77,8 +80,23 @@ export async function resolveAgencyBySlug(
   const subscription = firstOf(row.subscription);
   const city = firstOf(row.city);
 
-  // Gate de plan: el flag es la fuente de verdad (no el nombre del plan). Sin flag,
-  // o sin ciudad para centrar el mapa, la URL existe pero no está disponible.
+  // DOS gates independientes, ambos con el mismo desenlace ('disabled'):
+  //
+  // 1. Gate de LEGITIMIDAD: la agencia tiene que estar aprobada. Se evalúa acá
+  //    porque este helper es el único control de la vista pública de marca: sin
+  //    esto, una agencia sin aprobar (o rechazada) que tuviera plan pago
+  //    tendría su sitio público andando, mostrándose como inmobiliaria
+  //    legítima. La aprobación es un eje independiente del plan, así que se
+  //    chequea aparte, no dentro de la condición del flag.
+  // 2. Gate de PLAN: el booleano has_white_label es la fuente de verdad, nunca
+  //    el nombre del plan. Sin ciudad tampoco hay mapa que centrar.
+  //
+  // Se colapsan en 'disabled' a propósito: al visitante anónimo no se le cuenta
+  // POR QUÉ no está disponible (no es asunto suyo si la agencia no pagó o no
+  // está aprobada), y no hace falta un estado nuevo.
+  if (row.approval_status !== "approved") {
+    return { status: "disabled" };
+  }
   if (subscription?.has_white_label !== true || !city) {
     return { status: "disabled" };
   }

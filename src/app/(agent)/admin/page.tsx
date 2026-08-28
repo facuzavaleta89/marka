@@ -5,19 +5,50 @@ import {
   Users,
   Home,
   Inbox,
+  ShieldQuestion,
 } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { StatsCard } from "@/components/dashboard/StatsCard";
 import { AgenciesTable, type AgencyRow } from "./AgenciesTable";
 import type {
+  ApprovalStatus,
   SubscriptionPlan,
   SubscriptionStatus,
-  TenantType,
 } from "@/types";
+
+// Forma cruda de la fila que devuelve la query de abajo. La suscripción y la
+// ciudad llegan como embeds de PostgREST, que se materializan como objeto o como
+// array de uno según la inferencia: por eso el tipo admite las dos formas y
+// firstOf() las normaliza (mismo patrón que resolveAgencyBySlug).
+type AgencyQueryRow = {
+  id: string;
+  name: string;
+  slug: string;
+  license_number: string | null;
+  approval_status: string;
+  subscription:
+    | AgencySubscriptionEmbed
+    | AgencySubscriptionEmbed[]
+    | null;
+  city: { name: string } | { name: string }[] | null;
+};
+
+type AgencySubscriptionEmbed = {
+  plan: string;
+  pending_plan: string | null;
+  status: string;
+  activated_at: string | null;
+};
+
+// Normaliza un embed to-one que PostgREST puede devolver como objeto o array.
+function firstOf<T>(value: T | T[] | null): T | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value;
+}
 
 // Panel de plataforma (solo el dueño). El gating (ADMIN_USER_ID) y el shell con
 // sidebar viven en admin/layout.tsx: si esta página se renderiza, ya pasó el
-// control de acceso. La action (activatePlanAction) repite la verificación aparte.
+// control de acceso. Las actions repiten la verificación aparte.
 export default async function AdminPage() {
   // Service role: la policy de SELECT de subscriptions es por agencia propia,
   // así que el dueño necesita admin client para ver las de todas las agencias.
@@ -33,18 +64,33 @@ export default async function AdminPage() {
   const [
     { data },
     { count: agenciesCount },
+    { count: toApproveCount },
     { count: paidActiveCount },
-    { count: pendingCount },
+    { count: pendingPlanCount },
     { count: agentsCount },
     { count: activePropertiesCount },
     { count: leadsMonthCount },
   ] = await Promise.all([
+    // La lista parte de AGENCIES, no de subscriptions. El sentido importa: esta
+    // es la única pantalla donde se aprueba una agencia, así que ninguna agencia
+    // puede quedar fuera. Partiendo de subscriptions, una agencia sin fila de
+    // suscripción era invisible acá — justo el caso que el alta manual vuelve
+    // posible. La suscripción ahora es un embed OPCIONAL (puede venir null).
+    // Columnas explícitas, nunca "*".
     admin
-      .from("subscriptions")
-      .select("agency_id, plan, pending_plan, status, activated_at, agencies(name, slug, tenant_type)")
+      .from("agencies")
+      .select(
+        "id, name, slug, license_number, approval_status, subscription:subscriptions(plan, pending_plan, status, activated_at), city:cities(name)"
+      )
       .order("created_at", { ascending: false }),
 
     admin.from("agencies").select("*", { count: "exact", head: true }),
+
+    // Bandeja de entrada del dueño: agencias esperando su decisión.
+    admin
+      .from("agencies")
+      .select("*", { count: "exact", head: true })
+      .eq("approval_status", "pending"),
 
     admin
       .from("subscriptions")
@@ -70,25 +116,32 @@ export default async function AdminPage() {
       .gte("created_at", thirtyDaysAgo.toISOString()),
   ]);
 
-  // El embedding agencies(...) puede llegar como objeto o array según la
-  // inferencia; lo normalizamos a la forma que espera la tabla.
-  const rows: AgencyRow[] = (data ?? []).map((sub) => {
-    const agency = Array.isArray(sub.agencies) ? sub.agencies[0] : sub.agencies;
-    return {
-      agency_id: sub.agency_id,
-      plan: sub.plan as SubscriptionPlan,
-      pending_plan: (sub.pending_plan as SubscriptionPlan | null) ?? null,
-      status: sub.status as SubscriptionStatus,
-      activated_at: sub.activated_at,
-      agency: agency
-        ? {
-            name: agency.name,
-            slug: agency.slug,
-            tenant_type: agency.tenant_type as TenantType,
-          }
-        : null,
-    };
-  });
+  // Mapeo a la forma que consume la tabla. La suscripción puede faltar: en ese
+  // caso `subscription` queda en null y la tabla lo muestra como "sin plan", no
+  // como "undefined".
+  const rows: AgencyRow[] = ((data ?? []) as unknown as AgencyQueryRow[]).map(
+    (agency) => {
+      const subscription = firstOf(agency.subscription);
+      const city = firstOf(agency.city);
+      return {
+        agency_id: agency.id,
+        name: agency.name,
+        slug: agency.slug,
+        license_number: agency.license_number,
+        approval_status: agency.approval_status as ApprovalStatus,
+        city_name: city?.name ?? null,
+        subscription: subscription
+          ? {
+              plan: subscription.plan as SubscriptionPlan,
+              pending_plan:
+                (subscription.pending_plan as SubscriptionPlan | null) ?? null,
+              status: subscription.status as SubscriptionStatus,
+              activated_at: subscription.activated_at,
+            }
+          : null,
+      };
+    }
+  );
 
   return (
     <div className="p-8">
@@ -96,9 +149,19 @@ export default async function AdminPage() {
         Resumen
       </h1>
 
-      {/* Métricas de negocio de la plataforma. Acento terracota en "Pendientes
-          de activación": es la métrica que requiere acción del dueño. */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-12">
+      {/* Métricas de negocio de la plataforma. Acento terracota SOLO en
+          "Por aprobar": es la bandeja de entrada del dueño, lo que exige acción
+          suya. "Planes por activar" quedó en tratamiento neutro para que no
+          compitan dos acentos. La grilla es de 7 tarjetas: 2 / 4 / 7 por
+          breakpoint, así ninguna fila queda con una sola card colgando. */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 mb-12">
+        <StatsCard
+          title="Por aprobar"
+          value={toApproveCount ?? 0}
+          icon={<ShieldQuestion size={20} />}
+          description="Agencias pendientes"
+          accent
+        />
         <StatsCard
           title="Agencias"
           value={agenciesCount ?? 0}
@@ -110,11 +173,10 @@ export default async function AdminPage() {
           icon={<CreditCard size={20} />}
         />
         <StatsCard
-          title="Pendientes"
-          value={pendingCount ?? 0}
+          title="Planes"
+          value={pendingPlanCount ?? 0}
           icon={<Clock size={20} />}
           description="Esperan activación"
-          accent
         />
         <StatsCard
           title="Agentes"
@@ -134,13 +196,14 @@ export default async function AdminPage() {
         />
       </div>
 
-      {/* Zona de gestión: el listado de agencias y la activación de planes. */}
+      {/* Zona de gestión: el listado de agencias, la aprobación y la activación
+          de planes. */}
       <h2 className="font-serif text-2xl font-semibold text-black mb-2">
         Agencias
       </h2>
       <p className="font-sans text-sm text-graphite mb-6">
-        Todas las agencias de la plataforma. Activá los planes pagos que están
-        pendientes.
+        Todas las agencias de la plataforma. Aprobá o rechazá las que están
+        pendientes, y activá los planes pagos que esperan confirmación.
       </p>
 
       <AgenciesTable rows={rows} />
