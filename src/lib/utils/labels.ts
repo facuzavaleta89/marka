@@ -6,6 +6,7 @@ import type {
   PropertyStatus,
   Amenity,
   Currency,
+  ApprovalStatus,
 } from "@/types";
 
 export const PROPERTY_TYPE_LABELS: Record<PropertyType, string> = {
@@ -53,4 +54,13 @@ export const AMENITY_LABELS: Record<Amenity, string> = {
 export const CURRENCY_LABELS: Record<Currency, string> = {
   USD: "USD",
   ARS: "ARS",
+};
+
+// Estado de aprobación de una agencia. Estas etiquetas las lee el dueño de la
+// plataforma en su panel, no el cliente: se redactan desde su punto de vista
+// ("por aprobar" = algo que tiene que hacer él).
+export const APPROVAL_STATUS_LABELS: Record<ApprovalStatus, string> = {
+  pending: "Por aprobar",
+  approved: "Aprobada",
+  rejected: "Rechazada",
 };

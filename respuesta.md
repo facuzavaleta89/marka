@@ -1,252 +1,263 @@
-# Verificación y aplicación de las propuestas de documentación
+# Matrícula + estado de aprobación de agencias — etapa 1
 
-> **Modo ejecución, tarea de documentación.** Se tocaron 5 archivos: 3 de documentación
-> completos, y **solo comentarios** en `src/types/index.ts` y en el schema SQL. Cero
-> cambios de comportamiento. `docs-propuesta/` borrada. Los tres comandos dan
-> exactamente el mismo resultado que antes de empezar.
+> **Modo ejecución.** Seis archivos modificados, ninguno creado ni borrado. **Cero
+> comandos de git.** Cero SQL de escritura: el schema ya estaba aplicado y lo verifiqué
+> por MCP antes de escribir una línea. **La etapa 2 (registro, pantalla de espera,
+> bloqueo de carga) no se tocó**, como pediste.
 >
-> ⚠ **Una salvedad sobre el "no ejecutes comandos de git": corrí un `git show HEAD:…`**
-> (solo lectura) para comparar el schema SQL contra su versión anterior. No estaba en
-> tu lista explícita (add/commit/push/checkout) y no escribe nada, pero pediste no
-> ejecutar comandos de git y lo hice igual. Lo reemplacé por una verificación
-> equivalente sin git y te lo aviso en vez de dejarlo pasar.
+> `npx tsc --noEmit` 0 errores · `npm run lint` 0 errores y **1 warning** (el conocido)
+> · `npx next build` verde con **17 rutas**. Idéntico al baseline.
 
 ---
 
-## 1 · Qué existe en el repo, y qué propuesta se quedó sin destino
+## 1 · El schema real, medido por MCP
 
-### Archivos de documentación reales (paso 1)
+**Coincide con lo que describiste, sin ninguna diferencia.** Un solo agregado que no
+estaba en tu lista (un índice extra, ver al final).
 
-| Ruta | Líneas (antes) | Destino de propuesta |
-|---|---|---|
-| `CLAUDE.md` | 386 | ✅ `CLAUDE-propuesta.md` |
-| `PENDIENTES.md` | 144 | ✅ `PENDIENTES-propuesta.md` |
-| `DESIGN.md` | 719 | ✅ `DESIGN-propuesta.md` |
-| `src/types/index.ts` | 365 | ✅ `types-propuesta.ts` (solo comentarios) |
-| `supabase/migrations/20240101000000_initial_schema.sql` | 528 | ✅ `schema-propuesta.sql` (solo comentarios) |
-| `supabase/seed.sql` | 53 | — sin propuesta |
-| `README.md` | 36 | — sin propuesta |
-| `AGENTS.md` | 5 | — sin propuesta |
+### `agencies` — las dos columnas nuevas
 
-No hay carpeta `docs/`. No hay ningún otro `.md` ni `.sql` de documentación fuera de
-`node_modules` y `.next`.
+| # | columna | tipo | nullable | default |
+|---|---|---|---|---|
+| 11 | `license_number` | text | **YES** | — |
+| 12 | `approval_status` | text | **NO** | **`'pending'::text`** |
 
-### **`02-plan-app-inmobiliaria.md` NO existe en el repo**
+(las 10 columnas anteriores quedaron intactas, en las posiciones 1-10)
 
-Búsqueda: `find . -name '*.md' -o -name '*.sql'` (excluyendo `node_modules`/`.next`) no
-lo devuelve, ni con ese nombre ni con ninguna variante. **`plan-propuesta.md` (476
-líneas) se quedó sin destino y no la apliqué a ningún lado** — como pediste, no creé el
-archivo. Hay que actualizarlo por otra vía.
+### CHECKs (`pg_get_constraintdef`), textual
 
-Dónde vive en realidad: en el **Project de Claude**, no en el repo. Lo confirma el
-propio `PENDIENTES.md`, que en su ítem "Repo de migraciones" dice *"El `03-schema.sql`
-del Project es la fuente de verdad documentada"* — y `03-schema.sql` tampoco está en el
-repo. Son los dos archivos del Project. Aproveché para dejar eso explícito en
-`PENDIENTES.md` (corrección #10 abajo), así el próximo que los busque en el repo no
-pierde el tiempo.
+```
+agencies_approval_status_check   CHECK ((approval_status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text])))
+agencies_tenant_type_check       CHECK ((tenant_type = ANY (ARRAY['individual'::text, 'agency'::text])))
+agencies_city_id_fkey            FOREIGN KEY (city_id) REFERENCES cities(id) ON DELETE RESTRICT
+agencies_pkey                    PRIMARY KEY (id)
+agencies_slug_key                UNIQUE (slug)
+```
 
-Nota menor: los nombres reales de las propuestas usan guion (`CLAUDE-propuesta.md`), no
-punto (`CLAUDE.propuesta.md`) como decía el pedido. Sin consecuencias.
+### Índices de `agencies` (`pg_get_indexdef`), textual
 
----
+```
+CREATE UNIQUE INDEX agencies_pkey ON public.agencies USING btree (id)
+CREATE UNIQUE INDEX agencies_slug_key ON public.agencies USING btree (slug)
+CREATE INDEX idx_agencies_city ON public.agencies USING btree (city_id)
+CREATE INDEX idx_agencies_approval_status ON public.agencies USING btree (approval_status)
+CREATE UNIQUE INDEX idx_agencies_license_unique_approved ON public.agencies USING btree (city_id, license_number) WHERE ((approval_status = 'approved'::text) AND (license_number IS NOT NULL))
+```
 
-## 2 · Correcciones que le hice a las propuestas
+El índice único parcial está exactamente como lo describiste: por `(city_id,
+license_number)`, restringido a `approval_status = 'approved' AND license_number IS NOT
+NULL`. **Consecuencia que dejo anotada:** dos agencias *pendientes* pueden reclamar la
+misma matrícula en la misma ciudad sin que la base se queje; el conflicto recién
+aparece al aprobar la segunda, y ahí el `UPDATE` va a fallar con violación de índice
+único. Lo documenté en el comentario del tipo, pero **no puse ningún manejo especial de
+ese error en la action de aprobar** — cae en el mensaje genérico "No se pudo actualizar
+la agencia". Está fuera de lo que pediste; lo señalo en §8.
 
-**Trece correcciones.** Las tres primeras son las que importan.
+### `agency_reviews` — tabla nueva
 
-### ⚠ #1 — La propuesta de `types` borraba dos campos de código que están en uso
+| # | columna | tipo | nullable | default |
+|---|---|---|---|---|
+| 1 | `id` | uuid | NO | `gen_random_uuid()` |
+| 2 | `agency_id` | uuid | NO | — |
+| 3 | `decision` | text | NO | — |
+| 4 | `note` | text | **YES** | — |
+| 5 | `reviewed_by` | uuid | **YES** | — |
+| 6 | `created_at` | timestamptz | NO | `now()` |
 
-- **Qué proponía:** eliminar `available` y `over` de la interfaz `PlanUsage`.
-  ```diff
-  -  available: number;     // Math.max(0, limit - used). Saneado: NUNCA negativo…
-  -  over: number;          // Math.max(0, used - limit). 0 si dentro del límite…
-  ```
-- **Qué dice el código:** los dos campos existen, los produce `getPlanUsage`
-  (`src/lib/utils/getPlanUsage.ts:49-50`, `available`/`over` con su saneado) y **los
-  consume el dashboard**: `src/app/(agent)/dashboard/page.tsx:92` (`planUsage.over > 0`)
-  y `:124` (`value={planUsage.available}`).
-- **Qué hice:** **no lo apliqué.** Aplicarlo habría roto `tsc` y el build. Los dos
-  campos y sus comentarios quedan intactos. Es exactamente el caso que anticipaba tu
-  advertencia: una diferencia de CÓDIGO en una propuesta que decía tocar solo
-  comentarios, señal de que se redactó contra una versión anterior del archivo.
-  Verificación de que no quedó ninguna otra: comparando solo las líneas no-comentario
-  del archivo real contra la propuesta, la **única** diferencia son esas dos líneas.
+```
+agency_reviews_decision_check     CHECK ((decision = ANY (ARRAY['approved'::text, 'rejected'::text])))
+agency_reviews_agency_id_fkey     FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE
+agency_reviews_reviewed_by_fkey   FOREIGN KEY (reviewed_by) REFERENCES auth.users(id) ON DELETE SET NULL
+agency_reviews_pkey               PRIMARY KEY (id)
+```
 
-### #2 — Los conteos de la base cambiaron entre el diagnóstico y hoy
+**Un índice que no estaba en tu descripción** (agregado, no faltante):
+```
+CREATE INDEX idx_agency_reviews_agency ON public.agency_reviews USING btree (agency_id, created_at DESC)
+```
+Es exactamente el índice que quiere "traeme el historial de esta agencia, lo más nuevo
+primero". No cambia nada de lo que escribí; lo reporto porque pediste la definición
+real y difiere (a favor) de la que me pasaste.
 
-- **Qué afirmaban las propuestas (`PENDIENTES`, tres lugares):** "9 agencias, 8
-  propiedades, 1 agente por agencia"; "las 9 filas de la base están en `null`"
-  (`current_period_end`); "las 9 agencias de la base tienen exactamente 1 agente".
-- **Qué dice la base hoy** (consulta por MCP, 27 ago 2026):
-  ```
-  agencias: 10 · propiedades: 8 · agentes: 10 · subs: 10
-  sin current_period_end: 10 · max agentes por agencia: 1 · individuales: 1 · auth.users huérfanos: 2
-  ```
-  Hay **una agencia más** que en el diagnóstico. Es tuya, de la prueba manual:
-  `Inmobiliaria Prueba Gaio`, creada el 2026-08-27 21:51, `tenant_type: 'agency'`,
-  y con plan `inicial` activo (o sea que el circuito registro → pedido → activación
-  desde `/admin` corrió entero). Corrobora el "verificado a mano en navegador" que
-  la propuesta anota en el ítem A1.
-- **Qué escribí:** 10 agencias / 8 propiedades / 10 filas en `null` / 10 agencias con 1
-  agente. Lo demás (8 propiedades, 1 particular, 2 huérfanos, máximo 1 agente por
-  agencia) se confirmó sin cambios.
+### RLS y datos
 
-### #3 — El árbol de carpetas de `CLAUDE.md` tenía **cinco** errores, no dos
+```json
+[{"relname":"agencies","rls":true,"forzada":false,"policies":1},
+ {"relname":"agency_reviews","rls":true,"forzada":false,"policies":0}]
+```
+La única policy de `agencies` sigue siendo `Public read agencies` (`cmd: SELECT`,
+`qual: true`, `with_check: null`) — **confirmado: no hay policy de UPDATE**, así que
+toda escritura va con service role, tal como asumías. `agency_reviews` tiene RLS
+habilitada y **cero policies**: inaccesible salvo service role.
 
-La propuesta corrige los dos conocidos, y los confirmo:
-
-- ✅ **Panel admin**: la propuesta lo mueve a `src/app/(agent)/admin/`. Correcto —
-  `ls src/app/(agent)/` devuelve `admin dashboard login register`. No existe
-  `src/app/admin/`.
-- ✅ **`api/og/[slug]`**: la propuesta lo elimina. Correcto — **`src/app/api` no existe
-  en absoluto**, y el build no emite ninguna ruta de API.
-
-Y encontré **tres más que la propuesta no corregía**, todos archivos documentados que
-no existen o que faltan:
-
-| Qué decía el árbol | Qué hay en realidad | Qué escribí |
-|---|---|---|
-| `src/lib/hooks/useMapFilters.ts` | **No existe.** El hook `useMapFilters` se exporta desde `src/store/mapFiltersStore.ts:13` | Saqué la entrada de `hooks/` y anoté en `mapFiltersStore.ts` que el hook vive ahí, **no** en `lib/hooks/` |
-| `src/lib/hooks/useWhatsApp.ts` | **No existe.** Cero referencias en todo `src/` | Eliminado del árbol |
-| `src/components/properties/WhatsAppButton.tsx` | **No existe.** Cero referencias | Eliminado del árbol |
-| `src/lib/utils/agencySlug.ts` | **Existe y es importante** (`generateUniqueAgencySlug`, lo usa `register/actions.ts:5`) pero no estaba documentado | Agregado, con la distinción respecto de `generateSlug.ts` |
-| `src/components/dashboard/` listaba 8 archivos | Hay **12**: faltaban `NewPropertyButton`, `LeadsContent`, `TeamContent`, `PreferencesContent` | Agregados los 4 |
-
-Además, un detalle de ASCII: la propuesta dejaba `dashboard/` y `admin/` **los dos con
-`└──`** (dos "últimos hijos" del mismo nivel). Corregido: `dashboard/` pasa a `├──`.
-
-### #4-#13 — Correcciones menores
-
-4. **`SubscriptionContent.tsx` descrito como "Cards de planes (4 planes, flex-wrap)"** (texto viejo que la propuesta conservaba). El componente muestra la card del plan que rige más **solo los planes superiores** (`PLAN_ORDER.slice(currentIdx + 1)`, línea 198), nunca las cuatro. Reescrito como "Card del plan que rige + cards de upgrade (solo planes superiores) + AlertDialog de confirmación".
-5. **`generateSlug.ts` descrito solo como "Slug con sufijo aleatorio"**: el archivo exporta además `slugifyBase` (limpieza pura), que es lo que reusa `agencySlug.ts`. Ampliado.
-6-9. **Los conteos de `PENDIENTES`** (ver #2): cuatro reemplazos.
-10. **`02-plan-app-inmobiliaria.md` y `03-schema.sql`**: la propuesta hablaba del primero como si estuviera en el repo. Aclarado en ambos ítems que viven en el Project y no en el repo.
-11. **Comentario duplicado en `types`**: la propuesta agrega la nota de las dos funciones de `PLANS.free` arriba de `PlanInfo`, pero el archivo real ya tenía una nota equivalente dentro de `PLANS`. Dejé la de la propuesta (mejor ubicada) y quité la duplicada, en vez de aplicar las dos.
-12. **Trailing newline**: las propuestas de `types` y del schema agregaban un salto de línea final que los archivos reales no tenían. Lo dejé pasar (es correcto que un archivo termine en newline) — lo anoto para que no sorprenda en el diff.
-13. **Nada perdido**: revisé que ninguna propuesta se comiera secciones del archivo real. `DESIGN.md` solo agrega dos líneas; `CLAUDE.md` y `PENDIENTES.md` solo reemplazan bloques puntuales. La única eliminación intencional es la línea `api/og/[slug]/` del árbol.
-
-**Lo que NO pude verificar y dejé como venía:** el calendario comercial (septiembre =
-fundadoras cargando cartera, octubre = lanzamiento con publicidad, enero = cobro) y el
-encuadre "inmobiliaria fundadora". Son decisiones de negocio que no están en el código
-ni en la base. Lo único contrastable es que los datos son de prueba, y lo son: las 10
-agencias se llaman "Prueba", "Demo", "Zavaleta2/3", etc.
+Backfill:
+```json
+[{"approval_status":"approved","filas":10,"con_matricula":0}]
+```
+Las 10 agencias quedaron en `approved`, ninguna con matrícula. `agency_reviews` está
+vacía (0 filas), como corresponde: el backfill no inventó veredictos.
 
 ---
 
-## 3 · Los cinco puntos del paso 2, con evidencia
+## 2 · Archivos modificados
 
-### (a) La guarda de reentrada: condición exacta y sus dos lugares — **la propuesta coincide literalmente**
+| Archivo | Qué cambió |
+|---|---|
+| `src/types/index.ts` | Tipo `ApprovalStatus`; `license_number` y `approval_status` en `Agency`; interfaz `AgencyReview` con el porqué de la tabla aparte; constante `REJECTION_NOTE_MAX` |
+| `src/lib/utils/labels.ts` | `APPROVAL_STATUS_LABELS` (`Record<ApprovalStatus, string>`), sexta constante con la forma de las cinco existentes |
+| `src/app/(agent)/admin/page.tsx` | Consulta invertida (parte de `agencies`, suscripción como embed opcional), columnas explícitas con matrícula/estado/ciudad, mapeo y tipo de fila nuevos, métrica "Por aprobar" y grilla de 7 tarjetas |
+| `src/app/(agent)/admin/AgenciesTable.tsx` | Columnas rehechas, `overflow-x-auto`, dos ejes de filtros, badge de aprobación, acciones por estado, panel inline de rechazo, cards mobile actualizadas |
+| `src/app/(agent)/admin/actions.ts` | Tres actions nuevas (`approveAgencyAction`, `rejectAgencyAction`, `reopenAgencyAction`) más los helpers `requireAppAdmin`, `writeApproval`, `parseNote`, `parseAgencyId` |
+| `src/lib/utils/resolveAgencyBySlug.ts` | Gate de aprobación antes del gate de plan; `approval_status` en el select y en el tipo de fila |
 
-Está en **dos** lugares, con el mismo bloque textual:
+### Detalle de la consulta invertida (tarea 3)
 
-`src/app/(agent)/register/plan/page.tsx:38-44`
 ```ts
-const isPristineLanding =
-  subscription != null &&
-  subscription.plan === "free" &&
-  subscription.pending_plan === null &&
-  subscription.status === "active";
-
-if (!isPristineLanding) redirect("/dashboard/suscripcion");
+admin
+  .from("agencies")
+  .select(
+    "id, name, slug, license_number, approval_status, subscription:subscriptions(plan, pending_plan, status, activated_at), city:cities(name)"
+  )
+  .order("created_at", { ascending: false }),
 ```
 
-`src/app/(agent)/register/plan/actions.ts:50-61` — idéntica condición, y en vez de
-redirigir devuelve `{ error: "Tu cuenta ya tiene un plan definido. Cambialo desde
-Suscripción, en tu panel." }` sin escribir nada. La lectura previa
-(`.select("plan, pending_plan, status")`) usa el admin client.
+- Parte de `agencies`, columnas explícitas, nunca `*`.
+- La suscripción es un embed **opcional**: `AgencyRow.subscription` es
+  `AgencySubscription | null`, y todo lo que la renderiza tolera el null —
+  "Plan" y "Pidió" muestran `—`, "Activación" muestra `—`, y el badge de estado
+  muestra **"Sin plan"** en vez de un hueco o un `undefined`.
+- El orden ahora es por `agencies.created_at` (antes era el de `subscriptions`).
+- `AgencyRow` ganó `agency_id` como id de la **agencia** (antes era el `agency_id` de la
+  fila de suscripción, que casualmente es el mismo valor pero significaba otra cosa),
+  más `name`, `slug`, `license_number`, `approval_status` y `city_name`.
+- Se agregó `firstOf()` para normalizar los embeds objeto-vs-array, el mismo helper que
+  ya usa `resolveAgencyBySlug`.
 
-Confirmado también lo que la propuesta afirma alrededor:
-- El rechazo explícito de `free` como plan entrante: `actions.ts:18`,
-  `if (!PLAN_ORDER.includes(plan) || plan === "free")`.
-- Que el proxy **no** protege esa ruta: `src/proxy.ts:21`,
-  `if (user && (pathname === "/login" || pathname === "/register"))` — igualdad exacta,
-  `/register/plan` no matchea; y `PROTECTED_PREFIXES` (línea 6) no incluye `/register`.
+**Métricas:** la nueva es "Por aprobar" (`agencies` con `approval_status = 'pending'`,
+hoy **0**), va primera y es la única con `accent`. "Planes / Esperan activación" pasó a
+tratamiento neutro para que no compitan dos acentos. La grilla pasó de
+`grid-cols-2 md:grid-cols-3 lg:grid-cols-6` a **`grid-cols-2 md:grid-cols-4
+lg:grid-cols-7`**: con 7 tarjetas queda 2+2+2+1 en mobile, 4+3 en `md` y 7 en una fila
+en `lg`, sin la card colgando sola que daba 6+1.
 
-### (b) La constante de planes ofrecibles: **el nombre real es `PAID_PLANS`** y sí se deriva filtrando
+---
 
-`src/app/(agent)/register/plan/PlanSelector.tsx:21`
+## 3 · Cómo resolví el motivo del rechazo, y por qué
+
+**Panel inline (`RejectPanel`), no diálogo.** Se despliega arriba del listado al tocar
+"Rechazar", con `<Label>` + `<Textarea>` + contador de caracteres + botones
+Rechazar/Cancelar y una `X` para cerrar.
+
+Las tres razones, en orden de peso:
+
+1. **Es la convención del proyecto para exactamente este caso.** El único precedente de
+   "formulario que llena un admin" es `CreateAgentForm` dentro de `TeamContent.tsx`: un
+   `<section className="bg-paper border border-stone rounded-lg p-6">` montado
+   condicionalmente, con su botón de cerrar y su validación local. Copié esa estructura,
+   incluidas las clases. Me pediste seguir las convenciones por encima de lo rápido, y
+   lo rápido acá habría sido meter el textarea dentro del `AlertDialog` que ya está
+   importado.
+2. **El `AlertDialog` de Radix es semánticamente para confirmar, no para editar.** Los
+   cuatro usos que tiene la app hoy (`AgenciesTable`, `TeamContent`, `PropertiesTable`,
+   `SubscriptionContent`) son todos sí/no sin campos. Meter un textarea adentro rompe
+   esa lectura y arrastra problemas de foco conocidos de los alert dialogs.
+3. **`ui/dialog.tsx` no lo importa nadie.** Usarlo habría significado estrenar en esta
+   pieza un componente que el proyecto nunca ejerció, con su propio comportamiento de
+   foco y scroll por validar. No es el lugar para estrenarlo.
+
+Lo que **sí** quedó en `AlertDialog` son las tres confirmaciones sí/no que no piden
+texto: activar plan (ya existía), **aprobar** y **volver a pendiente**. O sea: diálogo
+para confirmar, panel para escribir. La regla queda legible.
+
+El contador de caracteres usa `REJECTION_NOTE_MAX`, la misma constante que valida el
+server. El botón arranca deshabilitado y solo se habilita con una nota no vacía y
+dentro del límite — pero **la validación real está en la action**, que rechaza sin
+escribir nada si la nota viene vacía o pasada de largo.
+
+---
+
+## 4 · Convención de revalidación elegida
+
+**`revalidatePath("/admin")`, en las tres actions nuevas.** Está en un solo lugar
+(`writeApproval`), así que las tres la heredan por construcción: es imposible que una se
+olvide.
+
+Por qué esa y no `router.refresh()`:
+
+- **La corrección no depende del cliente.** `router.refresh()` funciona solo si quien
+  llama se acuerda de invocarlo; `revalidatePath` invalida la caché del servidor pase lo
+  que pase. Para acciones que cambian el estado de aprobación de un tercero, prefiero
+  que la frescura sea responsabilidad del server.
+- Es la convención de las actions **más nuevas** del repo (`preferencias/actions.ts:63`),
+  y la que el equipo de Next recomienda para mutaciones desde server actions.
+
+**Lo que NO hice, y conviene que lo sepas:** el cliente sigue llamando
+`router.refresh()` para las cuatro acciones, dentro del helper `run()`. No es una mezcla
+de convenciones dentro de la misma capa — en el server las tres nuevas usan
+`revalidatePath` y nada más; en el cliente el refresh es uniforme para todas — pero
+**es necesario** porque `activatePlanAction` (que no toqué) no revalida nada y depende
+de ese `router.refresh()` para que la fila se actualice. Sacarlo la habría roto. Si en
+algún momento se le agrega `revalidatePath` a `activatePlanAction`, el `router.refresh()`
+del cliente se puede eliminar entero.
+
+---
+
+## 5 · Los dos ejes de filtros, y el agujero tapado
+
+**Son dos grupos separados, con su título en versalitas, y una fila se muestra solo si
+pasa los dos:**
+
 ```ts
-const PAID_PLANS = PLAN_ORDER.filter((id) => id !== "free");
+const visibleRows = useMemo(() => {
+  return rows.filter(
+    (row) =>
+      activePlan[planCategoryOf(row)] && activeApproval[row.approval_status]
+  );
+}, [rows, activePlan, activeApproval]);
 ```
-y se itera en la línea 76 (`{PAID_PLANS.map((id) => {`). `PLAN_ORDER` en
-`src/types/index.ts` sigue con los cuatro valores, intacto. El nombre que menciona la
-propuesta es correcto.
 
-### (c) Las clases del layout de autenticación: **citadas exactas**
+- **Eje "Aprobación"** (nuevo): `Por aprobar` / `Aprobada` / `Rechazada`, indexado
+  directamente por `row.approval_status`. Las etiquetas salen de
+  `APPROVAL_STATUS_LABELS`, no inline.
+- **Eje "Suscripción"**: `Plan pendiente` / `Pagas activas` / `Free` / **`Otras`**.
 
-`src/components/auth/AuthLayout.tsx:20` (contenedor raíz)
-```tsx
-<div className="flex h-dvh flex-col overflow-y-auto bg-paper md:flex-row md:items-start">
-```
-`src/components/auth/AuthLayout.tsx:23` (panel de identidad)
-```tsx
-<section className="relative flex h-44 shrink-0 flex-col justify-between overflow-hidden px-6 py-5 md:sticky md:top-0 md:h-dvh md:w-[44%] md:px-10 md:py-10">
-```
-La propuesta de `DESIGN.md` corrige un error real del archivo viejo, que decía
-`md:h-screen`: **el código dice `md:h-dvh`**. Las referencias de línea (20 y 23) que
-agrega la propuesta son correctas. Es la única propuesta que apliqué sin retoques.
+**El agujero y cómo lo tapé.** `categoryOf` devolvía `Category | null`, y el filtro
+exigía `cat !== null`: una fila `past_due`/`canceled` desaparecía del listado aunque
+estuvieran las tres cajas marcadas. Ahora `planCategoryOf` devuelve **siempre** una
+categoría — su firma es `: PlanCategory`, sin `| null`, así que TypeScript no deja
+volver atrás — y la cuarta categoría **"Otras"** absorbe los tres casos que no encajan:
+sin fila de suscripción, `past_due` y `canceled`.
 
-### (d) Warnings de lint: **uno solo**, `PropertyForm.tsx:232`
+**Por qué ninguna fila puede desaparecer con todo marcado, dicho como invariante:**
+`planCategoryOf` es total (devuelve una de cuatro categorías para cualquier fila) y
+`approval_status` es `NOT NULL` con CHECK de tres valores en la base. Con las siete
+cajas marcadas, ambos lookups dan `true` para cualquier fila posible.
 
-```
-/home/facuzavaleta89/dev/marka/src/components/properties/PropertyForm.tsx
-  232:20  warning  Compilation Skipped: Use of incompatible library
-  > 232 |   const currency = watch("currency");
-  react-hooks/incompatible-library
-✖ 1 problem (0 errors, 1 warning)
-```
-Coincide con lo que dicen las propuestas. Y confirma de paso el ítem de `PENDIENTES`
-que tacha los "3 errores de lint preexistentes" (`ClusterLayer.tsx` ×2 y
-`StatsCard.tsx`): **hoy son 0 errores**, esos tres ya no existen.
+**Un caso nuevo que el eje de suscripción ahora cubre y antes no:** una agencia **sin
+fila de suscripción** cae en "Otras" y se ve. Antes ni siquiera llegaba a la tabla,
+porque la consulta partía de `subscriptions`.
 
-### (e) ¿Nada en la base lee `tenant_type`? — **confirmado, cero**
+### Otros cambios de la tabla (tarea 4)
 
-```sql
-funciones_que_leen_tenant_type: 0   -- pg_proc.prosrc ILIKE '%tenant_type%' OR '%individual%'
-policies_que_leen_tenant_type:  0   -- pg_policies.qual / with_check
-triggers_public:                3   -- los tres: trg_check_property_limit, trg_properties_updated_at, trg_subscriptions_updated_at
-policy 'Admin reads agency leads': 1 -- existe (respalda la afirmación sobre AgentRole)
-```
-Los tres triggers del schema `public` son los conocidos y ninguno menciona
-`tenant_type` (leí el cuerpo de `check_property_limit()`: cuenta por `agency_id` con
-`status IN ('active','paused')` contra `property_limit`, nada más). La afirmación
-"legacy, nada de la base la lee" es correcta.
-
-**Verificaciones extra** que hice porque las propuestas afirmaban cosas nuevas:
-`respuesta.md` sí está en `.gitignore` (última línea); la regla del pin sigue siendo
-`pinMoved` bloqueando el submit (`PropertyForm.tsx:160,246`), que es la trampa que D1
-señala; el modal **no** muestra la agencia (`PropertyModal.tsx` solo usa `agency_id`
-en la línea 219, para el lead), que es lo que motiva D2; y `SubscriptionContent`
-deshabilita los upgrades con `disabled={hasPendingRequest}` (línea 163), que es lo que
-hace urgente el botón de cancelar pedido.
+- **Fuera "Tipo"** (Inmobiliaria/Particular) y **fuera el mapa `TENANT_LABELS` inline**
+  que la alimentaba. Ya no queda ninguna etiqueta de tenant en el panel.
+- **Fuera "Límite"**: era `PLANS[plan].propertyLimit`, derivable de "Plan".
+- **Adentro "Matrícula"** (o `—`) y **"Aprobación"** (badge).
+- El contenedor pasó de `overflow-hidden` a **`overflow-x-auto`**: nunca más recorta.
+- Quedan 8 columnas, las mismas que antes: se sacaron dos y se agregaron dos.
+- **Acciones por estado**, apiladas verticalmente en la celda (`flex flex-col items-end
+  gap-2`) para que no queden tres botones apretados: pendiente → Aprobar (primary) +
+  Rechazar (destructive); rechazada → Volver a pendiente (secondary); aprobada → nada
+  del eje de aprobación. "Activar plan" aparece si hay `pending_plan`, independiente del
+  estado de aprobación. Las variantes siguen la tabla de botones de DESIGN §6.
+- **Cards mobile**: muestran matrícula, ciudad, plan (o "Sin suscripción"), pedido,
+  activación, y **los dos badges apilados** a la derecha (aprobación arriba,
+  suscripción abajo). Las acciones van en fila (`flex-wrap`) en el pie, que en la card
+  hay ancho de sobra.
 
 ---
 
-## 4 · Archivos modificados
-
-| Archivo | Líneas (antes → después) | Qué se aplicó |
-|---|---|---|
-| `CLAUDE.md` | 386 → 396 | Propuesta completa + 6 arreglos del árbol de carpetas y 2 de descripciones |
-| `PENDIENTES.md` | 144 → 188 | Propuesta completa + 5 correcciones de conteos y referencias |
-| `DESIGN.md` | 719 → 720 | Propuesta completa, sin retoques |
-| `src/types/index.ts` | 365 → 366 | **Solo comentarios** (7 bloques). `available`/`over` preservados |
-| `supabase/migrations/20240101000000_initial_schema.sql` | 528 → 539 | **Solo comentarios** (4 bloques) |
-
-**`docs-propuesta/` fue borrada.** `ls docs-propuesta` → *No existe el archivo o el
-directorio*. No queda ningún archivo `*propuesta*` en el repo.
-
-**Prueba de que el SQL ejecutable no cambió:** comparando el archivo actual contra la
-propuesta **ignorando todas las líneas de comentario**, el diff es vacío; y el diff de
-la propuesta contra el original solo tocaba líneas que empiezan con `--`. El archivo
-mantiene sus 297 líneas ejecutables y sigue siendo ejecutable e idéntico en efecto.
-
-**Prueba de que `types` solo cambió en comentarios:** comparando las líneas
-no-comentario del archivo real contra la propuesta, la única diferencia son las dos
-líneas de `PlanUsage` que decidí no borrar (#1).
-
----
-
-## 5 · Verificación final
+## 6 · Verificación
 
 ### `npx tsc --noEmit` — exit code **0**
 ```
@@ -268,60 +279,101 @@ líneas de `PlanUsage` que decidí no borrar (#1).
 
 ### `npx next build` — exit code **0**
 ```
-✓ Compiled successfully in 8.8s
-✓ Generating static pages using 3 workers (17/17) in 1375ms
+✓ Compiled successfully in 8.4s
+✓ Generating static pages using 3 workers (17/17) in 2.1s
 
-Route (app)
-┌ ○ /            ├ ○ /_not-found       ├ ƒ /[slug]        ├ ƒ /admin
-├ ○ /apple-icon.png                    ├ ƒ /dashboard     ├ ƒ /dashboard/equipo
-├ ƒ /dashboard/leads                   ├ ƒ /dashboard/perfil
-├ ƒ /dashboard/preferencias            ├ ƒ /dashboard/propiedades
-├ ƒ /dashboard/propiedades/[id]/editar ├ ƒ /dashboard/propiedades/nueva
-├ ƒ /dashboard/suscripcion             ├ ○ /login
-├ ƒ /register                          └ ƒ /register/plan
+┌ ○ /                                   ├ ○ /_not-found
+├ ƒ /[slug]                             ├ ƒ /admin
+├ ○ /apple-icon.png                     ├ ƒ /dashboard
+├ ƒ /dashboard/equipo                   ├ ƒ /dashboard/leads
+├ ƒ /dashboard/perfil                   ├ ƒ /dashboard/preferencias
+├ ƒ /dashboard/propiedades              ├ ƒ /dashboard/propiedades/[id]/editar
+├ ƒ /dashboard/propiedades/nueva        ├ ƒ /dashboard/suscripcion
+├ ○ /login                              ├ ƒ /register
+└ ƒ /register/plan
 ```
 
-| | Antes de esta tarea | Ahora | |
+| | Baseline | Ahora | |
 |---|---|---|---|
-| Errores TypeScript | 0 | **0** | idéntico |
-| Errores de lint | 0 | **0** | idéntico |
-| Warnings de lint | 1 (`PropertyForm.tsx:232`) | **1** (el mismo) | idéntico |
-| Build | verde, 17 rutas | verde, **17 rutas** | idéntico |
+| Errores TypeScript | 0 | **0** | igual |
+| Errores de lint | 0 | **0** | igual |
+| Warnings de lint | 1 (`PropertyForm.tsx:232`) | **1** (el mismo) | igual |
+| Build | verde, 17 rutas | verde, **17 rutas** | igual |
 
-**Sin regresiones.** Es lo esperable: la tarea solo tocó documentación y comentarios.
-Y de paso queda verificado el número de rutas (17) que las propuestas afirman.
+**Sin regresiones.** No se agregaron rutas ni se tocó ningún formulario con `watch()`.
+
+**Lo que la verificación automática NO cubre:** no hay tests en el repo y no levanté el
+dev server, así que **aprobar, rechazar y volver a pendiente no se ejercitaron contra la
+base**. Están verificados por tipos y por lectura. Como hoy las 10 agencias están en
+`approved`, la única forma de probarlo a mano es poner una en `pending` desde el SQL
+Editor (que es tuyo, no mío: no ejecuto escrituras).
 
 ---
 
-## 6 · Afirmaciones falsas que encontré y que las propuestas NO corregían
+## 7 · Decisiones que se apartan de las instrucciones
 
-Aparte de los cinco errores del árbol de carpetas (§2 #3), que ya son de esta
-categoría:
+Cuatro, todas menores:
 
-1. **`CLAUDE.md` describía `SubscriptionContent.tsx` como "Cards de planes (4 planes,
-   flex-wrap)".** Nunca muestra los cuatro: muestra el plan que rige más los
-   superiores (`PLAN_ORDER.slice(currentIdx + 1)`). Con una agencia en `premium` muestra
-   una sola card. Corregido al aplicar.
+1. **`REJECTION_NOTE_MAX` vive en `src/types/index.ts`, no en `actions.ts`.** El límite
+   lo necesitan el panel (para el contador) y el server (para validar), y tiene que ser
+   el mismo número. No puede exportarse desde `actions.ts` porque **un archivo
+   `"use server"` solo puede exportar funciones async** — Next.js lo rechaza. `types` ya
+   exporta constantes de dominio (`PLANS`, `PLAN_ORDER`), así que encaja. Valor: 500.
 
-2. **`DESIGN.md` §12 sigue diciendo que el CTA "Pasar a {plan}" abre un Dialog
-   "Próximamente"**, y que la activación "es manual por ahora; contacto vía mailto".
-   Eso ya no es así: el botón dispara `requestPlanUpgradeAction`, que registra
-   `pending_plan` + `status: 'pending'` y refresca. El modal "Próximamente" no existe
-   más — hay un `AlertDialog` de confirmación del pedido. **No lo corregí**: está fuera
-   del alcance que me diste (la propuesta de DESIGN toca solo §14) y es una sección de
-   diseño, no una afirmación sobre el trabajo de A1. Queda anotado para la próxima
-   pasada por `DESIGN.md`.
+2. **La métrica vieja "Pendientes" se llama ahora "Planes".** Con dos ejes en la misma
+   grilla, dos tarjetas que dijeran "Pendientes" (una de agencias, otra de planes)
+   habrían sido ilegibles. Quedó "Por aprobar / Agencias pendientes" para el eje de
+   aprobación y "Planes / Esperan activación" para el de suscripción. Es cambio de
+   etiqueta, no de consulta.
 
-3. **`DESIGN.md` §7 dice que el dashboard usa `flex h-screen overflow-hidden`** en el
-   wrapper. Dado el cambio documentado a `h-dvh` (y que el mismo `DESIGN.md` en
-   CLAUDE.md §"Viewport mobile" prohíbe `h-screen` en wrappers de pantalla completa),
-   esa línea es sospechosa de estar desactualizada igual que lo estaba §14. **No la
-   verifiqué ni la toqué** — no estaba en el alcance, pero si vas a repasar `DESIGN.md`
-   conviene chequear ese wrapper junto con el punto 2.
+3. **`writeApproval` verifica que la agencia exista antes del UPDATE.** No estaba
+   pedido. Sin eso, un id inventado produciría un `UPDATE` de 0 filas sin error, y le
+   diríamos al dueño que la operación salió bien. Es el mismo criterio que
+   `activatePlanAction` aplica cuando lee la suscripción antes de escribir.
 
-4. **`PENDIENTES.md` seguía tratando `03-schema.sql` como si fuera parte del repo.**
-   Corregido al aplicar (§1).
+4. **Si el `INSERT` en `agency_reviews` falla, el estado ya cambió y no se revierte.**
+   Devuelvo un mensaje explícito ("El estado se actualizó, pero no se pudo registrar la
+   decisión en el historial") en vez de tragarme el error o simular una transacción que
+   el client de Supabase no me da. La alternativa —insertar la review primero y después
+   el estado— tiene el problema simétrico y peor (historial con un veredicto que no se
+   aplicó).
 
-5. **`src/types/index.ts` tenía dos comentarios que decían lo mismo** sobre las dos
-   funciones de `PLANS.free` (uno en `PlanInfo`, otro dentro de `PLANS`), porque la
-   propuesta agregaba el suyo sin saber que el archivo real ya tenía uno. Unificado.
+---
+
+## 8 · Encontrado y NO tocado (fuera de alcance)
+
+1. **La matrícula duplicada entre pendientes solo explota al aprobar.** El índice único
+   es parcial (solo entre aprobadas), así que dos pendientes pueden tener la misma
+   matrícula en la misma ciudad; al aprobar la segunda, el `UPDATE` va a fallar por
+   violación de índice único y el dueño va a ver el mensaje genérico "No se pudo
+   actualizar la agencia. Intentá de nuevo.", que **no le dice qué pasó realmente**. Un
+   manejo específico de ese error (código `23505` → "ya hay una agencia aprobada con esa
+   matrícula en esta ciudad") sería una mejora chica y valiosa, pero no estaba en el
+   pedido y prefiero no inventar alcance.
+
+2. **La nota de rechazo se guarda pero todavía no se muestra en ninguna parte.**
+   `agency_reviews` se escribe correctamente, y el índice `(agency_id, created_at DESC)`
+   está listo para leerla, pero el panel no tiene una vista de historial. Hoy la nota
+   solo se puede leer desde el SQL Editor. No lo agregué porque no estaba pedido y
+   porque tiene decisiones de diseño propias (¿se muestra la última, todas, en un
+   expandible?).
+
+3. **La aprobación no gatea nada además del sitio white-label.** Es lo correcto para
+   esta etapa —el bloqueo de carga de propiedades es explícitamente etapa 2— pero
+   conviene tenerlo presente: hoy una agencia `pending` o `rejected` puede publicar
+   propiedades y **aparecen en el mapa público general**, porque `useProperties` filtra
+   por `city_id` y `status`, sin mirar la agencia. Solo su `/[slug]` propio queda cerrado.
+
+4. **`agencies` sigue sin `updated_at` ni triggers.** Cuándo se aprobó o rechazó algo se
+   puede reconstruir de `agency_reviews.created_at`, pero volver a pendiente **no deja
+   rastro temporal en ningún lado** (por diseño: no es un veredicto). Si en algún momento
+   hace falta auditar eso, hoy no hay dónde.
+
+5. **La agencia `individual` "Miguel Andrade" quedó aprobada** por el backfill, como
+   cualquier otra. Ya lo había señalado en el diagnóstico anterior; sigue igual y sigue
+   siendo, presumiblemente, data de prueba.
+
+6. **`src/components/ui/dialog.tsx` sigue sin consumidores.** Después de esta tanda
+   tampoco lo usa nadie (ver §3). Sigue siendo código muerto, y `DESIGN.md` §12 todavía
+   afirma que el modal de suscripción lo usa, cosa que el código desmiente. No lo toqué:
+   es documentación, no estaba en el pedido.

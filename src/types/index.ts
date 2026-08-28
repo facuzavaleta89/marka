@@ -48,6 +48,15 @@ export type SubscriptionStatus = "active" | "pending" | "past_due" | "canceled";
 // flujo de alta.
 export type TenantType = "individual" | "agency";
 
+// Estado de aprobación de una agencia (columna agencies.approval_status).
+// Es la respuesta a "¿es una inmobiliaria legítima?" y es un EJE INDEPENDIENTE
+// de la suscripción, que responde "¿paga?". Nunca mezclar los dos en una misma
+// clasificación: una agencia puede estar aprobada y sin plan pago, o pagar y
+// estar pendiente de aprobación.
+// 'rejected' NO es definitivo: la agencia corrige sus datos y vuelve a
+// 'pending'. No existe un estado de rechazo permanente.
+export type ApprovalStatus = "pending" | "approved" | "rejected";
+
 // Amenities disponibles en el sistema
 export type Amenity =
   | "pileta"
@@ -97,6 +106,18 @@ export interface Agency {
   // registro (hereda el del admin fundador) y se edita en Preferencias (solo el
   // admin de agencia). Formato "5491112345678", igual que agents.phone_wa.
   phone_wa: string;
+  // Número de matrícula del colegio de corredores inmobiliarios. Es nullable
+  // porque las agencias históricas (las anteriores al alta manual) no la tienen,
+  // pero en toda alta nueva es obligatoria: sin matrícula no hay aprobación.
+  // Puede ser pública sin problema — el padrón del colegio ya lo es.
+  // Unicidad: la impone un índice único PARCIAL en la base, por (city_id,
+  // license_number) y solo entre agencias aprobadas, así que dos pendientes
+  // pueden reclamar la misma matrícula hasta que el dueño resuelva cuál vale.
+  license_number: string | null;
+  // Estado de aprobación. EJE INDEPENDIENTE de la suscripción (ver ApprovalStatus).
+  // Lo decide a mano el dueño de la plataforma desde /admin; el DEFAULT de la
+  // base es 'pending', así que toda agencia nueva nace pendiente.
+  approval_status: ApprovalStatus;
   logo_url: string | null;
   website: string | null;
   brand_color: string | null; // override del acento para futura vista white-label
@@ -105,6 +126,41 @@ export interface Agency {
   city?: City;
   subscription?: Subscription;
 }
+
+// Una decisión de aprobación tomada por el dueño de la plataforma sobre una
+// agencia (tabla agency_reviews). Es un historial: cada aprobación y cada
+// rechazo agrega una fila, no se pisan entre sí. Volver una agencia rechazada a
+// 'pending' NO es un veredicto y no registra fila (el CHECK de decision solo
+// admite 'approved' y 'rejected').
+//
+// ⚠ POR QUÉ LA NOTA VIVE EN UNA TABLA APARTE Y NO EN agencies:
+// `agencies` tiene la policy `Public read agencies` con `qual: true`, o sea que
+// CUALQUIERA con la anon key puede leer la tabla entera, sin sesión. Postgres no
+// permite restringir columnas dentro de una policy, así que una nota guardada
+// ahí —un texto que el dueño escribe sobre un tercero, del estilo "la matrícula
+// no coincide con el titular"— sería pública de hecho. `agency_reviews` tiene
+// RLS habilitada y CERO policies: nadie la lee ni la escribe salvo el server con
+// service role. No agregarle policies ni mover la nota a `agencies`.
+export interface AgencyReview {
+  id: string;
+  agency_id: string;
+  // Solo veredictos: aprobar o rechazar. 'pending' no es una decisión.
+  decision: Extract<ApprovalStatus, "approved" | "rejected">;
+  // Motivo. Obligatorio al rechazar (lo exige la server action, no la base:
+  // la columna es nullable); opcional al aprobar.
+  note: string | null;
+  // auth.users.id del dueño que decidió. Nullable por la FK ON DELETE SET NULL:
+  // si ese usuario desaparece, la decisión sobrevive sin autor.
+  reviewed_by: string | null;
+  created_at: string;
+}
+
+// Largo máximo de la nota de una review. Vive acá y no en las server actions
+// porque un archivo "use server" solo puede exportar funciones async: el panel
+// de rechazo (client) y la validación del server necesitan el mismo número, así
+// que se comparte desde el dominio. Es un motivo interno, no un texto legal:
+// 500 caracteres alcanzan de sobra y ponen un techo a lo que se guarda.
+export const REJECTION_NOTE_MAX = 500;
 
 // Suscripción de una agencia. Controla plan, límite de propiedades y los
 // entitlements efectivos (destacados / white-label / métricas).
