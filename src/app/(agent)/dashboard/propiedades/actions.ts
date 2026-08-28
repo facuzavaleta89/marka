@@ -167,13 +167,13 @@ export async function activatePropertyAction(id: string): Promise<ActionResult> 
     .eq("id", id);
 
   if (dbError) {
-    // El trigger check_property_limit lanza SQLSTATE 23514 al superar el límite del plan
-    if (dbError.code === "23514" || dbError.message.includes("Límite")) {
-      return {
-        error: "Alcanzaste el límite de propiedades de tu plan.",
-      };
-    }
-    return { error: "No se pudo activar la propiedad" };
+    return {
+      error: translatePropertyWriteError(
+        dbError,
+        "No se pudo activar la propiedad",
+        "Alcanzaste el límite de propiedades de tu plan."
+      ),
+    };
   }
 
   revalidatePath("/dashboard/propiedades");
@@ -218,6 +218,33 @@ export async function deletePropertyAction(id: string): Promise<ActionResult> {
 
   if (dbError) return { error: "No se pudo eliminar la propiedad" };
   revalidatePath("/dashboard/propiedades");
+}
+
+// Traduce el error de la base a un mensaje propio. Sobre `properties` hay DOS
+// triggers BEFORE INSERT que rechazan el alta y AMBOS usan el mismo SQLSTATE
+// (23514, check_violation), así que el código NO alcanza para distinguirlos: hay
+// que mirar el mensaje.
+//   - trg_check_agency_approved → "La agencia no está aprobada para publicar…"
+//   - trg_check_property_limit  → "Límite de propiedades alcanzado…"
+// Se chequea primero el de aprobación porque es el que dispara primero (Postgres
+// corre los triggers en orden alfabético de nombre) y porque decirle "alcanzaste
+// el límite de tu plan" a alguien que todavía no fue aprobado es falso: no llegó
+// a ningún límite y lo mandaría a pagar un plan que no le va a destrabar nada.
+// `fallback` es el mensaje para cualquier otro error de base.
+type DbLikeError = { code?: string; message: string };
+
+function translatePropertyWriteError(
+  dbError: DbLikeError,
+  fallback: string,
+  limitMessage: string
+): string {
+  if (dbError.message.includes("no está aprobada")) {
+    return "Tu inmobiliaria todavía no está aprobada, así que no podés publicar propiedades.";
+  }
+  if (dbError.code === "23514" || dbError.message.includes("Límite")) {
+    return limitMessage;
+  }
+  return fallback;
 }
 
 // ─── Alta de propiedad ────────────────────────────────────────
@@ -307,13 +334,13 @@ export async function createPropertyAction(
   });
 
   if (insertError) {
-    // El trigger check_property_limit lanza SQLSTATE 23514 al superar el límite del plan
-    if (insertError.code === "23514" || insertError.message.includes("Límite")) {
-      return {
-        error: "Alcanzaste el límite de propiedades de tu plan.",
-      };
-    }
-    return { error: "No se pudo crear la propiedad" };
+    return {
+      error: translatePropertyWriteError(
+        insertError,
+        "No se pudo crear la propiedad",
+        "Alcanzaste el límite de propiedades de tu plan."
+      ),
+    };
   }
 
   // Insertar imágenes (si las hay). Mismo client que el insert de la propiedad:
@@ -416,13 +443,13 @@ export async function updatePropertyAction(
     .eq("id", id);
 
   if (updateError) {
-    if (updateError.code === "23514" || updateError.message.includes("Límite")) {
-      return {
-        error:
-          "Alcanzaste el límite de propiedades de tu plan. No podés volver a activar esta propiedad.",
-      };
-    }
-    return { error: "No se pudieron guardar los cambios" };
+    return {
+      error: translatePropertyWriteError(
+        updateError,
+        "No se pudieron guardar los cambios",
+        "Alcanzaste el límite de propiedades de tu plan. No podés volver a activar esta propiedad."
+      ),
+    };
   }
 
   // Reemplazar imágenes: delete + re-insert con el nuevo orden.

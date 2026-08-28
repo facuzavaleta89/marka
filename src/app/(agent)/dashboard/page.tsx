@@ -3,6 +3,9 @@ import { requireAgentSession } from "@/lib/utils/resolveAgentSession";
 import { LayoutDashboard, Building2, Eye, Layers } from "lucide-react";
 import { StatsCard } from "@/components/dashboard/StatsCard";
 import { NewPropertyButton } from "@/components/dashboard/NewPropertyButton";
+import { AgencyApprovalNotice } from "@/components/dashboard/AgencyApprovalNotice";
+import { getLatestRejectionNote } from "@/lib/utils/getLatestRejectionNote";
+import { getPublishBlock } from "@/lib/utils/getPublishBlock";
 import { formatPrice } from "@/lib/utils/formatPrice";
 import { getPlanUsage } from "@/lib/utils/getPlanUsage";
 import {
@@ -22,7 +25,7 @@ const STATUS_COLOR: Record<PropertyStatus, string> = {
 export default async function DashboardPage() {
   const supabase = await createClient();
 
-  const { userId, agent } = await requireAgentSession();
+  const { userId, agent, agency } = await requireAgentSession();
 
   // Un admin de agencia ve los números de TODA su agencia; un agente normal,
   // solo lo suyo (igual que hoy). Definimos el filtro una vez y lo aplicamos en
@@ -32,6 +35,14 @@ export default async function DashboardPage() {
   const scope = isAgencyAdmin
     ? { col: "agency_id" as const, val: agent.agency_id }
     : { col: "agent_id" as const, val: userId };
+
+  // Motivo del rechazo: solo se pide si hace falta mostrarlo. La lectura va con
+  // service role (agency_reviews no tiene policies) y el helper verifica que la
+  // agencia sea la del usuario antes de devolver nada.
+  const rejectionNote =
+    agency.approval_status === "rejected"
+      ? await getLatestRejectionNote(agency.id)
+      : null;
 
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -78,6 +89,10 @@ export default async function DashboardPage() {
   // available y over vienen ya saneados de getPlanUsage (available nunca negativo).
   // El subtítulo cambia según si la agencia está dentro o por encima del límite,
   // para que no se lea contradictorio junto al "0 disponibles" cuando se excedió.
+  // Mismo criterio que la base (los dos triggers de properties): sirve para
+  // anticipar el rechazo, no para reemplazarlo.
+  const publishBlock = getPublishBlock(planUsage, agency.approval_status);
+
   const usageDescription =
     planUsage.over > 0
       ? `Límite del plan: ${planUsage.limit} · ${planUsage.used} activas`
@@ -87,8 +102,23 @@ export default async function DashboardPage() {
     <div className="p-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <h1 className="font-serif text-4xl font-bold text-black">Inicio</h1>
-        <NewPropertyButton planUsage={planUsage} />
+        <NewPropertyButton
+          planUsage={planUsage}
+          approvalStatus={agency.approval_status}
+        />
       </div>
+
+      {/* Aviso de estado de la cuenta. Va acá, entre el título y las tarjetas:
+          es el único hueco de ancho completo del layout y lo primero que ve la
+          agencia al entrar. No se renderiza nada si está aprobada. */}
+      {agency.approval_status !== "approved" && (
+        <div className="mb-8">
+          <AgencyApprovalNotice
+            status={agency.approval_status}
+            rejectionNote={rejectionNote}
+          />
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-10">
@@ -129,12 +159,22 @@ export default async function DashboardPage() {
             <p className="font-sans text-base text-graphite">
               No tenés propiedades publicadas aún.
             </p>
-            <Link
-              href="/dashboard/propiedades/nueva"
-              className="inline-block mt-3 font-sans text-sm font-medium text-terracota hover:underline"
-            >
-              Publicar primera propiedad
-            </Link>
+            {/* El enlace solo aparece si publicar es posible. Antes llevaba
+                siempre al formulario, incluso con el cupo lleno o la agencia sin
+                aprobar: la persona lo llenaba entero para que la base lo
+                rechazara al guardar. */}
+            {publishBlock ? (
+              <p className="mt-3 font-sans text-sm text-graphite">
+                {publishBlock.message}
+              </p>
+            ) : (
+              <Link
+                href="/dashboard/propiedades/nueva"
+                className="inline-block mt-3 font-sans text-sm font-medium text-terracota hover:underline"
+              >
+                Publicar primera propiedad
+              </Link>
+            )}
           </div>
         ) : (
           <div className="bg-paper border border-stone rounded-lg overflow-hidden">

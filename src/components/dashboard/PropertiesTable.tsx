@@ -65,6 +65,10 @@ interface PropertiesTableProps {
   // true solo en la vista del admin de agencia: muestra la columna "Agente"
   // (de quién es cada propiedad). El agente normal ve solo lo suyo → sin columna.
   showAgent?: boolean;
+  // Motivo por el que hoy no se puede publicar (agencia sin aprobar o cupo
+  // lleno), ya resuelto en el server. Si viene, el estado vacío explica en vez
+  // de invitar a un formulario que la base va a rechazar.
+  publishBlockMessage?: string;
 }
 
 // ─── Constantes ──────────────────────────────────────────────
@@ -122,7 +126,11 @@ function Thumbnail({
 
 // ─── Componente principal ─────────────────────────────────────
 
-export function PropertiesTable({ properties, showAgent = false }: PropertiesTableProps) {
+export function PropertiesTable({
+  properties,
+  showAgent = false,
+  publishBlockMessage,
+}: PropertiesTableProps) {
   const [toDelete, setToDelete] = useState<{
     id: string;
     title: string;
@@ -155,12 +163,21 @@ export function PropertiesTable({ properties, showAgent = false }: PropertiesTab
         <p className="font-sans text-base text-graphite">
           Todavía no publicaste ninguna propiedad.
         </p>
-        <Link
-          href="/dashboard/propiedades/nueva"
-          className="inline-block mt-3 font-sans text-sm font-medium text-terracota hover:underline"
-        >
-          Publicar primera propiedad
-        </Link>
+        {/* El enlace solo aparece si publicar es posible: antes llevaba al
+            formulario aunque la agencia no estuviera aprobada o tuviera el cupo
+            lleno, y el rechazo llegaba recién al guardar. */}
+        {publishBlockMessage ? (
+          <p className="mt-3 font-sans text-sm text-graphite">
+            {publishBlockMessage}
+          </p>
+        ) : (
+          <Link
+            href="/dashboard/propiedades/nueva"
+            className="inline-block mt-3 font-sans text-sm font-medium text-terracota hover:underline"
+          >
+            Publicar primera propiedad
+          </Link>
+        )}
       </div>
     );
   }
