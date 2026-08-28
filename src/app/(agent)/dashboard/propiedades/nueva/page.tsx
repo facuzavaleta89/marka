@@ -4,6 +4,8 @@ import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireAgentSession } from "@/lib/utils/resolveAgentSession";
 import { PropertyForm } from "@/components/properties/PropertyForm";
+import { getPlanUsage } from "@/lib/utils/getPlanUsage";
+import { getPublishBlock } from "@/lib/utils/getPublishBlock";
 
 export default async function NuevaPropiedadPage() {
   const supabase = await createClient();
@@ -12,7 +14,16 @@ export default async function NuevaPropiedadPage() {
   // diferencia del resto. No arreglaba nada: el layout de /dashboard volvía a
   // evaluar lo mismo y ahí sí cortaba a /login, entrando al bucle. Se unifica
   // con el helper, que cierra la sesión y manda al login con el motivo.
-  const { userId, agent } = await requireAgentSession();
+  const { userId, agent, agency } = await requireAgentSession();
+
+  // GATE DE PUBLICACIÓN. Antes esta ruta no validaba nada: se llegaba
+  // escribiendo la URL, se llenaba el formulario entero y el rechazo aparecía
+  // recién al guardar (lo tiran los triggers de la base). Ahora se corta antes
+  // de renderizar, y el listado explica el motivo con el mismo criterio.
+  const planUsage = await getPlanUsage(supabase, agent.agency_id);
+  if (getPublishBlock(planUsage, agency.approval_status)) {
+    redirect("/dashboard/propiedades");
+  }
 
   // Si es admin de agencia, traemos los agentes de la agencia para el selector
   // "Agente asignado" (ordenados por nombre). Si es agente normal, no se pasa →
@@ -30,18 +41,18 @@ export default async function NuevaPropiedadPage() {
   // city_id de la agencia, para centrar el mapa del LocationPicker. Esta guarda
   // NO es la del bucle (esa era la del agente, arriba): protege contra que la
   // fila de agencies no traiga la ciudad. Se conserva tal cual estaba.
-  const { data: agency } = await supabase
+  const { data: agencyCity } = await supabase
     .from("agencies")
     .select("city_id")
     .eq("id", agent.agency_id)
     .single();
 
-  if (!agency) redirect("/dashboard");
+  if (!agencyCity) redirect("/dashboard");
 
   const { data: city } = await supabase
     .from("cities")
     .select("center_lat, center_lng")
-    .eq("id", agency.city_id)
+    .eq("id", agencyCity.city_id)
     .single();
 
   const cityCenter = city
@@ -66,7 +77,7 @@ export default async function NuevaPropiedadPage() {
         mode="create"
         agentId={userId}
         agencyId={agent.agency_id}
-        cityId={agency.city_id}
+        cityId={agencyCity.city_id}
         cityCenter={cityCenter}
         agencyAgents={agencyAgents}
       />

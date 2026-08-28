@@ -18,6 +18,11 @@ import {
 import { registerAction } from "./actions";
 import { AuthLayout } from "@/components/auth/AuthLayout";
 import { cn } from "@/lib/utils";
+import {
+  LICENSE_NUMBER_ERROR,
+  LICENSE_NUMBER_PATTERN,
+  normalizeLicenseNumber,
+} from "@/lib/utils/licenseNumber";
 
 // Claim del panel de identidad (voz DESIGN §10: directo, sin marketing). Fácil de cambiar.
 const CLAIM = "Sumá tu inmobiliaria al mapa de tu ciudad.";
@@ -34,6 +39,14 @@ const schema = z
     // .trim() conserva el rechazo de un nombre de solo espacios que antes hacía
     // el superRefine con `!d.agencyName?.trim()`.
     agencyName: z.string().trim().min(1, "El nombre de la inmobiliaria es requerido"),
+    // Matrícula del colegio de corredores. Se normaliza ANTES de validar (sin
+    // espacios, en mayúsculas), así "  1234 " entra como "1234". El transform
+    // deja el valor ya normalizado en lo que se manda a la action.
+    licenseNumber: z
+      .string()
+      .transform(normalizeLicenseNumber)
+      .refine((v) => v.length > 0, "La matrícula es requerida")
+      .refine((v) => LICENSE_NUMBER_PATTERN.test(v), LICENSE_NUMBER_ERROR),
     cityId: z.string().min(1, "Elegí una ciudad"),
     email: z.string().email("Email inválido"),
     password: z.string().min(8, "Mínimo 8 caracteres"),
@@ -96,6 +109,7 @@ export function RegisterForm({ cities }: { cities: CityOption[] }) {
     const result = await registerAction({
       fullName: data.fullName,
       agencyName: data.agencyName,
+      licenseNumber: data.licenseNumber,
       cityId: data.cityId,
       email: data.email,
       password: data.password,
@@ -133,6 +147,27 @@ export function RegisterForm({ cities }: { cities: CityOption[] }) {
             {...register("agencyName")}
             className={cn(errors.agencyName && "border-error")}
           />
+        </Field>
+
+        {/* Matrícula: junto al nombre, son los dos datos de la agencia. Se
+            guarda como texto (los ceros a la izquierda importan). */}
+        <Field
+          id="licenseNumber"
+          label="Matrícula del colegio de corredores"
+          error={errors.licenseNumber?.message}
+        >
+          <Input
+            id="licenseNumber"
+            type="text"
+            inputMode="text"
+            placeholder="1234"
+            {...register("licenseNumber")}
+            className={cn(errors.licenseNumber && "border-error")}
+          />
+          <p className="font-sans text-xs text-graphite">
+            El número con el que figura tu inmobiliaria en el colegio de
+            corredores. Lo verificamos antes de habilitar tu cuenta.
+          </p>
         </Field>
 
         <Field id="fullName" label="Nombre completo" error={errors.fullName?.message}>

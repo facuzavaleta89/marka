@@ -4,6 +4,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { resolveAgentSession } from "@/lib/utils/resolveAgentSession";
+import {
+  LICENSE_NUMBER_ERROR,
+  LICENSE_NUMBER_PATTERN,
+  normalizeLicenseNumber,
+} from "@/lib/utils/licenseNumber";
 
 type ActionResult = { error: string } | undefined;
 
@@ -91,4 +96,84 @@ export async function updateAgencyLogoAction(input: {
   }
 
   revalidatePath("/dashboard/preferencias");
+}
+
+// Identidad de la agencia: razón social + matrícula del colegio de corredores.
+//
+// REGLA DE NEGOCIO: estos dos campos se editan SOLO mientras la agencia está
+// 'pending' o 'rejected'. Una vez aprobada quedan congelados, porque el nombre
+// está semi-regulado por el colegio y cambiarlo después de la aprobación
+// tendría que pasar por otro flujo de aprobación que hoy no existe.
+//
+// ⚠ LA VALIDACIÓN DE ESA REGLA VIVE ACÁ Y SOLO ACÁ. `agencies` no tiene policy
+// de UPDATE, así que la escritura va con service role y la RLS no protege nada:
+// deshabilitar los inputs en la interfaz es cosmético. El estado se LEE del
+// server (fila agencies por el agency_id de la sesión), nunca de lo que mande
+// el cliente.
+//
+// REENVÍO DE LA SOLICITUD: si la agencia estaba 'rejected', guardar la devuelve
+// a 'pending'. Es la corrección del cliente volviendo a la cola, sin que el
+// dueño tenga que intervenir. Si ya estaba 'pending', el estado no se toca.
+const agencyIdentitySchema = z.object({
+  name: z.string().trim().min(1, "El nombre de la inmobiliaria es requerido"),
+  license_number: z
+    .string()
+    .transform(normalizeLicenseNumber)
+    .refine((v) => v.length > 0, "La matrícula es requerida")
+    .refine((v) => LICENSE_NUMBER_PATTERN.test(v), LICENSE_NUMBER_ERROR),
+});
+
+export async function updateAgencyIdentityAction(input: {
+  name: string;
+  license_number: string;
+}): Promise<{ error: string } | { resubmitted: boolean }> {
+  const parsed = agencyIdentitySchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
+  }
+  const { name, license_number } = parsed.data;
+
+  const session = await resolveAgentSession();
+  if (session.status !== "ok") return { error: "No autenticado" };
+  if (session.agent.role !== "admin") return { error: "No autorizado" };
+
+  const admin = createAdminClient();
+
+  // El estado que rige se relee del server; el de la sesión sirve para la UI,
+  // pero para autorizar una escritura se consulta la fila real.
+  const { data: agency } = await admin
+    .from("agencies")
+    .select("approval_status")
+    .eq("id", session.agent.agency_id)
+    .maybeSingle();
+
+  if (!agency) return { error: "No se encontró la agencia" };
+
+  if (agency.approval_status === "approved") {
+    return {
+      error:
+        "Tu inmobiliaria ya está aprobada: el nombre y la matrícula no se pueden cambiar. Escribinos si necesitás corregirlos.",
+    };
+  }
+
+  // Rechazada → vuelve a la cola. Pendiente → sigue pendiente. El slug NO se
+  // toca: cambiarlo rompería la URL pública de la agencia y está fuera de alcance.
+  const wasRejected = agency.approval_status === "rejected";
+
+  const { error } = await admin
+    .from("agencies")
+    .update({
+      name,
+      license_number,
+      ...(wasRejected ? { approval_status: "pending" } : {}),
+    })
+    .eq("id", session.agent.agency_id);
+
+  if (error) {
+    return { error: "No se pudieron guardar los datos. Intentá de nuevo." };
+  }
+
+  revalidatePath("/dashboard/preferencias");
+  revalidatePath("/dashboard");
+  return { resubmitted: wasRejected };
 }

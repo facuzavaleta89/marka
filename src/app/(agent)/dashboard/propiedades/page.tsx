@@ -4,11 +4,12 @@ import { PlanBadge } from "@/components/dashboard/PlanBadge";
 import { NewPropertyButton } from "@/components/dashboard/NewPropertyButton";
 import { PropertiesTable, type PropertyRow } from "@/components/dashboard/PropertiesTable";
 import { getPlanUsage } from "@/lib/utils/getPlanUsage";
+import { getPublishBlock } from "@/lib/utils/getPublishBlock";
 
 export default async function PropiedadesPage() {
   const supabase = await createClient();
 
-  const { userId, agent } = await requireAgentSession();
+  const { userId, agent, agency } = await requireAgentSession();
 
   // Un admin de agencia ve (y gestiona) las propiedades de TODA su agencia; un
   // agente normal, solo las suyas (igual que hoy). El admin además trae el
@@ -35,6 +36,9 @@ export default async function PropiedadesPage() {
     propertiesQuery,
     getPlanUsage(supabase, agent.agency_id),
   ]);
+
+  // Mismo criterio que los triggers de la base (ver getPublishBlock).
+  const publishBlock = getPublishBlock(planUsage, agency.approval_status);
 
   // El join agent puede llegar como objeto o array; normalizamos a la forma
   // que espera la tabla (un nombre o null).
@@ -68,11 +72,18 @@ export default async function PropiedadesPage() {
         </div>
 
         <div className="shrink-0">
-          <NewPropertyButton planUsage={planUsage} />
+          <NewPropertyButton
+            planUsage={planUsage}
+            approvalStatus={agency.approval_status}
+          />
         </div>
       </div>
 
-      <PropertiesTable properties={rows} showAgent={isAgencyAdmin} />
+      <PropertiesTable
+        properties={rows}
+        showAgent={isAgencyAdmin}
+        publishBlockMessage={publishBlock?.message}
+      />
     </div>
   );
 }

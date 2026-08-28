@@ -6,12 +6,19 @@ import { generateUniqueAgencySlug } from "@/lib/utils/agencySlug";
 import { translateAuthError } from "@/lib/utils/authErrors";
 import { redirect } from "next/navigation";
 import { PLANS } from "@/types";
+import {
+  LICENSE_NUMBER_PATTERN,
+  normalizeLicenseNumber,
+} from "@/lib/utils/licenseNumber";
 
 type RegisterData = {
   fullName: string;
   // Razón social de la inmobiliaria. Siempre presente: la app solo registra
   // inmobiliarias (las cuentas de particular ya no se ofrecen en el alta).
   agencyName: string;
+  // Matrícula del colegio de corredores. Obligatoria en toda alta nueva; se
+  // guarda como TEXTO (ver lib/utils/licenseNumber).
+  licenseNumber: string;
   cityId: string;
   email: string;
   password: string;
@@ -21,6 +28,13 @@ type RegisterData = {
 export async function registerAction(
   data: RegisterData
 ): Promise<{ error: string } | undefined> {
+  // La matrícula se normaliza y valida en el server: el formulario ya lo hace,
+  // pero el cliente no es una barrera.
+  const licenseNumber = normalizeLicenseNumber(data.licenseNumber ?? "");
+  if (!LICENSE_NUMBER_PATTERN.test(licenseNumber)) {
+    return { error: "Matrícula inválida" };
+  }
+
   const supabase = await createClient();
 
   const { data: authData, error } = await supabase.auth.signUp({
@@ -61,6 +75,9 @@ export async function registerAction(
         // ya no manda este dato (se eliminó el selector de tipo de cuenta del
         // registro). La columna sigue existiendo para las filas históricas.
         tenant_type: "agency",
+        license_number: licenseNumber,
+        // approval_status NO se setea acá: el DEFAULT de la base ya deja la
+        // agencia en 'pending' hasta que el dueño la apruebe desde /admin.
         // La agencia hereda el WhatsApp de su admin fundador: el dueño es el
         // contacto natural de la agencia recién creada. Es editable después en
         // Preferencias si la agencia tiene otro número. phone_wa es NOT NULL en la
@@ -74,12 +91,23 @@ export async function registerAction(
       agency = inserted;
       break;
     }
-    // 23505 = unique_violation. En agencies el único UNIQUE relevante es el slug,
-    // así que reintentamos regenerando. Cualquier otro error: no insistir.
+    // 23505 = unique_violation. OJO: agencies tiene DOS fuentes posibles de
+    // 23505 — el UNIQUE de slug y el índice único parcial
+    // (city_id, license_number) entre agencias APROBADAS. Acá solo puede venir
+    // del slug, porque el alta nace en 'pending' y el índice de matrícula no
+    // aplica a las pendientes. Por eso reintentar regenerando el slug es
+    // correcto hoy; si algún día el alta escribiera una agencia ya aprobada,
+    // habría que distinguir cuál de los dos índices falló antes de reintentar.
     if (insertError?.code !== "23505") break;
   }
 
   if (!agency) {
+    // ROLLBACK: el usuario de Auth ya existe, pero sin agencia no hay cuenta
+    // usable. Si lo dejáramos, quedaría un auth.users huérfano: una sesión
+    // válida que no resuelve ninguna inmobiliaria (el caso que el área privada
+    // tiene que expulsar al login). Se borra acá, igual que hace
+    // createAgentAction cuando le falla el insert de agents.
+    await admin.auth.admin.deleteUser(authData.user.id);
     return { error: "No se pudo crear la agencia" };
   }
 
@@ -94,7 +122,14 @@ export async function registerAction(
     email: data.email, // denormalizado para mostrarlo en la UI (lista de equipo)
   });
 
-  if (agentError) return { error: "Error al crear el perfil del agente" };
+  if (agentError) {
+    // Mismo rollback que arriba: sin fila en agents el usuario queda huérfano.
+    // Se borra el user de Auth; la agencia recién creada queda sin agentes y la
+    // limpia el dueño desde el panel (borrarla acá arriesgaría pisar datos si el
+    // insert de agents falló por una carrera y no por el alta en sí).
+    await admin.auth.admin.deleteUser(authData.user.id);
+    return { error: "Error al crear el perfil del agente" };
+  }
 
   // Garantiza que la agencia tenga una suscripción.
   // upsert con ignoreDuplicates: no pisa una suscripción existente (ej. una de pago).

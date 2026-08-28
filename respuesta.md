@@ -1,293 +1,303 @@
-# Unificación de la sesión del área privada + arreglo del bucle de redirecciones
+# Matrícula en el alta, aviso de estado, bloqueo de publicación y reenvío de solicitud
 
 > **Modo ejecución.** Cero comandos de git. Cero SQL de escritura (la base solo se leyó
-> por MCP). 22 archivos tocados, 3 creados.
+> por MCP). **11 archivos modificados, 5 creados.**
 >
-> ⚠ **Dos diferencias contra el baseline que NO son regresiones sino consecuencias
-> necesarias del arreglo: el build pasa de 17 a 18 rutas, y `/login` pasa de estática a
-> dinámica.** Están explicadas en §8 y §9. Todo lo demás (0 errores de TS, 0 de lint, el
-> mismo único warning) quedó idéntico.
+> `npx tsc --noEmit` 0 errores · `npm run lint` 0 errores y **1 warning** (el conocido,
+> en `PropertyForm.tsx:232`) · `npx next build` verde con **18 rutas**. **Idéntico al
+> baseline: no agregué ninguna ruta y no aparecieron warnings nuevos.**
 
 ---
 
-## 1 · Usuarios sin fila en `agents`
+## 1 · Los dos triggers, medidos por MCP
+
+Coinciden exactamente con lo que describiste. Nada difiere.
+
+### `check_agency_approved()` + `trg_check_agency_approved`
 
 ```sql
-SELECT count(*) AS usuarios_sin_agente
-FROM auth.users u LEFT JOIN public.agents a ON a.id = u.id WHERE a.id IS NULL;
+CREATE OR REPLACE FUNCTION public.check_agency_approved()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  agency_state TEXT;
+BEGIN
+  SELECT approval_status INTO agency_state
+  FROM agencies
+  WHERE id = NEW.agency_id;
+
+  -- Sin fila de agencia no se publica: es un estado inconsistente, no un permiso.
+  IF agency_state IS NULL OR agency_state <> 'approved' THEN
+    RAISE EXCEPTION 'La agencia no está aprobada para publicar propiedades'
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
 ```
+```
+CREATE TRIGGER trg_check_agency_approved
+  BEFORE INSERT ON public.properties
+  FOR EACH ROW EXECUTE FUNCTION check_agency_approved()
+```
+**Solo INSERT**, como pediste: editar una propiedad ya cargada sigue permitido aunque la
+agencia se rechace después.
+
+### `check_property_limit()` actualizada
+
+El cambio respecto de la versión anterior es este bloque:
+```sql
+  -- Sin fila de suscripción NO hay cupo: antes max_allowed quedaba NULL, la
+  -- comparación daba NULL y el insert pasaba sin límite alguno.
+  IF max_allowed IS NULL THEN
+    max_allowed := 0;
+  END IF;
+```
+El resto (qué cuenta, contra qué compara, el mensaje `'Límite de propiedades alcanzado
+para el plan actual (máximo: %)'` con `ERRCODE = 'check_violation'`) quedó igual. Su
+trigger sigue siendo `BEFORE INSERT OR UPDATE`.
+
+### Dato que usé para el diseño
+
+Los dos triggers son `BEFORE INSERT` sobre la misma tabla, y **Postgres los dispara en
+orden alfabético de nombre**: `trg_check_agency_approved` corre **antes** que
+`trg_check_property_limit`. O sea que una agencia sin aprobar y con el cupo lleno recibe
+el error de aprobación, no el de límite. La interfaz replica ese mismo orden (§5, §6).
+
+### Estado de los datos
+
 ```json
-[{"usuarios_sin_agente":2}]
+[{"approval_status":"approved","agencias":10,"con_matricula":0}]
 ```
-
-**2**, como decías. Son `gaiozavaleta@gmail.com` (creado 30/05, último acceso 19/06) y
-`juanperez@gmail.com` (creado y último acceso **en el mismo segundo**: la firma de un
-registro que falló después del `signUp`). Los dos están hoy en el estado que dispara el
-bucle: si inician sesión, quedan atrapados.
+Las 10 agencias están `approved` y ninguna tiene matrícula. **Hoy nadie ve el aviso ni el
+bloqueo**: hacen falta agencias `pending`/`rejected` para probarlo (§8).
 
 ---
 
-## 2 · La forma del resultado del helper, y por qué
+## 2 · Archivos
 
-**Unión discriminada de tres variantes**, en `src/lib/utils/resolveAgentSession.ts`:
+### Creados (5)
+
+| Archivo | Qué es |
+|---|---|
+| `src/components/feedback/Notice.tsx` | **El componente de aviso reutilizable**: Server Component, tres tonos (`info`/`warning`/`error`), título + ícono + contenido |
+| `src/components/dashboard/AgencyApprovalNotice.tsx` | Aviso de dominio: recibe estado y motivo ya resueltos y arma el mensaje de pendiente o rechazada |
+| `src/lib/utils/licenseNumber.ts` | Formato y normalización de la matrícula, compartidos por el alta y por Preferencias |
+| `src/lib/utils/getLatestRejectionNote.ts` | Lee el motivo del último rechazo con service role, verificando pertenencia |
+| `src/lib/utils/getPublishBlock.ts` | Espejo en la interfaz de los dos triggers: dice si se puede publicar y por qué no |
+| `src/components/dashboard/AgencyIdentityForm.tsx` | Edición (o lectura, si está aprobada) de nombre + matrícula |
+
+*(son 6 archivos nuevos contando el form de identidad)*
+
+### Modificados (11)
+
+| Archivo | Qué cambió |
+|---|---|
+| `register/RegisterForm.tsx` | Campo de matrícula obligatorio, junto al nombre de la inmobiliaria |
+| `register/actions.ts` | Guarda `license_number`; **rollback del usuario de Auth** si falla la agencia o el agente; comentario del reintento de slug corregido |
+| `dashboard/page.tsx` | Monta el aviso entre el título y las tarjetas; pasa el estado al botón; el enlace del estado vacío ahora se gatea |
+| `dashboard/propiedades/page.tsx` | Pasa el estado al botón y el motivo de bloqueo a la tabla |
+| `dashboard/propiedades/nueva/page.tsx` | **Gate de la ruta**: corta antes de renderizar el formulario |
+| `dashboard/propiedades/actions.ts` | Distingue los dos motivos de rechazo del insert (helper `translatePropertyWriteError`) |
+| `dashboard/preferencias/page.tsx` | Monta el aviso y el form de identidad |
+| `dashboard/preferencias/actions.ts` | `updateAgencyIdentityAction`: guarda nombre + matrícula y reenvía la solicitud |
+| `components/dashboard/NewPropertyButton.tsx` | Dos motivos de bloqueo con mensajes distintos |
+| `components/dashboard/PropertiesTable.tsx` | Prop `publishBlockMessage` para el estado vacío |
+
+---
+
+## 3 · El componente de aviso, y dónde lo monté
+
+**Dos piezas, separadas a propósito:**
+
+1. **`Notice`** (`src/components/feedback/Notice.tsx`) — genérico y reusable. Server
+   Component (sin `"use client"`), sin estado, sin botón de cerrar. Tres tonos según
+   DESIGN §2: `info` sobre `mist` (neutro, nadie hizo nada mal), `warning` terracota
+   suave, `error` sobre `terracota-subtle`. Lleva `role="status"`.
+   **Por qué no reusé el "banner de error" que ya existe copiado en cuatro lugares:** ese
+   es descartable, tiene `useState` de cliente y comunica que algo falló. Este se queda
+   mientras el estado dure y describe una situación normal. Son cosas distintas y
+   mezclarlas habría dado un aviso que se puede cerrar y no vuelve.
+2. **`AgencyApprovalNotice`** — el de dominio. Presentacional puro: recibe
+   `status` y `rejectionNote` ya resueltos y no consulta nada. Devuelve `null` si la
+   agencia está aprobada.
+
+**Los dos mensajes:**
+- **Pendiente** (tono `info`, ícono `Clock`): *"Tu cuenta está en revisión — Estamos
+  verificando la matrícula de tu inmobiliaria. Hasta que la aprobemos no vas a poder
+  publicar propiedades, pero sí podés ir dejando todo listo: completá tu perfil y los
+  datos de tu inmobiliaria."*
+- **Rechazada** (tono `error`, ícono `ShieldX`): *"Tu solicitud no fue aprobada"* +
+  **Motivo: <la nota del dueño>** + *"Corregí los datos de tu inmobiliaria y tu solicitud
+  vuelve a revisión automáticamente"* + enlace **"Corregir los datos"** → Preferencias.
+  Si no hay nota registrada, se omite la línea del motivo sin dejar un hueco raro.
+
+**Dónde lo monté: en dos pantallas.**
+- **`/dashboard`** (pedido): entre el `<h1>` y la grilla de tarjetas, en un `div` con
+  `mb-8` que respeta el ritmo vertical de la página.
+- **`/dashboard/preferencias`** (decisión mía, justificada): es la pantalla donde se
+  corrige lo que motivó el rechazo. Si la persona llega desde el enlace del aviso, tiene
+  que **seguir viendo el motivo mientras edita** en vez de recordarlo de memoria. Ahí el
+  aviso va con `showEditLink={false}` — es la pantalla del enlace, mandarla a sí misma
+  sería ruido.
+
+No lo puse en el resto (Propiedades, Consultas, Equipo, Perfil, Suscripción): repetir el
+mismo cartel en siete pantallas lo convierte en ruido que se deja de leer, y en
+Propiedades el bloqueo ya se explica al lado del botón.
+
+---
+
+## 4 · Cómo leo la nota del rechazo, y qué verifico
+
+`src/lib/utils/getLatestRejectionNote.ts`. La consulta es la última fila de
+`agency_reviews` de esa agencia con `decision = 'rejected'`:
 
 ```ts
-export type AgentSession =
-  | { status: "no_session" }
-  | { status: "unlinked"; userId: string }
-  | { status: "ok"; userId: string; agent: SessionAgent; agency: SessionAgency };
+const admin = createAdminClient();
+const { data } = await admin
+  .from("agency_reviews")
+  .select("note")
+  .eq("agency_id", agencyId)
+  .eq("decision", "rejected")
+  .order("created_at", { ascending: false })
+  .limit(1)
+  .maybeSingle();
 ```
 
-Por qué así:
+**Service role, porque no hay alternativa:** `agency_reviews` tiene RLS habilitada y cero
+policies, así que el client normal no lee nada de ahí. Eso es deliberado (la tabla existe
+justamente para que la nota no sea pública), pero el precio es que **la barrera de
+pertenencia la tiene que poner el código**.
 
-1. **Es el patrón que el proyecto ya usa para exactamente este problema.**
-   `resolveAgencyBySlug` resuelve tres estados (`not_found` / `disabled` / `active`) con
-   una unión discriminada y su comentario dice *"No colapsar disabled en not_found: son
-   páginas distintas"*. Acá el razonamiento es idéntico, y el bug nació justamente de
-   colapsar dos estados: **"no hay sesión" y "hay sesión pero la cuenta no resuelve" se
-   trataban igual y se mandaban al mismo destino.** Con la unión, colapsarlos otra vez
-   requiere escribirlo a propósito.
-2. **TypeScript obliga a contemplar los tres.** Un objeto con flags (`{ user, agent,
-   agency }` todo nullable) dejaría escribir `session.agent!` y seguir; la unión no
-   compila hasta que se descarta el caso.
-3. `userId` viaja también en `unlinked`: quien corta necesita saber a quién está
-   deslogueando (hoy no se usa, pero está disponible para logging).
-
-**Dos funciones exportadas**, porque los llamadores no quieren lo mismo:
-
-| Export | Para quién | Qué hace ante `unlinked` |
-|---|---|---|
-| `resolveAgentSession()` | server actions (devuelven `{ error }`) y el layout de `/admin` (necesita ordenar sus cortes) | devuelve la unión, sin cortar |
-| `requireAgentSession()` | páginas y layouts | corta: `no_session` → `/login`; `unlinked` → `/logout?reason=no_agency` |
-
-**El `select`** cubre de una sola vez lo que pedían las cinco variantes sueltas, más lo
-que pediste para el trabajo siguiente:
-```
-id, full_name, phone_wa, avatar_url, role, agency_id,
-agency:agencies(id, name, approval_status, license_number)
-```
-Los tipos se derivan con `Pick<Agent, …>` y `Pick<Agency, …>` — nada redefinido inline,
-nada de `any`.
-
-**Diferencia de firma con `getPlanUsage`, deliberada:** `getPlanUsage(supabase, agencyId)`
-recibe el client; `resolveAgentSession()` **no recibe nada** y crea el suyo. El motivo es
-la tarea 4: `cache()` de React desduplica **por argumentos**, y como `createClient()`
-devuelve una instancia nueva en cada llamada, pasar el client rompería la deduplicación
-entre el layout y su página. Está comentado en el archivo.
-
-**Una mejora incluida:** el helper también devuelve `unlinked` cuando el agente existe
-pero **su agencia no resuelve**. `PENDIENTES.md` describe el bug como *"su fila en
-`agents` o su `agencies` no existe"*, y el código viejo solo cubría la primera mitad.
-
----
-
-## 3 · La salida del bucle (tarea 2a)
-
-**Un route handler nuevo: `src/app/(agent)/logout/route.ts` (`GET /logout`).**
-
-### Por qué no se podía hacer de ninguna de las otras formas
-
-Este es el hallazgo que decidió el diseño, y conviene que quede escrito:
-
-> **Un Server Component no puede cerrar la sesión.** `signOut()` necesita borrar cookies,
-> y en un Server Component el `set` de cookies **no tiene efecto**. No es una teoría: está
-> escrito en el propio `src/lib/supabase/server.ts:15-23`, donde el `setAll` va envuelto en
-> un `try/catch` cuyo comentario dice *"En Server Components el set no tiene efecto; lo
-> maneja el proxy."*
-
-De ahí que:
-
-- **Extender `logoutAction`** (la server action que ya existe) no alcanza: una action se
-  invoca desde un `<form>` o desde un evento de cliente, y acá quien necesita cortar es un
-  Server Component en pleno render. Lo único que puede hacer es `redirect()`.
-- **Que el helper lo haga** tampoco: corre dentro del mismo render, con la misma
-  limitación de cookies.
-- **Mandar a `/login` con la sesión viva** era justamente el bug: `proxy.ts:21` lo rebota
-  a `/dashboard` y el ciclo se cierra.
-
-Un **route handler sí puede escribir cookies**. Por eso el corte es
-`redirect("/logout?reason=no_agency")` y el handler hace `signOut()` + redirect a
-`/login?reason=no_agency`. Al llegar al login la cookie ya no está, la premisa de
-`proxy.ts:21` (`user &&`) es falsa, y no hay rebote.
-
-`logoutAction` **queda intacta**: el botón "Cerrar sesión" del sidebar sigue usándola.
-Son dos salidas para dos contextos distintos, y está comentado en ambos archivos.
-
-### La cadena, antes y después
-
-```
-ANTES:  /dashboard ──► layout: !agent ──307──► /login ──► proxy: hay sesión ──307──► /dashboard ──► ∞
-AHORA:  /dashboard ──► layout: unlinked ──307──► /logout ──► signOut() ──307──► /login?reason=no_agency
-                                                                                  (sin cookie → el proxy no rebota)
-```
-
-### El mensaje en el login (tarea 2b)
-
-`login/page.tsx` era un Client Component, así que no podía `await searchParams`. Lo
-**partí en dos siguiendo el reparto que ya usa `/register`**: `page.tsx` (Server, lee
-`searchParams` y resuelve el texto) + `LoginForm.tsx` (Client, el formulario tal cual
-estaba). No se convirtió ningún Server Component en Client — es al revés.
-
-**El parámetro de la URL es un CÓDIGO, nunca el texto.** El mapa vive en el server:
-```ts
-const NOTICES: Record<string, string> = {
-  no_agency:
-    "Tu cuenta no está asociada a ninguna inmobiliaria. Escribinos si creés que es un error.",
-};
-```
-Un código desconocido no renderiza nada. El route handler además valida el `reason`
-contra su propia whitelist antes de reenviarlo, así que hay dos filtros y en ningún punto
-se pinta texto que venga de la URL.
-
-Visualmente el aviso usa el mismo bloque que el error de servidor de esa pantalla
-(`rounded-md px-3 py-2`), pero en tono neutro (`text-graphite bg-mist` en vez de
-`text-error bg-terracota-subtle`): es información, no un error de quien escribe.
-
----
-
-## 4 · Cómo llega el estado a las páginas sin repetir la consulta (tarea 4)
-
-**`cache()` de React sobre el helper.**
+**Qué verifico antes de devolver nada — dos condiciones, en este orden:**
 
 ```ts
-export const resolveAgentSession = cache(async (): Promise<AgentSession> => { … });
+const session = await resolveAgentSession();
+if (session.status !== "ok") return null;          // 1. hay sesión y resuelve agencia
+if (session.agent.agency_id !== agencyId) return null;  // 2. es SU agencia
 ```
 
-Dentro de un mismo request, el layout y la página que cuelga de él llaman los dos a
-`requireAgentSession()` y **se ejecuta una sola consulta**: la segunda llamada recibe el
-resultado memorizado. Cada página sigue escribiendo su propia línea (legible, sin
-props que atraviesen archivos), y el costo en base es el de una sola.
+El `agencyId` **no se acepta como autoridad**: se compara contra el que sale de la fila
+`agents` por `auth.uid()`. Llamar al helper a mano con el id de otra agencia devuelve
+`null`, no la nota. Es la misma disciplina que el resto del proyecto ("el `agency_id`
+siempre del server, nunca del cliente").
 
-**Alternativas descartadas:**
-
-- **Pasar el estado por props desde el layout.** No se puede: en App Router un layout
-  recibe `children` ya renderizados como `ReactNode`; no hay forma de inyectarle props a
-  la página desde el layout. Habría que clonar elementos, que es frágil y no tipa.
-- **React Context.** Requiere un Provider client (`"use client"`), y arrastraría a las
-  páginas hacia el cliente. Choca de frente con la restricción dura que pusiste y con la
-  regla del proyecto.
-- **Un módulo con estado (variable global por request).** Es lo que `cache()` hace bien y
-  a mano se hace mal: hay que resolver el aislamiento entre requests concurrentes, que es
-  exactamente lo que `cache()` ya garantiza.
-- **No cachear y aceptar dos consultas.** Funcionaría, pero duplicaría la carga por
-  navegación justo cuando el objetivo era dejar de repetir la consulta.
-
-⚠ Alcance honesto de `cache()`: garantiza deduplicación **dentro de un render**. En las
-server actions cada invocación es su propio ciclo, así que ahí sigue siendo una consulta
-por action — igual que antes, y correcto: una action tiene que leer el estado fresco.
+Además, la lectura **solo ocurre si hace falta**: las páginas la piden únicamente cuando
+`approval_status === "rejected"`.
 
 ---
 
-## 5 · Los sitios unificados, uno por uno
+## 5 · Cómo distingo los dos motivos si comparten el SQLSTATE
 
-**21 llamadas al helper** (tu enunciado decía 19; el recuento real dio 21 — dos de las
-tres del archivo de propiedades son fáciles de pasar por alto).
+**Por el texto del mensaje, chequeando primero el de aprobación.** Un helper único en
+`propiedades/actions.ts`, usado por los tres puntos que escriben propiedades:
 
-### Páginas y layouts
+```ts
+function translatePropertyWriteError(
+  dbError: DbLikeError,
+  fallback: string,
+  limitMessage: string
+): string {
+  if (dbError.message.includes("no está aprobada")) {
+    return "Tu inmobiliaria todavía no está aprobada, así que no podés publicar propiedades.";
+  }
+  if (dbError.code === "23514" || dbError.message.includes("Límite")) {
+    return limitMessage;
+  }
+  return fallback;
+}
+```
 
-| # | Archivo | Antes ante "no hay agente" | Ahora | ¿Cambió? |
-|---|---|---|---|---|
-| 1 | `dashboard/layout.tsx` | `redirect("/login")` → **bucle** | `/logout?reason=no_agency` → login con aviso | **Sí: es el arreglo** |
-| 2 | `admin/layout.tsx` | `redirect("/login")` → **bucle** | ídem | **Sí: es el arreglo** |
-| 3 | `dashboard/page.tsx` | `redirect("/login")` → bucle | ídem | Sí (arreglo) |
-| 4 | `dashboard/propiedades/page.tsx` | `redirect("/login")` → bucle | ídem | Sí (arreglo) |
-| 5 | `dashboard/leads/page.tsx` | `redirect("/login")` → bucle | ídem | Sí (arreglo) |
-| 6 | `dashboard/perfil/page.tsx` | `redirect("/login")` → bucle | ídem | Sí (arreglo) |
-| 7 | `dashboard/preferencias/page.tsx` | `redirect("/login")` → bucle | ídem | Sí (arreglo) |
-| 8 | `dashboard/suscripcion/page.tsx` | `redirect("/login")` → bucle | ídem | Sí (arreglo) |
-| 9 | `dashboard/equipo/page.tsx` | `redirect("/login")` → bucle | ídem | Sí (arreglo) |
-| 10 | `dashboard/propiedades/nueva/page.tsx` | `redirect("/dashboard")` → bucle (vía el layout) | ídem | Sí (arreglo) — ver §7 |
-| 11 | `dashboard/propiedades/[id]/editar/page.tsx` | **no cortaba** (`agent?.role`) | ídem | Sí — ver §7 |
-| 12 | `register/plan/page.tsx` | `redirect("/login")` → bucle | ídem | Sí (arreglo) |
+Tres decisiones detrás:
 
-**Sin sesión, las 12 siguen yendo a `/login`**, exactamente como antes: ese caso nunca
-fue el bug (el proxy no rebota `/login` cuando no hay sesión).
+1. **El código no alcanza.** Los dos triggers usan `check_violation` → SQLSTATE 23514.
+   Mirar el mensaje es la única señal disponible. Lo dejé escrito en el comentario del
+   helper para que nadie lo "simplifique" volviendo a matchear solo por código.
+2. **El de aprobación va primero** por dos motivos que coinciden: es el que dispara
+   primero en la base (orden alfabético de triggers), y porque decirle *"alcanzaste el
+   límite de tu plan"* a alguien que no fue aprobado **es falso y además lo manda a pagar
+   un plan que no le va a destrabar nada**.
+3. **Un solo helper para los tres sitios** (activar, crear, editar), cada uno con su
+   `fallback` y su `limitMessage` propios — el de editar dice además *"No podés volver a
+   activar esta propiedad"*, como antes.
 
-### Server actions
-
-| # | Archivo | Antes | Ahora | ¿Cambió? |
-|---|---|---|---|---|
-| 13 | `dashboard/propiedades/actions.ts:130` (`authorizePropertyAccess`) | `agent` null → cae al "Propiedad no encontrada" | idéntico | **No** |
-| 14 | `dashboard/propiedades/actions.ts:234` (`createPropertyAction`) | `{ error: "No autenticado" }` / `{ error: "Agente no encontrado" }` | los **mismos dos textos** | **No** |
-| 15 | `dashboard/propiedades/actions.ts:366` (`updatePropertyAction`) | `caller?.role` con optional chaining | `caller` null si no resuelve; misma semántica | **No** |
-| 16 | `dashboard/preferencias/actions.ts:41` (teléfono) | `{ error: "No autenticado" }` / `"No autorizado"` | mismos textos | **No** |
-| 17 | `dashboard/preferencias/actions.ts:78` (logo) | ídem | mismos textos | **No** |
-| 18 | `dashboard/equipo/actions.ts:42` (`createAgentAction`) | ídem | mismos textos | **No** |
-| 19 | `dashboard/equipo/actions.ts:104` (`deleteAgentAction`) | ídem | mismos textos | **No** |
-| 20 | `dashboard/suscripcion/actions.ts:27` | `redirect("/login")` | `no_session` → `/login`; `unlinked` → `/logout` | Solo el caso del bucle |
-| 21 | `register/plan/actions.ts:23` | `redirect("/login")` | ídem | Solo el caso del bucle |
-
-**Las 7 actions que devolvían `{ error }` siguen devolviendo `{ error }`, con el texto
-exacto de antes.** Ninguna se convirtió en redirección: como advertiste, redirigir desde
-un submit rompería el manejo de errores del formulario que la llama. Las dos que ya
-redirigían (20 y 21) siguen redirigiendo.
-
-### Un cambio de orden que vale aclarar
-
-En `admin/layout.tsx` **preservé el orden original de los cortes** a propósito: primero
-sesión, después identidad del dueño, y recién al final la cuenta huérfana. Por eso ese
-archivo usa `resolveAgentSession()` crudo en vez de `requireAgentSession()`: un no-admin
-sigue yendo a `/dashboard` sin que el estado de su agencia influya en nada, igual que
-antes.
+⚠ Acoplamiento conocido: el match depende del texto de las funciones de la base. Ya
+existía (el `includes("Límite")` estaba desde antes) y no lo empeoré, pero si alguien
+edita el mensaje de un trigger tiene que tocar esto. Está comentado.
 
 ---
 
-## 6 · El grep que demuestra que no quedó ninguna suelta
+## 6 · Los cuatro puntos de entrada al formulario
 
-```
-$ grep -rn '\.from("agents")' src/
-src/app/(agent)/admin/page.tsx:106          admin.from("agents").select("*", { count: "exact", head: true }),
-src/app/(agent)/dashboard/perfil/actions.ts:32    .from("agents")
-src/app/(agent)/dashboard/propiedades/nueva/page.tsx:23      .from("agents")
-src/app/(agent)/dashboard/propiedades/actions.ts:72    .from("agents")
-src/app/(agent)/dashboard/equipo/actions.ts:65   await admin.from("agents").insert({
-src/app/(agent)/dashboard/equipo/actions.ts:119    .from("agents")
-src/app/(agent)/dashboard/equipo/page.tsx:20      .from("agents")
-src/app/(agent)/dashboard/propiedades/[id]/editar/page.tsx:54      .from("agents")
-src/app/(agent)/register/actions.ts:88   await admin.from("agents").insert({
-src/lib/utils/resolveAgentSession.ts:83    .from("agents")
-```
+Todos usan **el mismo criterio**, centralizado en `getPublishBlock(planUsage,
+approvalStatus)` — el espejo en la interfaz de los dos triggers. Cubre **los dos
+motivos** en los cuatro puntos, no solo el nuevo.
 
-```
-$ grep -rn -A4 '\.from("agents")' "src/app/(agent)/" | grep -E '\.eq\("id", (user|session)'
-src/app/(agent)/dashboard/perfil/actions.ts-34-    .eq("id", user.id);
-```
+| # | Punto de entrada | Antes | Ahora |
+|---|---|---|---|
+| 1 | Botón "Nueva propiedad" (`NewPropertyButton`, montado en `/dashboard` y en `/dashboard/propiedades`) | Solo gateaba por límite de plan | Gatea por **los dos**, con mensaje distinto para cada uno. Nunca se oculta: deshabilitado + mensaje constructivo (DESIGN §12) |
+| 2 | Enlace "Publicar primera propiedad" del estado vacío de `/dashboard` | **Sin gate**: llevaba al formulario siempre | Si hay bloqueo, en vez del enlace se muestra el motivo |
+| 3 | El mismo enlace en el estado vacío de `PropertiesTable` | **Sin gate** | Ídem, vía la prop nueva `publishBlockMessage` |
+| 4 | La ruta `/dashboard/propiedades/nueva` | **Sin gate**: se llegaba por URL | Corta antes de renderizar: `if (getPublishBlock(...)) redirect("/dashboard/propiedades")` |
 
-**Ninguna de las que quedan es la consulta duplicada.** Una por una:
+Los mensajes del botón, según el motivo:
+- **Pendiente:** *"Vas a poder publicar cuando aprobemos tu inmobiliaria. Mientras tanto
+  podés completar tus datos."* — sin mencionar ningún plan: el bloqueo no se resuelve
+  con plata.
+- **Rechazada:** *"Tu solicitud no fue aprobada, así que todavía no podés publicar"* +
+  enlace **"Corregir los datos"**.
+- **Cupo lleno:** el mensaje de upgrade que ya existía, intacto (o el de contacto si está
+  en premium).
 
-| Archivo:línea | Qué es | Por qué queda |
-|---|---|---|
-| `perfil/actions.ts:32-34` | **UPDATE** de la propia fila (`updateProfileAction`) | Es una escritura, no la lectura duplicada. El helper no escribe |
-| `admin/page.tsx:106` | `count` de TODOS los agentes | Métrica de plataforma, no la sesión del caller |
-| `equipo/page.tsx:20` | agentes **por `agency_id`** | Lista el equipo, no al caller |
-| `equipo/actions.ts:65` / `register/actions.ts:88` | `INSERT` de un agente nuevo | Alta, no lectura |
-| `equipo/actions.ts:119` | agente **destino** de un borrado, por su id | No es el caller |
-| `propiedades/nueva/page.tsx:23` y `[id]/editar/page.tsx:54` | agentes **por `agency_id`** para el selector "Agente asignado" | No es el caller |
-| `propiedades/actions.ts:72` (`resolveAssignedAgent`) | agente **destino** de una reasignación | No es el caller |
-| `resolveAgentSession.ts:83` | **el helper** | Es el único lugar donde vive la consulta |
-
-La única línea que sigue filtrando `agents` por `user.id` es el **UPDATE** del perfil, que
-por definición no puede reemplazarse por una lectura.
+Sobre el punto 4: elegí `redirect("/dashboard/propiedades")` y no un mensaje en la propia
+ruta porque el listado es donde el motivo ya está explicado (por el botón y por el estado
+vacío), así que la persona aterriza en la explicación en vez de en una pared.
 
 ---
 
-## 7 · Los dos casos raros
+## 7 · Cómo se valida en el server que no se editen los campos con la agencia aprobada
 
-**`propiedades/nueva/page.tsx` — se unifica.** Tenías razón en la sospecha: mandar a
-`/dashboard` no arreglaba nada, porque el layout de `/dashboard` volvía a evaluar lo mismo
-y ahí sí cortaba a `/login`, entrando al bucle un salto más tarde. Ahora usa el helper
-como el resto. **Su segundo `redirect("/dashboard")` (el de `!agency`) se conservó tal
-cual**: ese no es el corte del agente sino el de la fila de `agencies` que trae el
-`city_id` para centrar el mapa. Está comentado en el archivo para que no se confundan.
+En `updateAgencyIdentityAction` (`preferencias/actions.ts`), y **la fila se relee del
+server**:
 
-**`propiedades/[id]/editar/page.tsx` — era un descuido, y lo corregí.** Usaba
-`agent?.role === "admin" && agent.agency_id === …` y seguía adelante sin fila de agente.
-No creo que fuera deliberado: sin agente **no hay autorización posible**, así que el
-único desenlace era caer en el chequeo de propiedad de la línea 45 y salir por
-`/dashboard/propiedades`. Cortar antes con el helper es más correcto y, para un usuario
-real, **no cambia nada de lo que ve**: sin agente no podía editar en ningún escenario.
-La diferencia visible aparece solo para una cuenta huérfana, que antes terminaba en el
-bucle y ahora sale por el login con el aviso.
+```ts
+const session = await resolveAgentSession();
+if (session.status !== "ok") return { error: "No autenticado" };
+if (session.agent.role !== "admin") return { error: "No autorizado" };
+
+const admin = createAdminClient();
+const { data: agency } = await admin
+  .from("agencies")
+  .select("approval_status")
+  .eq("id", session.agent.agency_id)   // ← el id sale de la sesión, no del cliente
+  .maybeSingle();
+
+if (!agency) return { error: "No se encontró la agencia" };
+
+if (agency.approval_status === "approved") {
+  return { error: "Tu inmobiliaria ya está aprobada: el nombre y la matrícula no se pueden cambiar…" };
+}
+```
+
+Cuatro barreras, todas server-side: hay sesión → es admin de agencia → el `agency_id` sale
+de la fila `agents` por `auth.uid()` → el `approval_status` se lee de la fila real, **no
+del que trae la sesión ni del que mande el cliente**.
+
+Esto importa especialmente acá: `agencies` **no tiene policy de UPDATE**, así que la
+escritura va con service role y la RLS no protege nada. Deshabilitar los inputs en
+`AgencyIdentityForm` es cosmético, y está comentado como tal en los dos archivos.
+
+**El reenvío:** si estaba `rejected`, el update incluye `approval_status: "pending"` y la
+action devuelve `{ resubmitted: true }`, que el form usa para decir *"Datos guardados. Tu
+solicitud volvió a quedar en revisión."* Si estaba `pending`, el estado no se toca.
+
+**El `slug` no se toca** en ningún caso (fuera de alcance, y cambiarlo rompería la URL
+pública de la agencia). Está comentado en la action.
+
+Cuando la agencia está aprobada, el form **no oculta los campos**: los muestra en modo
+lectura con un candado y la explicación de por qué están fijos.
 
 ---
 
@@ -311,12 +321,15 @@ bucle y ahora sale por el login con el aviso.
 ✖ 1 problem (0 errors, 1 warning)
 ```
 
+**No apareció ningún warning nuevo en `RegisterForm.tsx`**: el campo de matrícula se
+resolvió con `register("licenseNumber")` y validación en el schema, **sin usar `watch()`**.
+No hacía falta: el campo no condiciona el render de nada.
+
 ### `npx next build` — exit code **0**
 ```
-✓ Compiled successfully in 10.7s
-✓ Generating static pages using 3 workers (18/18) in 1348ms
+✓ Compiled successfully in 9.0s
+✓ Generating static pages using 3 workers (18/18) in 1271ms
 
-Route (app)
 ┌ ○ /                                   ├ ○ /_not-found
 ├ ƒ /[slug]                             ├ ƒ /admin
 ├ ○ /apple-icon.png                     ├ ƒ /dashboard
@@ -328,81 +341,74 @@ Route (app)
 ├ ƒ /register                           └ ƒ /register/plan
 ```
 
-### Comparación contra el baseline
-
 | | Baseline | Ahora | |
 |---|---|---|---|
 | Errores TypeScript | 0 | **0** | igual |
 | Errores de lint | 0 | **0** | igual |
 | Warnings de lint | 1 (`PropertyForm.tsx:232`) | **1** (el mismo) | igual |
-| Build | verde | verde | igual |
-| Rutas | 17 | **18** | ⚠ **+1: `/logout`** |
-| `/login` | `○` estática | **`ƒ` dinámica** | ⚠ **cambió** |
+| Build | verde, 18 rutas | verde, **18 rutas** | igual |
 
-**Las dos diferencias son consecuencia directa de lo que pediste, no regresiones:**
+**Sin regresiones y sin rutas nuevas.**
 
-1. **`/logout`** es el route handler de la tarea 2a. Es la única forma de cerrar la
-   sesión desde un Server Component (§3): sin él no hay arreglo posible del bucle. No es
-   una pantalla — es un endpoint que redirige.
-2. **`/login` pasó a dinámica** porque ahora lee `searchParams`, que es literalmente lo
-   que pedía la tarea 2b. Una página que depende de la URL no se puede prerenderizar.
-
-Si cualquiera de las dos no te sirve, decímelo: la primera se puede evitar solo
-cambiando el enfoque del arreglo (por ejemplo, renderizar un estado en vez de redirigir),
-y la segunda es inevitable si el login tiene que mostrar el mensaje.
-
-**Lo que la verificación automática NO cubre:** no hay tests y no levanté el dev server.
-El circuito `/dashboard → /logout → /login?reason=no_agency` está verificado por tipos y
-por build, **no ejercitado en el navegador**. La prueba a mano que lo confirma: iniciar
-sesión con `juanperez@gmail.com` (uno de los 2 huérfanos) y pedir `/dashboard` — antes
-quedaba en la cadena de 307 hasta el `SecurityError`; ahora tiene que aterrizar en el
-login con el aviso y **sin sesión**.
+**Lo que la verificación automática NO cubre.** No hay tests y no levanté el dev server.
+Y hay un límite concreto: **las 10 agencias de la base están `approved`**, así que el
+aviso, el bloqueo y el form de identidad editable **no se pueden ver hoy sin crear el
+estado**. Los dos caminos para probarlo a mano:
+1. **Registrar una agencia nueva** — nace `pending` por el DEFAULT, así que sirve para el
+   aviso de pendiente, el bloqueo de publicación y la edición de matrícula.
+2. **Rechazarla desde `/admin`** con una nota — sirve para el aviso de rechazo (con el
+   motivo), el enlace a Preferencias y el reenvío al guardar.
 
 ---
 
 ## 9 · Decisiones que se apartan de las instrucciones
 
-1. **Se creó una ruta (`/logout`) y el login dejó de ser estático.** Detallado arriba.
-   Era eso o no arreglar el bug: `src/lib/supabase/server.ts:20-22` documenta que en un
-   Server Component el `set` de cookies no tiene efecto.
-2. **`login/page.tsx` se partió en `page.tsx` + `LoginForm.tsx`.** No estaba pedido en
-   esos términos, pero era necesario: la página era `"use client"` y no podía leer
-   `searchParams`. El reparto copia el de `/register` (page server + form client). El
-   formulario en sí no se tocó: mismo esquema, mismos campos, mismo estilo.
-3. **El helper se llama `resolveAgentSession.ts` (camelCase), no kebab-case.** Las reglas
-   piden kebab-case, pero **todos** sus vecinos en `src/lib/utils/` son camelCase
-   (`getPlanUsage.ts`, `resolveAgencyBySlug.ts`, `agencySlug.ts`). Preferí la consistencia
-   local; si querés kebab-case, es un renombre parejo de la carpeta entera, no de un
-   archivo.
-4. **En `admin/layout.tsx` se usa `resolveAgentSession()` en vez de
-   `requireAgentSession()`**, para conservar el orden original de los cortes (§5).
-5. **El helper amplió el caso `unlinked` a "tampoco resuelve la agencia"** (§2), que el
-   código viejo no cubría pero `PENDIENTES.md` sí describe.
-6. **Se eliminaron tres imports de `createClient`** que quedaron sin uso en las actions
-   refactorizadas (lint los marcaba). Es limpieza obligada, no scope creep.
+1. **El componente de aviso quedó partido en dos** (`Notice` genérico +
+   `AgencyApprovalNotice` de dominio) en vez de uno solo. Pediste uno reutilizable; si el
+   componente reusable tuviera adentro la copia de aprobación, no sería reusable. Así
+   `Notice` sirve para cualquier aviso futuro y la copia vive en su capa.
+2. **`Notice` vive en `src/components/feedback/`, una carpeta nueva.** No lo puse en
+   `ui/` porque CLAUDE.md define esa carpeta como "shadcn/ui components" y este no lo es;
+   tampoco en `dashboard/` porque no es exclusivo del dashboard.
+3. **La copia de los avisos no sale de `labels.ts`.** La regla es para mapas
+   `Record<TipoDelDominio, string>`; estos son párrafos con enlaces embebidos. `labels.ts`
+   ya tiene `APPROVAL_STATUS_LABELS` para el literal del estado, que es lo que sí
+   corresponde ahí (lo usa el panel `/admin`).
+4. **Creé `getPublishBlock`**, que no estaba pedido. Sin él, los cuatro puntos de entrada
+   habrían replicado el mismo criterio cuatro veces — que es exactamente el tipo de
+   duplicación que este proyecto ya pagó caro con la consulta de sesión.
+5. **El gate de la ruta redirige en vez de mostrar un mensaje** (§6).
+6. **El aviso también va en Preferencias** (§3), justificado arriba.
+7. **En el rollback del registro borro el usuario de Auth pero NO la agencia** cuando
+   falla el insert de `agents`. Motivo: si el insert falló por una carrera y no por el
+   alta en sí, borrar la agencia podría pisar datos. El usuario huérfano es el problema
+   real (sesión válida sin cuenta usable); una agencia sin agentes es visible en `/admin`
+   y el dueño la limpia. Está comentado en el código.
 
 ---
 
 ## 10 · Encontrado y NO tocado
 
-1. **`registerAction` sigue sin rollback.** Si el `signUp` funciona y falla el insert de
-   `agencies` o de `agents`, queda un `auth.users` huérfano — que es justo el estado que
-   este trabajo aprendió a manejar con elegancia, pero **no dejó de producirse**. Los 2
-   huérfanos de la base son de ahí. Está fuera del alcance de esta tarea (es el alta, no
-   la sesión), pero es la fuente del problema y conviene cerrarla.
-2. **`/logout` ocupa un slug de primer nivel.** `CLAUDE.md` advierte que
-   `(public)/[slug]` es la ruta raíz de las agencias y que toda ruta estática de primer
-   nivel compite con ella. `/logout` gana (las estáticas ganan a la dinámica), así que
-   ninguna agencia va a poder tener el slug "logout". Es aceptable, pero queda anotado.
-3. **La deduplicación de `cache()` no llega a las actions** (§4). Correcto, pero significa
-   que las 9 actions siguen haciendo su propia consulta.
-4. **Quedan 4 formas del "banner"/aviso copiadas a mano** por el proyecto; el aviso nuevo
-   del login es una quinta variante inline. No creé un componente compartido porque no
-   estaba pedido y porque el trabajo siguiente (el aviso de estado de aprobación en el
-   panel) es el que va a justificar hacerlo bien.
-5. **`authorizePropertyAccess` sigue llamando a `supabase.auth.getUser()` por su cuenta**
-   además de usar el helper. Es el `user` para el chequeo de propiedad, no la fila de
-   `agents`; unificarlo también era posible pero tocaba más de lo necesario.
-6. **La documentación quedó atrás.** `CLAUDE.md` no menciona el helper ni `/logout`, y
-   `PENDIENTES.md` sigue listando el bucle como deuda técnica abierta. No los toqué
-   porque pediste no cambiar nada fuera del alcance; es una pasada aparte.
+1. **El índice único de matrícula es parcial (solo entre aprobadas) y por `(city_id,
+   license_number)`.** Consecuencia práctica que ahora sí es alcanzable: dos agencias
+   pendientes pueden cargar la misma matrícula, y el choque aparece **al aprobar la
+   segunda** — donde el dueño verá el mensaje genérico "No se pudo actualizar la
+   agencia", no "esa matrícula ya está aprobada". Ya lo había señalado en un informe
+   anterior; con la matrícula ahora obligatoria en el alta, deja de ser hipotético.
+2. **No se valida que la matrícula exista en el padrón.** El formulario acepta cualquier
+   cadena con el formato correcto; la verificación real es el ojo del dueño en `/admin`.
+   Es lo acordado, pero conviene tenerlo presente.
+3. **`register/actions.ts` sigue sin rollback del upsert de `subscriptions`.** Agregué el
+   rollback en las dos ramas que pediste (agencia y agente). Si falla la suscripción,
+   quedan usuario + agencia + agente creados y una agencia **sin fila de suscripción** —
+   que con el `check_property_limit` actualizado ahora significa **límite 0**. No es un
+   huérfano de Auth (la cuenta funciona), así que borrar el usuario ahí sería peor; pero
+   es un estado que hoy nadie repara.
+4. **Los 2 usuarios de Auth huérfanos que ya existen no se limpiaron.** El rollback evita
+   los nuevos, no borra los viejos. Se limpian desde el panel de Supabase.
+5. **El "banner de error" sigue copiado a mano en cuatro lugares.** No los migré a
+   `Notice`: son de otra naturaleza (descartables, con estado de cliente) y migrarlos
+   habría cambiado comportamiento visible en pantallas que esta tarea no toca.
+6. **La documentación quedó atrás.** `CLAUDE.md` no menciona la matrícula, el aviso, el
+   gate de publicación ni los componentes nuevos; `PENDIENTES.md` tampoco. Es una pasada
+   aparte.
