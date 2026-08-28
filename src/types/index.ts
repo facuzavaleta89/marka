@@ -20,30 +20,32 @@ export type PropertyStatus = "active" | "paused" | "sold" | "rented";
 
 export type Currency = "USD" | "ARS";
 
-// Rol del agente dentro de su agencia (Fase 3, ya migrado en la base).
-// 'admin': gestiona la suscripción, invita/elimina agentes y ve los leads de
-// toda la agencia. 'agent': CRUD de sus propias propiedades.
-// 'role' YA gatea permisos: la sección Equipo (crear/eliminar agentes), el
-// alcance de Consultas (el admin ve los leads de toda su agencia) y la gestión
-// de propiedades de la agencia por el admin (authorizePropertyAccess).
+// Rol del agente dentro de su agencia (ya migrado en la base).
+// 'admin': gestiona el equipo, ve los leads de toda la agencia y administra las
+// propiedades de toda la agencia. 'agent': CRUD de sus propias propiedades.
+// 'role' YA GATEA permisos: la sección Equipo (/dashboard/equipo y sus actions),
+// el alcance de Consultas (policy "Admin reads agency leads") y la gestión de
+// propiedades ajenas dentro de la agencia (helper authorizePropertyAccess).
 export type AgentRole = "admin" | "agent";
 
 // Planes y estados de suscripción.
-// Modelo unificado de 4 planes. Límites de propiedades: free=1, inicial=20,
-// profesional=60, premium=200 (ver constante PLANS más abajo).
-// 'free' NO es un plan que se venda: es el ESTADO DE ATERRIZAJE de toda alta.
-// Cada agencia nueva nace en 'free'/'active' y sigue rigiendo free mientras un
-// plan pago pedido espera activación manual (plan='free' + pending_plan=<pedido>
-// + status='pending'). Los tres planes ofrecibles son inicial/profesional/premium.
+// Cuatro valores posibles en la columna, pero SOLO TRES SE VENDEN: inicial=20,
+// profesional=60, premium=200 propiedades.
+// 'free' (límite 1) NO es un producto: es el ESTADO DE ATERRIZAJE de toda alta.
+// Toda agencia nueva nace en free/active, y cuando pide un plan pago sigue en
+// free hasta que el dueño de la app lo activa a mano (lo pedido vive en
+// pending_plan). Ya no existen cuentas de particular; ver TenantType.
+// No confundir el dominio de la columna con el catálogo de venta.
 export type SubscriptionPlan = "free" | "inicial" | "profesional" | "premium";
 // 'pending' = plan pago elegido pero todavía no activado, esperando la
 // activación manual del admin (se usa en la selección de plan de Fase 3).
 export type SubscriptionStatus = "active" | "pending" | "past_due" | "canceled";
 
-// Tipo de cuenta/tenant, tal como está en la base. El alta ya NO ofrece
-// 'individual': la app opera solo con inmobiliarias y el registro escribe
-// 'agency' fijo. 'individual' sobrevive solo para leer filas históricas
-// (lo muestra la columna "Tipo" del panel /admin).
+// Tipo de cuenta/tenant. LEGACY: la app ya no acepta cuentas de particular
+// ('individual'). El registro escribe siempre 'agency'. El tipo y la columna
+// sobreviven porque el valor 'individual' sigue existiendo en filas históricas
+// de la base y el panel /admin lo muestra. No ofrecer 'individual' en ningún
+// flujo de alta.
 export type TenantType = "individual" | "agency";
 
 // Amenities disponibles en el sistema
@@ -86,10 +88,10 @@ export interface Agency {
   city_id: string;       // toda agencia pertenece a una ciudad
   name: string;
   slug: string;
-  // Tipo de tenant. Hoy el registro escribe siempre 'agency': la app dejó de
-  // aceptar cuentas de particular. 'individual' solo aparece en filas
-  // históricas anteriores al cambio. La columna se conserva (nada en la base
-  // —policy, función o trigger— la lee) y el panel /admin la sigue mostrando.
+  // Tipo de tenant. LEGACY: el registro escribe siempre 'agency'; 'individual'
+  // (particular) solo aparece en filas históricas. La columna NO se borró y
+  // nada de la base la lee (cero triggers, funciones o policies la consultan);
+  // es puramente descriptiva y solo se muestra en el panel /admin.
   tenant_type: TenantType;
   // WhatsApp de la agencia (NOT NULL en la base). Obligatorio: se setea en el
   // registro (hereda el del admin fundador) y se edita en Preferencias (solo el
@@ -308,6 +310,11 @@ export type PropertyUpdate = Partial<PropertyInsert> & { id: string };
 // Los flags (featured/whiteLabel/metrics) describen qué INCLUYE cada plan en
 // las tarjetas de precios; el gating en runtime se hace con los booleanos de la
 // suscripción (has_featured / has_white_label / has_metrics), no con estos.
+// ⚠ PLANS.free cumple DOS funciones que conviene no confundir: su 'name' es una
+// etiqueta de estado ("Gratis", lo que ve una agencia que todavía no paga), y
+// sus valores numéricos (propertyLimit: 1 + los tres flags en false) son los que
+// el registro y la selección de plan ESCRIBEN como estado de aterrizaje. Si se
+// tocan esos números se cambia el andamio, no una etiqueta.
 export interface PlanInfo {
   id: SubscriptionPlan;
   name: string;            // nombre visible
@@ -319,10 +326,6 @@ export interface PlanInfo {
 }
 
 export const PLANS: Record<SubscriptionPlan, PlanInfo> = {
-  // 'free' NO es un plan que se venda: es el estado de aterrizaje de toda alta
-  // (ver SubscriptionPlan). Sus valores —límite 1 y los tres flags en false— son
-  // los que el registro, la selección de plan y getPlanUsage escriben/asumen
-  // mientras la agencia todavía no tiene un plan pago activado. No tocarlos.
   free: {
     id: "free", name: "Gratis",
     propertyLimit: 1, priceLabel: "Gratis",
@@ -345,10 +348,10 @@ export const PLANS: Record<SubscriptionPlan, PlanInfo> = {
   },
 };
 
-// Orden ascendente de planes (free → premium). Para mostrar "el plan siguiente".
-// Es el DOMINIO de la columna `plan`, no el catálogo de venta: incluye 'free'
-// porque es un valor real en la base. Quien liste planes OFRECIBLES debe
-// excluirlo (ver PAID_PLANS en register/plan/PlanSelector.tsx).
+// Orden ascendente de planes (free → premium). Es el DOMINIO DE LA COLUMNA, no
+// el catálogo de venta: incluye 'free' porque es un valor real de la base.
+// Para listar planes ofrecibles se filtra 'free' (ver PAID_PLANS en
+// PlanSelector). Sirve además para calcular "el plan siguiente" (upgrades).
 export const PLAN_ORDER = ["free", "inicial", "profesional", "premium"] as const;
 
 // Estado de uso del plan, para mostrar en el dashboard y bloquear el alta.
