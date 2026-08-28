@@ -460,7 +460,7 @@ El área privada del agente mantiene la paleta pero con una distribución más f
 - Cards de contenido: background `paper`, border `stone`
 - Títulos de página: Noto Serif H1, `black`
 - Stats cards: número en Noto Serif 36px Bold con `tabular-nums`, label en DM Sans 13px, `graphite`
-- Layout y scroll: el dashboard usa `flex h-screen overflow-hidden` en el wrapper, con el `Sidebar` y el `main` (`flex-1 overflow-y-auto`) como hijos. El `main` es el contenedor scrolleable y **debe** llevar `relative` (load-bearing, no decorativo): así es el containing block de los descendientes `position: absolute` de los formularios (inputs ocultos internos de Radix/shadcn, p. ej. el `Checkbox`). Sin `relative`, esos absolutos se anclan al viewport (ICB) y en páginas altas (nueva/editar propiedad) aterrizan muy abajo, generando un segundo scroll fantasma en el documento por debajo del form. No quitar el `relative` del `main`.
+- Layout y scroll: el dashboard usa `flex h-dvh overflow-hidden` en el wrapper (⚠ `h-dvh`, NO `h-screen`: ver la regla de viewport mobile en CLAUDE.md; este texto decía `h-screen` y el código dice `h-dvh` desde hace tiempo), con el `Sidebar` y el `main` (`flex-1 overflow-y-auto`) como hijos. El `main` es el contenedor scrolleable y **debe** llevar `relative` (load-bearing, no decorativo): así es el containing block de los descendientes `position: absolute` de los formularios (inputs ocultos internos de Radix/shadcn, p. ej. el `Checkbox`). Sin `relative`, esos absolutos se anclan al viewport (ICB) y en páginas altas (nueva/editar propiedad) aterrizan muy abajo, generando un segundo scroll fantasma en el documento por debajo del form. No quitar el `relative` del `main`.
 
 **StatsCard (refinado):**
 - Números con `tabular-nums` y count-up sutil al montar (ease-out ~600ms, respeta `prefers-reduced-motion`)
@@ -482,7 +482,7 @@ El área privada del agente mantiene la paleta pero con una distribución más f
 - Todos los planes muestran micro-barra de uso: `PLAN INICIAL · 8/20 · [▰▰▱▱▱]` con fill terracota proporcional (los 4 planes tienen límite finito)
 
 **SubscriptionContent (refinado):**
-- Modal "Próximamente" usa el `Dialog` de shadcn (no overlay casero)
+- Confirmación del pedido de upgrade con el `AlertDialog` de shadcn (no overlay casero). ⚠ Corregido: acá decía que había un modal "Próximamente" con el `Dialog` de shadcn — eso ya no existe. El CTA registra el pedido de verdad (`pending_plan`), y `components/ui/dialog.tsx` hoy no lo importa nadie
 - Cards de los 4 planes en `flex flex-wrap justify-center` con ancho fijo (~300px) que respiran y se centran: la card del plan actual + las de upgrade (planes superiores). La primera de upgrade lleva badge "Recomendado ★" (fondo terracota-subtle + borde 2px terracota + shadow-lg). Con 4 cards wrapean 3+1; con 2 quedan centradas. `items-stretch` iguala alturas por fila
 
 ---
@@ -625,7 +625,7 @@ Barra de uso del plan actual + cards de planes en `flex flex-wrap justify-center
 - Card del plan actual: borde `terracota`, badge "Plan actual" en `terracota-subtle`
 - Primer upgrade: badge "Recomendado ★" en `terracota`, fondo `terracota-subtle`, borde 2px, shadow-lg
 - Lista de features derivada de `PLANS`: límite + destacados/white-label/métricas según el plan. DM Sans 14px, ícono `check` 16px en `success`
-- El CTA "Pasar a {plan}" abre el Dialog "Próximamente" (la activación es manual por ahora; contacto vía mailto)
+- El CTA "Pasar a {plan}" abre un `AlertDialog` de confirmación y registra el pedido (`pending_plan` + `status: 'pending'`), sin tocar el plan que rige. La activación la hace el dueño desde `/admin`. La card del plan pedido pasa a "Pendiente" y los demás upgrades quedan deshabilitados mientras haya un pedido abierto
 
 ---
 
