@@ -23,12 +23,17 @@
 --   - El límite de propiedades del plan se valida a nivel de base de datos.
 -- ============================================================
 -- NOTA DE FIDELIDAD: este archivo refleja el estado REAL de la base a la fecha.
--- Fase 3 — estado actual:
---   * role en agents: YA MIGRADO (incluido abajo).
---   * tenant_type en agencies: YA MIGRADO (incluido abajo).
---   * phone_wa en agencies: YA MIGRADO (nullable → backfill → NOT NULL). Incluido abajo.
--- No incluyas phone_wa acá hasta que esté realmente migrada, para que el
+-- Solo se documenta acá lo que YA está migrado; nada "por venir", para que el
 -- schema no mienta.
+-- Estado actual:
+--   * role en agents: YA MIGRADO (incluido abajo).
+--   * tenant_type en agencies: YA MIGRADO (incluido abajo). Hoy es LEGACY.
+--   * phone_wa en agencies: YA MIGRADO (nullable → backfill → NOT NULL). Incluido abajo.
+--   * license_number y approval_status en agencies + tabla agency_reviews:
+--     YA MIGRADOS (28 ago 2026). Alta manual de agencias con matrícula del
+--     colegio de corredores y aprobación a mano del dueño desde /admin.
+--     Backfill aplicado: las 10 agencias existentes quedaron en 'approved' y sin
+--     matrícula. Incluidos abajo con sus índices y su RLS.
 -- ============================================================
 
 -- Extensiones necesarias (PostGIS ya viene activado en Supabase)
@@ -81,10 +86,40 @@ CREATE TABLE agencies (
   -- registro (hereda el del admin que la crea) y se edita en Preferencias (solo
   -- el admin de agencia). Mismo formato que agents.phone_wa ("5491112345678").
   phone_wa    TEXT NOT NULL,
+  -- ── Legitimidad de la agencia (28 ago 2026, YA MIGRADO por ALTER) ──────
+  -- Número de matrícula del colegio de corredores inmobiliarios.
+  -- NULLABLE a propósito: las agencias anteriores al alta manual no la tienen
+  -- (el backfill las dejó aprobadas y sin matrícula). En toda alta nueva es
+  -- obligatoria, pero esa obligación la impone el formulario de registro, no la
+  -- base: si fuera NOT NULL no habría forma de migrar lo viejo sin inventar datos.
+  -- Puede ser pública sin problema: el padrón del colegio ya lo es.
+  license_number  TEXT,
+  -- Estado de aprobación de la agencia, decidido A MANO por el dueño de la
+  -- plataforma desde el panel /admin.
+  --
+  -- ⚠ ES UN EJE INDEPENDIENTE DE LA SUSCRIPCIÓN. Responde "¿es una inmobiliaria
+  -- legítima?", que NO es lo mismo que "¿paga?" (eso lo responde
+  -- subscriptions.plan/status). Los dos ejes se cruzan libremente: una agencia
+  -- puede estar aprobada y sin plan pago, o pagar y seguir pendiente de
+  -- aprobación. Nunca mezclarlos en una misma clasificación ni derivar uno del
+  -- otro.
+  --
+  -- 'rejected' NO es definitivo: la agencia corrige sus datos y vuelve a
+  -- 'pending'. No existe un estado de rechazo permanente (por eso el historial
+  -- de decisiones va en agency_reviews, una fila por veredicto).
+  --
+  -- DEFAULT 'pending': toda agencia nueva nace pendiente. Las 10 filas que
+  -- existían al migrar se backfillearon a 'approved'.
+  approval_status TEXT NOT NULL DEFAULT 'pending'
+              CHECK (approval_status IN ('pending', 'approved', 'rejected')),
   -- Branding para la futura vista white-label (plan profesional/premium).
   brand_color TEXT,                       -- ej: "#A0522D" (override del acento)
   created_at  TIMESTAMPTZ DEFAULT now()
 );
+-- Nota de fidelidad sobre el ORDEN de columnas: tenant_type, phone_wa,
+-- license_number y approval_status se agregaron por ALTER, así que en la base
+-- real están al final (posiciones 9 a 12). Acá van en su lugar lógico, que es
+-- más legible y no cambia nada funcional: todo el acceso es por nombre.
 
 -- ─── TABLA: subscriptions ────────────────────────────────────
 -- Una suscripción por agencia. Controla el plan y el límite de propiedades.
@@ -253,6 +288,43 @@ CREATE TABLE leads (
   created_at     TIMESTAMPTZ DEFAULT now()
 );
 
+-- ─── TABLA: agency_reviews ───────────────────────────────────
+-- Historial de las decisiones de aprobación que el dueño de la plataforma toma
+-- sobre una agencia. Una fila por veredicto: las decisiones NO se pisan entre
+-- sí. El estado que RIGE hoy es agencies.approval_status; esta tabla es el
+-- registro de cómo se llegó ahí.
+--
+-- ⚠ POR QUÉ LA NOTA VIVE ACÁ Y NO EN agencies (la razón de que exista esta tabla):
+-- `agencies` tiene la policy `Public read agencies` con USING (true), o sea que
+-- CUALQUIERA con la anon key puede leer esa tabla entera, sin sesión. Postgres
+-- NO permite restringir columnas dentro de una policy, así que una columna
+-- `rejection_note` en `agencies` sería pública de hecho — y la nota es un texto
+-- que el dueño escribe sobre un tercero ("la matrícula no coincide con el
+-- titular"). Sacarla a una tabla propia es lo que permite que sea privada.
+-- Segunda razón, independiente: como el rechazo no es definitivo (la agencia
+-- corrige y vuelve a 'pending'), una sola columna se pisaría en cada vuelta y se
+-- perdería el rastro. Acá cada decisión queda.
+--
+-- Solo se registran VEREDICTOS: aprobar y rechazar. Volver una agencia rechazada
+-- a 'pending' no es un veredicto y no deja fila (por eso el CHECK de decision no
+-- admite 'pending').
+CREATE TABLE agency_reviews (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agency_id   UUID NOT NULL REFERENCES agencies(id) ON DELETE CASCADE,
+  -- CASCADE: si se borra la agencia, su historial de revisiones se va con ella.
+  decision    TEXT NOT NULL
+              CHECK (decision IN ('approved', 'rejected')),
+  -- Motivo de la decisión. NULLABLE en la base, pero la server action lo EXIGE
+  -- al rechazar (un rechazo sin motivo no le sirve a nadie) y lo deja opcional
+  -- al aprobar. La regla vive en el código, no en la base, para no bloquear un
+  -- futuro registro automático de decisiones sin nota.
+  note        TEXT,
+  -- auth.users.id del dueño que decidió. NULL si ese usuario se borra
+  -- (ON DELETE SET NULL): la decisión sobrevive aunque se pierda el autor.
+  reviewed_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- ─── FUNCIÓN: límite de propiedades por plan ─────────────────
 -- Impide que una agencia supere el property_limit de su suscripción.
 -- Se valida a nivel de DB para que no dependa solo del frontend.
@@ -325,6 +397,42 @@ CREATE INDEX idx_property_images_property
 CREATE INDEX idx_agencies_city
   ON agencies(city_id);
 
+-- Bandeja de entrada del panel /admin: "traeme las agencias pendientes".
+CREATE INDEX idx_agencies_approval_status
+  ON agencies(approval_status);
+
+-- Unicidad de matrícula. El índice es PARCIAL a propósito, y las dos mitades de
+-- la condición importan:
+--
+--   1) Solo entre agencias APROBADAS. Si fuera un UNIQUE común, una solicitud
+--      con una matrícula ya usada reventaría en el registro con un error de
+--      base. Eso es malo por dos motivos: la solicitud legítima (un tipeo, una
+--      agencia que rehace su alta) no llegaría nunca al panel, y un impostor que
+--      probara matrículas ajenas recibiría, del propio formulario, la
+--      confirmación de cuáles existen. Con el índice parcial la solicitud entra
+--      normal, queda 'pending', y el dueño ve las dos y decide cuál vale. El
+--      choque recién ocurre al aprobar la segunda — donde tiene que ocurrir:
+--      frente a una persona que puede resolverlo.
+--   2) Solo cuando license_number IS NOT NULL, para que las agencias históricas
+--      sin matrícula no colisionen entre sí (en un índice común, varios NULL no
+--      colisionan, pero dejarlo explícito documenta la intención).
+--
+-- ⚠ LIMITACIÓN CONOCIDA — revisar al abrir una segunda ciudad de la misma
+-- provincia: la unicidad es por (city_id, license_number), pero los colegios de
+-- corredores son PROVINCIALES, no municipales. Una misma matrícula es válida en
+-- toda la provincia, así que hoy la misma agencia podría aprobarse dos veces si
+-- se dan de alta en dos ciudades distintas de la misma provincia. Mientras haya
+-- una sola ciudad por provincia el problema no existe; el día que no,
+-- corresponde mover el índice a (provincia, license_number) — lo que implica
+-- resolver antes de dónde sale la provincia (hoy cities.province es TEXT libre).
+CREATE UNIQUE INDEX idx_agencies_license_unique_approved
+  ON agencies(city_id, license_number)
+  WHERE approval_status = 'approved' AND license_number IS NOT NULL;
+
+-- Historial de revisiones de una agencia, lo más nuevo primero.
+CREATE INDEX idx_agency_reviews_agency
+  ON agency_reviews(agency_id, created_at DESC);
+
 -- Leads por agencia (dashboard)
 CREATE INDEX idx_leads_agency
   ON leads(agency_id, created_at DESC);
@@ -355,6 +463,17 @@ ALTER TABLE agents           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE properties       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE property_images  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE leads            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE agency_reviews   ENABLE ROW LEVEL SECURITY;
+
+-- ⚠ agency_reviews queda con RLS HABILITADA y CERO POLICIES, a propósito.
+-- No es un olvido: con RLS habilitada y sin ninguna policy, Postgres deniega
+-- todo — SELECT, INSERT, UPDATE y DELETE — para anon y authenticated. La tabla
+-- solo es accesible con SERVICE ROLE desde el server, que es exactamente como
+-- funciona el panel /admin (createAdminClient en las server actions, nunca desde
+-- el cliente). Es lo que mantiene privada la nota de un rechazo, que es la razón
+-- por la que esta tabla existe (ver el comentario de su CREATE TABLE).
+-- NO agregarle policies "por prolijidad": cualquier policy de SELECT abriría la
+-- nota a alguien, y no hay nadie fuera del server que deba leerla.
 
 -- CITIES: lectura pública de ciudades activas
 CREATE POLICY "Public read active cities"
@@ -497,6 +616,11 @@ VALUES ('Santiago del Estero', 'santiago-del-estero', 'Santiago del Estero',
 
 -- 2. Agencia (pertenece a la ciudad). tenant_type cae en 'agency' por DEFAULT;
 -- NO sembrar 'individual': la app es solo-agencias y ese valor es legacy.
+-- ⚠ Dos cosas al usar este seed tal cual: phone_wa es NOT NULL sin default (hay
+-- que agregarlo a la lista de columnas), y approval_status cae en 'pending' por
+-- DEFAULT, así que la agencia sembrada NO va a tener sitio white-label hasta
+-- aprobarla. Para una demo usable conviene sembrarla con
+-- approval_status = 'approved' explícito.
 INSERT INTO agencies (city_id, name, slug)
 VALUES (
   (SELECT id FROM cities WHERE slug = 'santiago-del-estero'),
