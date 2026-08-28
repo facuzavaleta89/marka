@@ -2,23 +2,17 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { requireAgentSession } from "@/lib/utils/resolveAgentSession";
 import { PropertyForm } from "@/components/properties/PropertyForm";
 
 export default async function NuevaPropiedadPage() {
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("agency_id, role")
-    .eq("id", user.id)
-    .single();
-
-  if (!agent) redirect("/dashboard");
+  // Antes esta página mandaba a /dashboard cuando no resolvía el agente, a
+  // diferencia del resto. No arreglaba nada: el layout de /dashboard volvía a
+  // evaluar lo mismo y ahí sí cortaba a /login, entrando al bucle. Se unifica
+  // con el helper, que cierra la sesión y manda al login con el motivo.
+  const { userId, agent } = await requireAgentSession();
 
   // Si es admin de agencia, traemos los agentes de la agencia para el selector
   // "Agente asignado" (ordenados por nombre). Si es agente normal, no se pasa →
@@ -33,6 +27,9 @@ export default async function NuevaPropiedadPage() {
     agencyAgents = (members ?? []) as { id: string; full_name: string }[];
   }
 
+  // city_id de la agencia, para centrar el mapa del LocationPicker. Esta guarda
+  // NO es la del bucle (esa era la del agente, arriba): protege contra que la
+  // fila de agencies no traiga la ciudad. Se conserva tal cual estaba.
   const { data: agency } = await supabase
     .from("agencies")
     .select("city_id")
@@ -67,7 +64,7 @@ export default async function NuevaPropiedadPage() {
 
       <PropertyForm
         mode="create"
-        agentId={user.id}
+        agentId={userId}
         agencyId={agent.agency_id}
         cityId={agency.city_id}
         cityCenter={cityCenter}

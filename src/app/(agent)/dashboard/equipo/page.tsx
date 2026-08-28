@@ -1,24 +1,15 @@
 import { redirect } from "next/navigation";
+import { requireAgentSession } from "@/lib/utils/resolveAgentSession";
 import { createClient } from "@/lib/supabase/server";
 import { TeamContent, type TeamMember } from "@/components/dashboard/TeamContent";
 
 export default async function EquipoPage() {
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
   // Rol y agencia del usuario. Gating server-side: la gestión de equipo es
   // solo para el admin de la agencia; un agente normal no debe ni ver la página
   // (ocultar el menú en el Sidebar no alcanza).
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("agency_id, role")
-    .eq("id", user.id)
-    .single();
-  if (!agent) redirect("/login");
+  const { userId, agent } = await requireAgentSession();
   if (agent.role !== "admin") redirect("/dashboard");
 
   // Equipo: todos los agentes de la misma agencia (incluido el admin actual) +
@@ -60,7 +51,7 @@ export default async function EquipoPage() {
         </p>
       </div>
 
-      <TeamContent members={teamMembers} currentUserId={user.id} />
+      <TeamContent members={teamMembers} currentUserId={userId} />
     </div>
   );
 }

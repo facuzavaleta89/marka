@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { requireAgentSession } from "@/lib/utils/resolveAgentSession";
 import { createClient } from "@/lib/supabase/server";
 import { PreferencesContent } from "@/components/dashboard/PreferencesContent";
 import { AgencyPhoneForm } from "@/components/dashboard/AgencyPhoneForm";
@@ -7,19 +7,9 @@ import { AgencyLogoForm } from "@/components/dashboard/AgencyLogoForm";
 export default async function PreferenciasPage() {
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
   // Rol del user: solo el admin de agencia gestiona datos de la agencia (el
   // teléfono de WhatsApp). Un agente normal ve solo sus preferencias personales.
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("role, agency_id")
-    .eq("id", user.id)
-    .single();
-  if (!agent) redirect("/login");
+  const { agent } = await requireAgentSession();
 
   const isAgencyAdmin = agent.role === "admin";
 

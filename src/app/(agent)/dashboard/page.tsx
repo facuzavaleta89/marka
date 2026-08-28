@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { requireAgentSession } from "@/lib/utils/resolveAgentSession";
 import { LayoutDashboard, Building2, Eye, Layers } from "lucide-react";
 import { StatsCard } from "@/components/dashboard/StatsCard";
 import { NewPropertyButton } from "@/components/dashboard/NewPropertyButton";
@@ -22,17 +22,7 @@ const STATUS_COLOR: Record<PropertyStatus, string> = {
 export default async function DashboardPage() {
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("agency_id, role")
-    .eq("id", user.id)
-    .single();
-  if (!agent) redirect("/login");
+  const { userId, agent } = await requireAgentSession();
 
   // Un admin de agencia ve los números de TODA su agencia; un agente normal,
   // solo lo suyo (igual que hoy). Definimos el filtro una vez y lo aplicamos en
@@ -41,7 +31,7 @@ export default async function DashboardPage() {
   const isAgencyAdmin = agent.role === "admin";
   const scope = isAgencyAdmin
     ? { col: "agency_id" as const, val: agent.agency_id }
-    : { col: "agent_id" as const, val: user.id };
+    : { col: "agent_id" as const, val: userId };
 
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);

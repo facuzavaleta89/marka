@@ -1,9 +1,9 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import { PLAN_ORDER, type SubscriptionPlan } from "@/types";
+import { resolveAgentSession } from "@/lib/utils/resolveAgentSession";
 
 // Pide un upgrade de plan desde el dashboard. Deja la suscripción de la agencia
 // con pending_plan = <pedido> y status = 'pending'. NO toca `plan` (el que rige)
@@ -21,18 +21,13 @@ export async function requestPlanUpgradeAction(
     return { error: "Plan inválido" };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("agency_id")
-    .eq("id", user.id)
-    .single();
-  if (!agent) redirect("/login");
+  // Mismos destinos que antes ante sesión inválida; la única diferencia es que
+  // "hay sesión pero la cuenta no resuelve su agencia" ahora cierra la sesión
+  // en vez de rebotar contra el proxy (bucle).
+  const session = await resolveAgentSession();
+  if (session.status === "no_session") redirect("/login");
+  if (session.status === "unlinked") redirect("/logout?reason=no_agency");
+  const { agent } = session;
 
   // Solo pending_plan + status. `plan` (el que rige), property_limit, has_* y
   // activated_at quedan como están.

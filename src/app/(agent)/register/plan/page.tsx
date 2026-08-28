@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { requireAgentSession } from "@/lib/utils/resolveAgentSession";
 import type { SubscriptionPlan } from "@/types";
 import { PlanSelector } from "./PlanSelector";
 
@@ -8,18 +9,9 @@ import { PlanSelector } from "./PlanSelector";
 // Es un paso de UNA sola vez: ver la guarda de reentrada más abajo.
 export default async function RegisterPlanPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
 
   // Agencia del agente logueado.
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("agency_id")
-    .eq("id", user.id)
-    .single();
-  if (!agent) redirect("/login");
+  const { agent } = await requireAgentSession();
 
   const { data: subscription } = await supabase
     .from("subscriptions")

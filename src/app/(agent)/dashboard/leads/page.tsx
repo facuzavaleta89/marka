@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { requireAgentSession } from "@/lib/utils/resolveAgentSession";
 import { createClient } from "@/lib/supabase/server";
 import { LeadsContent, type LeadRow } from "@/components/dashboard/LeadsContent";
 
@@ -13,17 +13,7 @@ function firstOrSelf<T>(value: T | T[] | null | undefined): T | null {
 export default async function LeadsPage() {
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("agency_id, role")
-    .eq("id", user.id)
-    .single();
-  if (!agent) redirect("/login");
+  const { agent } = await requireAgentSession();
 
   const isAgencyAdmin = agent.role === "admin";
 

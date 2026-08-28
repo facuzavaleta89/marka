@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { requireAgentSession } from "@/lib/utils/resolveAgentSession";
 import { PropertyForm } from "@/components/properties/PropertyForm";
 import type { Property, PropertyImage } from "@/types";
 
@@ -15,10 +16,12 @@ export default async function EditarPropiedadPage({
 
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  // Antes esta página NO cortaba si no resolvía el agente: seguía con optional
+  // chaining (`agent?.role`), lo que dejaba pasar a alguien sin fila en agents
+  // hasta el chequeo de propiedad. Se unifica con el helper: sin agente no hay
+  // autorización posible, así que cortar antes es lo correcto y además evita
+  // el bucle.
+  const { userId, agent } = await requireAgentSession();
 
   // Traemos la propiedad SIN filtrar por agent_id: el dueño la edita, y también
   // un admin de la misma agencia. La RLS de lectura por agencia ya permite que
@@ -33,21 +36,13 @@ export default async function EditarPropiedadPage({
 
   if (!property) redirect("/dashboard/propiedades");
 
-  // Rol y agencia del caller (del server). Sirve para la autorización y para
-  // decidir si mostrar el selector "Agente asignado".
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("role, agency_id")
-    .eq("id", user.id)
-    .single();
-
   // Admin de la MISMA agencia que la propiedad.
   const isAgencyAdmin =
-    agent?.role === "admin" && agent.agency_id === property.agency_id;
+    agent.role === "admin" && agent.agency_id === property.agency_id;
 
   // Autorización server-side (mismo criterio que authorizePropertyAccess en las
   // actions): puede editar el dueño, o un admin de la agencia de la propiedad.
-  if (property.agent_id !== user.id && !isAgencyAdmin) {
+  if (property.agent_id !== userId && !isAgencyAdmin) {
     redirect("/dashboard/propiedades");
   }
 
@@ -111,7 +106,7 @@ export default async function EditarPropiedadPage({
       <PropertyForm
         mode="edit"
         initialData={initialData}
-        agentId={user.id}
+        agentId={userId}
         agencyId={property.agency_id}
         cityId={property.city_id}
         cityCenter={cityCenter}

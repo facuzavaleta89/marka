@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import { generateSlug } from "@/lib/utils/generateSlug";
 import { getPlanUsage } from "@/lib/utils/getPlanUsage";
+import { resolveAgentSession } from "@/lib/utils/resolveAgentSession";
 import type { PropertyInsert } from "@/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -126,11 +127,8 @@ async function authorizePropertyAccess(id: string): Promise<{
   }
 
   // No es dueño: ¿es admin de la agencia de la propiedad?
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("role, agency_id")
-    .eq("id", user.id)
-    .single();
+  const session = await resolveAgentSession();
+  const agent = session.status === "ok" ? session.agent : null;
 
   if (
     agent &&
@@ -228,19 +226,15 @@ export async function createPropertyAction(
   data: CreatePropertyInput
 ): Promise<ActionResult> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "No autenticado" };
 
-  // Obtener datos del agente → agencia → ciudad (para city_id, city, province)
-  // role: para decidir si puede reasignar la propiedad a otro agente.
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("agency_id, role")
-    .eq("id", user.id)
-    .single();
-  if (!agent) return { error: "Agente no encontrado" };
+  // Datos del agente (para agency_id y para saber si puede reasignar). Action:
+  // devuelve error, no redirige. Se conservan los dos mensajes de antes —
+  // "No autenticado" si no hay sesión, "Agente no encontrado" si la cuenta no
+  // resuelve su agencia.
+  const session = await resolveAgentSession();
+  if (session.status === "no_session") return { error: "No autenticado" };
+  if (session.status === "unlinked") return { error: "Agente no encontrado" };
+  const { userId: callerId, agent } = session;
 
   const { data: agency } = await supabase
     .from("agencies")
@@ -272,12 +266,12 @@ export async function createPropertyAction(
     agent.agency_id,
     data.assigned_agent_id
   );
-  const propertyAgentId = resolvedAgentId ?? user.id;
+  const propertyAgentId = resolvedAgentId ?? callerId;
 
   // Si la propiedad nace a nombre de OTRO agente, el insert tiene que ir con
   // service role: la RLS de properties (WITH CHECK implícito agent_id = auth.uid())
   // rechazaría un agent_id distinto al del creador. Lo mismo para sus imágenes.
-  const usesServiceRole = propertyAgentId !== user.id;
+  const usesServiceRole = propertyAgentId !== callerId;
   const db = usesServiceRole ? createAdminClient() : supabase;
 
   const { error: insertError } = await db.from("properties").insert({
@@ -369,12 +363,8 @@ export async function updatePropertyAction(
   // Reasignación de agente (solo admin). Validamos contra la agencia de la
   // PROPIEDAD (prop.agency_id), que authorizePropertyAccess ya confirmó que es
   // la del caller. role y user salen del server.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const { data: caller } = user
-    ? await supabase.from("agents").select("role").eq("id", user.id).single()
-    : { data: null };
+  const session = await resolveAgentSession();
+  const caller = session.status === "ok" ? session.agent : null;
   const resolvedAgentId = prop
     ? await resolveAssignedAgent(
         supabase,
@@ -389,7 +379,9 @@ export async function updatePropertyAction(
   // normal rechazaría el nuevo agent_id por la RLS (WITH CHECK agent_id =
   // auth.uid()). En ese caso forzamos service role. En mode "admin", `db` ya es
   // service role.
-  const reassigning = resolvedAgentId !== null && resolvedAgentId !== user?.id;
+  const reassigning =
+    resolvedAgentId !== null &&
+    resolvedAgentId !== (session.status === "ok" ? session.userId : null);
   const writeDb = mode === "owner" && reassigning ? createAdminClient() : db;
 
   const { error: updateError } = await writeDb

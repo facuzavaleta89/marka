@@ -1,21 +1,12 @@
-import { redirect } from "next/navigation";
+import { requireAgentSession } from "@/lib/utils/resolveAgentSession";
 import { createClient } from "@/lib/supabase/server";
 import { SubscriptionContent } from "@/components/dashboard/SubscriptionContent";
 import { getPlanUsage } from "@/lib/utils/getPlanUsage";
 
 export default async function SuscripcionPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
 
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("agency_id")
-    .eq("id", user.id)
-    .single();
-  if (!agent) redirect("/login");
+  const { agent } = await requireAgentSession();
 
   const [planUsage, { data: subscription }] = await Promise.all([
     getPlanUsage(supabase, agent.agency_id),
