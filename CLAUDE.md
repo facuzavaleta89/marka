@@ -8,7 +8,9 @@
 
 Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública donde el visitante ve en un mapa interactivo las propiedades de **todas las agencias de su ciudad**, filtra, y contacta al agente por WhatsApp. Las agencias pagan una suscripción para publicar.
 
-**Modelo de negocio:** SaaS B2B. 4 planes: free (particular, 1 propiedad), inicial (agencia, 20), profesional (agencia, 60, + white-label), premium (agencia, 200, + white-label + destacados + métricas). El visitante no paga ni se registra.
+**Modelo de negocio:** SaaS B2B, **solo para inmobiliarias** (no hay cuentas de particular). **Tres planes de venta:** inicial (20 propiedades), profesional (60, + white-label), premium (200, + white-label + destacados + métricas). El visitante no paga ni se registra.
+
+**`free` NO es un plan de venta, es un estado.** La columna `subscriptions.plan` admite un cuarto valor, `free` (límite 1), que es el **estado de aterrizaje** de toda alta: la agencia nace ahí y sigue ahí mientras espera que el dueño de la app active el plan pago que pidió. Nunca se ofrece como opción. Ver "Suscripciones y límites".
 
 **Dos tipos de usuario:**
 - **Visitante (cliente)**: sin registro. Navega el mapa, filtra, ve detalles, contacta por WhatsApp, guarda favoritos localmente.
@@ -18,9 +20,11 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 
 **Distribución:** web responsive + PWA instalable. No hay app nativa ni stores.
 
-**Estado:** En producción (deployado en Vercel). MVP + multi-agente completos. **Fase White-label cerrada** en lo esencial: Sub-pieza A (ruta `/[slug]` + mapa filtrado + gate de plan), B1 (subir logo) y B2a (mostrar logo + nombre + "powered by Marka." en el header) hechas y probadas. **B2b (variante admin en `disabled`) y C (slug editable) quedan EN PAUSA** a la espera de cambios profundos de modelo (ver abajo y PENDIENTES.md) — no se tocan hasta estabilizar el modelo nuevo. Build verde, 0 errores de TypeScript/ESLint.
+**Estado:** Deployado en Vercel, **sin datos reales todavía** (lo cargado es de prueba; el lanzamiento con inmobiliarias fundadoras se apunta a octubre). MVP + multi-agente completos. **Fase White-label cerrada** en lo esencial: Sub-pieza A (ruta `/[slug]` + mapa filtrado + gate de plan), B1 (subir logo) y B2a (mostrar logo + nombre + "powered by Marka." en el header) hechas y probadas. **B2b (variante admin en `disabled`) y C (slug editable) quedan EN PAUSA** a la espera de cambios profundos de modelo (ver abajo y PENDIENTES.md) — no se tocan hasta estabilizar el modelo nuevo.
 
-> **⚠️ Cambios profundos de modelo en camino (hoja de ruta nueva tras validación con el rubro y el colegio de corredores).** Varias afirmaciones de este archivo describen el modelo ACTUAL y van a cambiar. En particular: los **particulares se eliminan** (la app pasa a ser solo-agencias), las agencias requerirán **número de matrícula y alta manual** (no auto-registro), las propiedades tendrán **precio opcional** ("Consultar"/"a convenir") y **requisitos de alquiler**, y se sumará **registro opcional de visitantes** + **página y link por propiedad**. Ver PENDIENTES.md → "Nueva fase". Mientras no se implementen, lo descrito abajo sigue siendo el estado real.
+**Baseline de calidad medido (no documentado de memoria):** `npx tsc --noEmit` 0 errores, `npm run lint` **0 errores y 1 warning**, `npx next build` verde con 17 rutas. Cualquier error nuevo, o un warning distinto del único conocido, es una regresión. Ver "ESLint".
+
+> **⚠️ Cambios profundos de modelo en curso (hoja de ruta tras validación con el rubro y el colegio de corredores).** Ya aplicado: **los particulares se eliminaron** (la app es solo-agencias; ver "Registro"). Pendiente: las agencias requerirán **número de matrícula y alta manual** (no auto-registro), las propiedades tendrán **precio opcional** ("Consultar"/"a convenir") y **requisitos de alquiler**, y se sumará **registro opcional de visitantes** + **página y link por propiedad**. Ver PENDIENTES.md → "Nueva fase". Mientras no se implementen, lo descrito abajo sigue siendo el estado real.
 
 ---
 
@@ -60,15 +64,18 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 - **Gestión de propiedades por el admin (`propiedades/actions.ts`):** un admin de agencia edita/elimina/cambia estado de las propiedades de TODA su agencia; un agente normal, solo las suyas. La autorización vive en el helper **`authorizePropertyAccess(id)`** (reemplazó a `verifyOwnership`): lee la propiedad por id, y devuelve `mode: "owner"` si `agent_id === auth.uid()` (escribe con client normal, la RLS lo permite) o `mode: "admin"` si el user es `role === 'admin'` y su `agency_id` coincide con el de la propiedad (escribe con **service role**, porque la RLS `agent_id = auth.uid()` bloquearía al admin sobre algo ajeno). Cualquier otro caso → "Propiedad no encontrada" (mismo mensaje que "no existe", no revela propiedades ajenas). **El helper decide qué client usar (`db`), no cada action** — imposible que una action olvide el client correcto. `role`/`agency_id` del caller SIEMPRE del server; la igualdad de `agency_id` es la única barrera en `mode: "admin"`. Las policies RLS NO se tocaron (opción service role, no policy nueva). El listado (`propiedades/page.tsx`) filtra por `agency_id` si admin (con columna "Agente") o por `agent_id` si no. `[id]/editar` permite abrir propiedades de la agencia si el user es admin.
 - **Reasignar `agent_id` (admin, crear y editar):** el `PropertyForm` muestra un selector "Agente asignado" **solo si recibe `agencyAgents`** (las páginas lo pasan solo cuando el caller es admin; un agente normal no ve el campo). El input pasa por **`resolveAssignedAgent`** en la action, con tres barreras server-side: (1) si el caller no es `admin` → se ignora (devuelve null); (2) el destino debe existir **dentro de la agencia** (`.eq("agency_id", agencyId)`) → reasignar a otra agencia es imposible por construcción; (3) `role`/`agencyId` salen del server, el cliente solo aporta el `id` candidato. El peor caso de un input manipulado es "no se reasigna", nunca una reasignación no autorizada. Sutileza de RLS: como `Agent manages own properties` no tiene `WITH CHECK` explícito, escribir un `agent_id` ≠ `auth.uid()` rebota con el client normal → al reasignar se usa **service role** (en create si nace a nombre de otro; en update incluso cuando un admin reasigna SU PROPIA propiedad, caso `mode: "owner" && reassigning`). Leads nuevos van al nuevo agente (el modal copia `property.agent_id`); los viejos quedan con el anterior (no retroactivo). Reasignar no afecta el conteo del plan (por `agency_id`) ni dispara el trigger de límite.
 - Modelo previsto a futuro: `admin` además gestiona la suscripción y ve los leads de toda la agencia; `agent` hace CRUD de lo suyo.
-- **El registro es de dos pasos.** Paso 1 (`/register`): crea agencia nueva + agente `admin` + suscripción `free`/`active`, siempre. Ya no existe el hardcodeo a una agencia demo. Paso 2 (`/register/plan`, solo inmobiliarias): elige plan. El particular salta el paso 2 y va directo al dashboard.
-- **Selección de plan (`/register/plan`):** modelo `plan` (lo que RIGE) vs `pending_plan` (lo PEDIDO). Si la inmobiliaria elige un plan pago: `plan` queda en `free`, `pending_plan` = el elegido, `status: 'pending'`, y `property_limit`/`has_*` de free hasta la activación manual. Si elige free: `plan: free`, `pending_plan: null`, `status: active`. **Nunca se pisa `plan` al pedir un upgrade** — lo pedido vive en `pending_plan`. La server action deriva el `agency_id` del `auth.uid()`, nunca del cliente, y usa admin client acotando el UPDATE a esa agencia (no hay policy de UPDATE de subscriptions para usuarios).
+- **Registro: SOLO INMOBILIARIAS, en dos pasos.** Paso 1 (`/register`): crea agencia nueva + agente `admin` + suscripción `free`/`active`, siempre. **No hay selector de tipo de cuenta**: `tenant_type: 'agency'` lo escribe el servidor, fijo, y el nombre de la inmobiliaria es un campo obligatorio (con `.trim()`, para que un nombre de solo espacios no pase). Paso 2 (`/register/plan`): elige plan. **Ambos caminos terminan en el paso 2** (ya no existe la rama del particular que iba directo al dashboard).
+- **Selección de plan (`/register/plan`):** modelo `plan` (lo que RIGE) vs `pending_plan` (lo PEDIDO). Ofrece **solo los tres planes pagos** (`PAID_PLANS`, derivado de `PLAN_ORDER` filtrando `free` dentro del componente — **no** se saca `free` de `PLAN_ORDER`, que es el dominio de la columna). Al elegir: `plan` queda en `free`, `pending_plan` = el elegido, `status: 'pending'`, y `property_limit`/`has_*` de free hasta la activación manual. **Nunca se pisa `plan` al pedir un upgrade** — lo pedido vive en `pending_plan`. Ninguna card viene preseleccionada y "Continuar" arranca deshabilitado, así que la pantalla no puede mandar `'free'` a la action. Se puede saltear con "Decidir más tarde" (link a `/dashboard`). La server action deriva el `agency_id` del `auth.uid()`, nunca del cliente, y usa admin client acotando el UPDATE a esa agencia (no hay policy de UPDATE de subscriptions para usuarios).
+- **⚠ Guarda de reentrada en `/register/plan` (arreglo de bug, no tocar sin entender).** Esa ruta es **exclusivamente** para una agencia recién registrada que todavía no definió nada. La condición, idéntica en la página y en la action, es el "aterrizaje virgen": la suscripción existe **y** `plan === 'free'` **y** `pending_plan === null` **y** `status === 'active'`. Cualquier otro caso → `redirect("/dashboard/suscripcion")` en la página, y error sin escribir nada en la action. Va en los dos lugares porque **una server action se puede invocar sin pasar por el render**. El bug que cierra: la ruta quedaba accesible para siempre (el proxy compara `pathname === "/register"` con igualdad exacta, así que `/register/plan` no matchea) y la action escribía `plan: 'free'` + límites de free **incondicionalmente** — una agencia con plan pago activo que volviera ahí se auto-degradaba, perdía el white-label y quedaba por encima del límite, sin confirmación ni vuelta atrás. La action además rechaza explícitamente un `plan === 'free'` entrante. **La protección NO está en `proxy.ts`** (metería una query a la base en el middleware): si la buscás ahí, no está.
 - **Pedir upgrade desde el dashboard** (`/dashboard/suscripcion`): mismo modelo. "Pasar a {plan}" pide confirmación y setea `pending_plan` + `status: 'pending'` SIN tocar `plan` ni los límites (el cliente sigue operando con lo que rige hasta la activación). El botón pasa a "Pendiente". Cancelar el pedido aún no está (el cliente escribe; ver PENDIENTES.md).
 - **Activación (panel `/admin`)**: el admin de la plataforma lee `pending_plan`, lo copia a `plan`, sube `property_limit`/`has_*` a los reales, `status: 'active'`, sella `activated_at`, y limpia `pending_plan`. El gating en runtime (badge, dashboard, bloqueo de "Nueva propiedad") usa siempre el plan que RIGE vía `getPlanUsage`, nunca el pedido.
 - Las altas siguientes a una agencia existente (por invitación) caerán en `agent` — pieza futura.
-- `tenant_type` (en `agencies`) **ya está migrado** (`agency`/`individual`, default `agency`) y **ya se usa en el registro**: el alta elige inmobiliaria o particular. `phone_wa` de agencia (`agencies.phone_wa`) **ya está migrado y es NOT NULL** (obligatorio): el registro lo setea heredando el del admin fundador, y el admin lo edita en Preferencias. Es distinto de `agents.phone_wa` (el del agente, editable en Perfil).
+- `tenant_type` (en `agencies`) es **LEGACY**: sigue existiendo en la base (`agency`/`individual`, default `agency`, con su CHECK) pero **el registro escribe siempre `'agency'`** y no hay ningún flujo que produzca `'individual'`. Se verificó por consulta que **nada en la base la lee**: cero triggers, funciones o policies la consultan. Su único consumidor es la columna "Tipo" del panel `/admin`, que muestra filas históricas. **No se borró a propósito** (borrarla no aporta nada y ensucia el trabajo de matrícula/alta manual que va a volver a tocar esa tabla). `phone_wa` de agencia (`agencies.phone_wa`) **ya está migrado y es NOT NULL** (obligatorio): el registro lo setea heredando el del admin fundador, y el admin lo edita en Preferencias. Es distinto de `agents.phone_wa` (el del agente, editable en Perfil).
 
 ### Suscripciones y límites
 - Cada agencia tiene una fila en `subscriptions` con `plan` (`free`/`inicial`/`profesional`/`premium`), `property_limit` y los entitlements `has_featured`/`has_white_label`/`has_metrics`.
+- **`free` es estado de aterrizaje, no producto.** No se vende, no se ofrece y no se puede elegir. Los valores de `PLANS.free` (`propertyLimit: 1` + los tres flags en `false`) son los que **escriben** el registro y la selección de plan como estado inicial, y los que `getPlanUsage` usa de fallback si falta la fila. Su `name` (`"Gratis"`) es solo la etiqueta que ve una agencia que todavía no paga (badge del sidebar, card de plan actual, columna "Plan" de `/admin`). **Cambiar los números de `PLANS.free` cambia el andamio del modelo, no una etiqueta.**
+- **Bajar de plan no es expresable en el modelo actual**: el CHECK de `pending_plan` solo admite planes pagos, así que no hay forma de registrar "esta agencia pidió bajar". Es coherente (el andamio solo modela subidas) pero hay que saberlo. Ver PENDIENTES.md.
 - El límite se valida **en la DB** (trigger `check_property_limit`). El frontend lo anticipa pero la DB es la fuente de verdad.
 - El conteo de propiedades usa **siempre `agency_id`**, nunca `agent_id`. Usar el helper `getPlanUsage` de `@/lib/utils/getPlanUsage`.
 - `is_featured` solo puede ser `true` si la suscripción tiene `has_featured` (hoy: premium). Las server actions lo fuerzan a `false` silenciosamente si la agencia no lo tiene. **El gating se hace por el booleano `has_featured` (vía `planUsage.hasFeatured`), NUNCA comparando el nombre del plan (`=== "premium"`).**
@@ -87,8 +94,8 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 │   │   │   └── [slug]/page.tsx          ← Vista white-label por agencia (resuelve slug → 404 / no-disponible / mapa filtrado). Sub-pieza A
 │   │   ├── (agent)/
 │   │   │   ├── login/                    ← Split-screen editorial (AuthLayout)
-│   │   │   ├── register/                  ← page.tsx (Server: trae ciudades) + RegisterForm.tsx (client). Paso 2: plan/ (page Server + PlanSelector client + actions: elige plan, pago→pending)
-│   │   │   └── dashboard/
+│   │   │   ├── register/                  ← page.tsx (Server: trae ciudades) + RegisterForm.tsx (client; SIN selector de tipo de cuenta: la app es solo-agencias). Paso 2: plan/ (page Server + PlanSelector client + actions: elige plan pago → pending). La page Y la action llevan la GUARDA DE REENTRADA (solo "aterrizaje virgen"; ver arriba)
+│   │   │   ├── dashboard/
 │   │   │       ├── page.tsx             ← Home: 4 StatsCard + últimas propiedades. Métricas por rol: admin ve la agencia (agency_id), agente lo suyo (agent_id)
 │   │   │       ├── propiedades/         ← Listado CRUD (admin ve toda la agencia + col. Agente; agente solo lo suyo) + nueva + [id]/editar + loading.tsx. actions.ts con authorizePropertyAccess (owner/admin)
 │   │   │       ├── equipo/              ← Gestión de agentes (solo admin de agencia): page (Server, gatea role, cuenta props por agente) + actions (createAgentAction + deleteAgentAction, service role). Borrar reasigna props al admin (Modelo B) antes de borrar
@@ -96,8 +103,7 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 │   │   │       ├── perfil/
 │   │   │       ├── preferencias/         ← Preferencias personales (localStorage) + datos de la agencia (solo admin): teléfono (AgencyPhoneForm + updateAgencyPhoneAction) y logo (AgencyLogoForm + updateAgencyLogoAction), ambos service role. page Server. Sub-pieza B1
 │   │   │       └── suscripcion/
-│   │   ├── admin/                        ← Panel de plataforma (solo dueño, gateado por ADMIN_USER_ID en admin/layout.tsx): 6 métricas de negocio (StatsCard) + tabla de TODAS las agencias + filtros aditivos + activar planes. layout (Server, gating + sidebar) + page (Server) + AgenciesTable (client) + actions. USA el sidebar del dashboard ("Panel admin" activo)
-│   │   └── api/og/[slug]/
+│   │   │   └── admin/                   ← Panel de plataforma. OJO: vive DENTRO del route group (agent), o sea `src/app/(agent)/admin/`, aunque la URL sea /admin. Solo dueño, gateado por ADMIN_USER_ID en su layout.tsx: 6 métricas de negocio (StatsCard) + tabla de TODAS las agencias + filtros aditivos + activar planes. layout (Server, gating + sidebar) + page (Server) + AgenciesTable (client) + actions. USA el sidebar del dashboard ("Panel admin" activo)
 │   │
 │   ├── components/
 │   │   ├── brand/
@@ -119,8 +125,7 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 │   │   │   ├── PropertyList.tsx         ← Lista mobile (cards-first)
 │   │   │   ├── PropertyForm.tsx         ← CRUD form + barra de acción sticky
 │   │   │   ├── LocationPicker.tsx       ← Pin manual (NO geocoding), tiles compartidos
-│   │   │   ├── ImageUploader.tsx        ← Drag&drop, progreso por imagen, máx 10
-│   │   │   └── WhatsAppButton.tsx
+│   │   │   └── ImageUploader.tsx        ← Drag&drop, progreso por imagen, máx 10
 │   │   ├── dashboard/
 │   │   │   ├── Sidebar.tsx              ← Wordmark + avatar + nav
 │   │   │   ├── StatsCard.tsx            ← tabular-nums, count-up, acento en métrica clave
@@ -129,7 +134,11 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 │   │   │   ├── ProfileForm.tsx           ← Perfil del agente: avatar (upload client-side, upsert) + nombre + teléfono
 │   │   │   ├── AgencyPhoneForm.tsx       ← Teléfono de la agencia (solo admin). Sub-pieza B1
 │   │   │   ├── AgencyLogoForm.tsx        ← Logo de la agencia (solo admin): upload client-side + updateAgencyLogoAction. Valida tipo/tamaño, cache-buster en preview. Sub-pieza B1
-│   │   │   └── SubscriptionContent.tsx  ← Cards de planes (4 planes, flex-wrap) + Dialog shadcn
+│   │   │   ├── SubscriptionContent.tsx  ← Card del plan que rige + cards de upgrade (solo planes superiores) + AlertDialog de confirmación
+│   │   │   ├── NewPropertyButton.tsx    ← CTA "Nueva propiedad" + bloqueo al llegar al límite del plan
+│   │   │   ├── LeadsContent.tsx         ← Tabla de Consultas (client)
+│   │   │   ├── TeamContent.tsx          ← Equipo: alta/baja de agentes (client)
+│   │   │   └── PreferencesContent.tsx   ← Preferencias personales (localStorage)
 │   │   └── ui/                          ← shadcn/ui components
 │   │
 │   ├── lib/
@@ -142,13 +151,12 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 │   │   │   └── tiles.ts                 ← Config de tiles compartida (mapa + LocationPicker)
 │   │   ├── hooks/
 │   │   │   ├── useProperties.ts         ← Fetch reactivo con debounce + diff + SELECT acotado. Params: (cityId, bounds, agencyId?). Con agencyId filtra a una sola agencia (white-label)
-│   │   │   ├── useMapFilters.ts         ← Lee mapFiltersStore
 │   │   │   ├── useFavorites.ts          ← Favoritos en localStorage (sync entre instancias)
-│   │   │   ├── useVisitedProperties.ts  ← Pines visitados en localStorage
-│   │   │   └── useWhatsApp.ts
+│   │   │   └── useVisitedProperties.ts  ← Pines visitados en localStorage
 │   │   └── utils/
 │   │       ├── formatPrice.ts           ← formatPrice + formatPriceCompact (pines)
-│   │       ├── generateSlug.ts          ← Slug con sufijo aleatorio
+│   │       ├── generateSlug.ts          ← slugifyBase (limpieza pura) + generateSlug (propiedades, sufijo aleatorio)
+│   │       ├── agencySlug.ts            ← generateUniqueAgencySlug: slug LIMPIO de agencia (sufijo numérico -2/-3 ante colisión). Lo usa el registro; el UNIQUE de agencies.slug es la garantía final
 │   │       ├── waMessage.ts             ← generateWaUrl(): string | null
 │   │       ├── getPlanUsage.ts          ← Helper server: cuenta por agency_id
 │   │       ├── resolveAgencyBySlug.ts   ← Resuelve slug → agencia + suscripción + ciudad (service role). 3 estados: not_found / disabled / active. White-label. Sub-pieza A
@@ -156,7 +164,7 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 │   │       └── labels.ts                ← Etiquetas UI compartidas
 │   │
 │   ├── store/
-│   │   ├── mapFiltersStore.ts           ← Filtros + selectActiveFiltersCount
+│   │   ├── mapFiltersStore.ts           ← Hook `useMapFilters` + selectActiveFiltersCount (el hook vive acá, NO en lib/hooks/)
 │   │   └── cityStore.ts                 ← Ciudad activa, initCity(), setCity(), nearbyCityId
 │   │
 │   ├── types/
@@ -209,7 +217,7 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 
 ### ESLint
 - El patrón `setIsLoading(true)` al inicio de efectos: usar IIFE async dentro del efecto. No bajar la regla globalmente.
-- Hay dos warnings cosméticos no bloqueantes, ambos inherentes a react-hook-form + React Compiler (no se memoiza bien): en `PropertyForm.tsx` (cast `zodResolver`) y en `RegisterForm.tsx` (el `watch("tenantType")` del toggle Inmobiliaria/Particular). Son warnings, no errores; no bloquean el build.
+- **Baseline medido: 0 errores y 1 warning.** El único warning es `react-hooks/incompatible-library` en `PropertyForm.tsx:232` (`watch("currency")`): el React Compiler detecta que el `watch()` de react-hook-form no se puede memoizar y renuncia a memoizar el componente. Es inherente a la librería, no un defecto del código; no bloquea el build. **Cualquier otro warning es una regresión.** (Histórico: había un segundo warning idéntico en `RegisterForm.tsx` por `watch("tenantType")`; desapareció al eliminarse el selector de tipo de cuenta.)
 
 ### Estilos
 - Tailwind, sin CSS-in-JS ni módulos CSS. shadcn/ui para componentes base
@@ -300,7 +308,7 @@ Schema en `supabase/migrations/20240101000000_initial_schema.sql`.
 | Tabla | Descripción |
 |---|---|
 | `cities` | Mercados. Centro del mapa y zoom por ciudad |
-| `agencies` | Inmobiliarias. `city_id` NOT NULL. `tenant_type` (`agency`/`individual`) ya migrado. `phone_wa` NOT NULL (WhatsApp de la agencia). `brand_color` para white-label futuro |
+| `agencies` | Inmobiliarias. `city_id` NOT NULL. `tenant_type` (`agency`/`individual`) **legacy**: el registro escribe siempre `'agency'`; nada de la base la lee. `phone_wa` NOT NULL (WhatsApp de la agencia). `brand_color` para white-label futuro |
 | `subscriptions` | `plan` (el que RIGE) + `pending_plan` (pedido, esperando activación) + `status`, `property_limit`, entitlements `has_*`, y `activated_at` (desde cuándo rige el pago). Por agencia |
 | `agents` | `id` = `auth.users.id`. `agency_id` NOT NULL. `role` (`admin`/`agent`) gatea la sección Equipo. `email` denormalizado de auth.users (copia de lectura) |
 | `properties` | `agency_id` y `city_id` NOT NULL; `location` GEOGRAPHY generada |
@@ -370,6 +378,9 @@ npx shadcn@latest add [componente]
 | `resolveAgencyBySlug` con service role | El visitante white-label es anónimo y la RLS de `subscriptions` le ocultaría `has_white_label`; sin service role, toda agencia parecería `disabled`. Server-only, campos no sensibles, sin tocar policies |
 | `h-dvh` + lock de scroll del body (no `h-screen`) | `100vh` deja el documento scrolleable en mobile; el "scroll into view" al enfocar saca el header de flujo normal. `dvh` + lock atacan las dos condiciones de raíz, no los síntomas |
 | Logo de agencia: upload client-side + escritura de `logo_url` por service role (no upload por server action) | Lo sensible es la escritura en `agencies` (gateada a admin), no el archivo en Storage (bucket público). Reusa el patrón del avatar, no estrena upload server-side con FormData |
+| `free` sobrevive como estado de aterrizaje al eliminar los particulares (no se borró del schema ni de `PLAN_ORDER`) | El plan cumplía dos funciones: plan comercial del particular (se eliminó) y estado inicial de toda alta (es el andamio de `plan`/`pending_plan`, del que dependen registro, activación en `/admin` y `getPlanUsage`). Borrarlo habría roto el flujo de upgrades |
+| `tenant_type` no se borró al pasar a solo-agencias | Ninguna policy, función ni trigger la lee (verificado por consulta); borrar una columna NOT NULL con CHECK no aporta nada y la tabla `agencies` se vuelve a tocar en el trabajo de matrícula. Se cerró la puerta de entrada, no la columna |
+| Guarda de reentrada de `/register/plan` en la página **y** en la action, no en `proxy.ts` | La server action se puede invocar sin pasar por el render, así que la página sola no alcanza. El proxy queda afuera porque necesitaría consultar `subscriptions` en el middleware: más caro y peor lugar |
 
 ---
 

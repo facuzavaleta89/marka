@@ -18,7 +18,8 @@
 --   - El visitante ve UN mapa con las propiedades de TODAS las agencias
 --     de una misma ciudad (mercado).
 --   - Cada agencia pertenece a una ciudad y tiene una suscripción.
---   - 4 planes: free=1 (particular), inicial=20, profesional=60, premium=200.
+--   - 4 valores de plan, pero solo 3 de venta: inicial=20, profesional=60,
+--     premium=200. 'free'=1 es el estado de aterrizaje, no un producto.
 --   - El límite de propiedades del plan se valida a nivel de base de datos.
 -- ============================================================
 -- NOTA DE FIDELIDAD: este archivo refleja el estado REAL de la base a la fecha.
@@ -57,14 +58,19 @@ CREATE TABLE agencies (
   city_id     UUID NOT NULL REFERENCES cities(id) ON DELETE RESTRICT,
   name        TEXT NOT NULL,             -- nombre de la inmobiliaria
   slug        TEXT UNIQUE NOT NULL,
-  -- tenant_type (Fase 3, YA MIGRADO). Distingue inmobiliaria de particular.
-  -- 'agency': inmobiliaria (varios agentes). 'individual': particular (una
-  -- persona, plan free). Internamente ambos son filas en agencies; el particular
-  -- es una agencia de un solo miembro. DEFAULT 'agency': todo lo existente es
-  -- inmobiliaria; 'individual' se elige explícitamente en el registro. La regla
-  -- "individual → solo free" se valida en el backend del registro, no en la base
-  -- (la escritura de subscriptions ya es solo service role; un trigger cross-table
-  -- sería sobre-ingeniería hoy).
+  -- tenant_type — LEGACY (27 ago 2026). La app es SOLO-AGENCIAS: el registro
+  -- escribe siempre 'agency' y ningún flujo produce 'individual'. El valor
+  -- sobrevive únicamente en filas históricas y se muestra en el panel /admin.
+  -- La columna y el CHECK NO se borraron a propósito: nada de la base los lee
+  -- (verificado por consulta: cero triggers, funciones o policies mencionan
+  -- tenant_type), así que borrarlos no aporta nada y la tabla se vuelve a tocar
+  -- en el trabajo de matrícula/alta manual.
+  -- ⚠ CORRECCIÓN: una versión anterior de este comentario afirmaba que la regla
+  -- "individual → solo free" se validaba en el backend del registro. Se relevó
+  -- el código: ESA VALIDACIÓN NUNCA EXISTIÓ. El particular terminaba en free
+  -- porque TODAS las altas terminan en free (estado de aterrizaje), no porque
+  -- alguna capa lo evaluara. Un particular que navegara a mano a /register/plan
+  -- podía pedir cualquier plan pago.
   tenant_type TEXT NOT NULL DEFAULT 'agency'
               CHECK (tenant_type IN ('individual', 'agency')),
   logo_url    TEXT,
@@ -87,8 +93,13 @@ CREATE TABLE agencies (
 CREATE TABLE subscriptions (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   agency_id       UUID UNIQUE NOT NULL REFERENCES agencies(id) ON DELETE CASCADE,
-  -- 4 planes. Límites: free=1, inicial=20, profesional=60, premium=200.
+  -- 4 valores, pero SOLO TRES SE VENDEN: inicial=20, profesional=60, premium=200.
   -- white-label habilitado en profesional y premium; destacados+métricas en premium.
+  -- 'free' (límite 1) NO es un producto: es el ESTADO DE ATERRIZAJE de toda alta.
+  -- Toda agencia nace en free/active y sigue ahí mientras espera que el dueño de
+  -- la app active el plan pago que pidió (lo pedido vive en pending_plan). Desde
+  -- que se eliminaron los particulares, free ya no corresponde a ningún tipo de
+  -- cuenta: es solo "todavía no paga". Nunca se ofrece como opción elegible.
   -- IMPORTANTE: 'plan' es el plan que RIGE hoy (sus límites son los efectivos).
   -- Nunca se pisa al pedir un upgrade; lo pedido va en pending_plan (ver abajo).
   plan            TEXT NOT NULL DEFAULT 'free'
@@ -485,7 +496,7 @@ VALUES ('Santiago del Estero', 'santiago-del-estero', 'Santiago del Estero',
         -27.7951, -64.2615, 13);
 
 -- 2. Agencia (pertenece a la ciudad). tenant_type cae en 'agency' por DEFAULT;
--- para sembrar un particular sería: ..., tenant_type) VALUES (..., 'individual').
+-- NO sembrar 'individual': la app es solo-agencias y ese valor es legacy.
 INSERT INTO agencies (city_id, name, slug)
 VALUES (
   (SELECT id FROM cities WHERE slug = 'santiago-del-estero'),
