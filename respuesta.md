@@ -1,267 +1,315 @@
-# Puesta al día de la documentación tras la fase de modelo de agencias
+# Informe de ejecución — El barrio sale de la búsqueda; se elimina la cascada
 
-> **Modo ejecución, tarea de documentación.** Se tocaron 4 archivos `.md` y los
-> comentarios + dos objetos del schema SQL. **Ningún archivo de código fuente.**
-> Cero comandos de git, cero SQL de escritura.
->
-> Los tres comandos dan **exactamente lo mismo que en el paso 1**: 0 errores de TS, 0 de
-> lint, 1 warning conocido, build verde con **18 rutas**.
->
-> **Encontré 3 afirmaciones falsas en `DESIGN.md` y `PLAN-ORIGINAL.md`** que no tenían
-> nada que ver con este grupo de trabajo, y **1 diferencia entre el contexto que me
-> pasaste y lo medido** (§3). Están en §3 y §4.
+**Modo:** ejecución. **No se ejecutó ningún comando de git.** No se ejecutó SQL de escritura.
+
+**Fecha:** 2026-08-31.
+
+**Balance: se sacó código, no se agregó.** El orquestador pasó de 434 a 369 líneas, y de esas 369 una parte creció porque el comentario que documenta *por qué* el barrio no va es deliberadamente largo (tarea 3). En código ejecutable la reducción es mayor de lo que sugiere el conteo.
+
+**Archivos modificados: 6.** Ninguno creado, ninguno eliminado.
 
 ---
 
-## 1 · Lo relevado (paso 1)
+## 0. Reproducción del caso medido (antes de tocar nada, y después)
 
-### a. Archivos de documentación en el repo
-
-| Archivo | Líneas (antes) |
-|---|---|
-| `CLAUDE.md` | 397 |
-| `DESIGN.md` | 720 |
-| `PENDIENTES.md` | 188 |
-| **`PLAN-ORIGINAL.md`** | 476 |
-| `README.md` | 36 |
-| `AGENTS.md` | 5 |
-| `respuesta.md` | (este archivo, ignorado por git) |
-| `supabase/migrations/20240101000000_initial_schema.sql` | 663 |
-| `supabase/seed.sql` | 53 |
-
-⚠ **`PLAN-ORIGINAL.md` es nuevo respecto de mi último relevamiento**: es el plan original
-que en una tanda anterior reporté como "sin destino en el repo" porque vivía en el
-Project. Alguien lo agregó, con un encabezado de "DOCUMENTO HISTÓRICO" correcto. Lo tomé
-en cuenta (§2).
-
-`README.md` es el de `create-next-app` sin tocar y `AGENTS.md` son 5 líneas de reglas de
-Next.js — ninguno describe el dominio (§6).
-
-### b. Estado real de la base
-
-**`agencies` — 12 columnas:**
-
-| # | columna | tipo | nullable | default |
-|---|---|---|---|---|
-| 1-10 | `id`, `city_id`, `name`, `slug`, `logo_url`, `website`, `brand_color`, `created_at`, `tenant_type`, `phone_wa` | — | — | (sin cambios) |
-| **11** | `license_number` | text | **YES** | — |
-| **12** | `approval_status` | text | **NO** | **`'pending'::text`** |
+Antes de escribir el informe reproduje tu medición contra Nominatim real, con exactamente la consulta que arma este módulo (`viewbox` incluido), espaciando 1,5 s entre pedidos por la política de uso:
 
 ```
-agencies_approval_status_check  CHECK ((approval_status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text])))
-agencies_tenant_type_check      CHECK ((tenant_type = ANY (ARRAY['individual'::text, 'agency'::text])))
-agencies_city_id_fkey           FOREIGN KEY (city_id) REFERENCES cities(id) ON DELETE RESTRICT
-agencies_pkey / agencies_slug_key
-```
-```
-CREATE INDEX idx_agencies_approval_status ON public.agencies USING btree (approval_status)
-CREATE UNIQUE INDEX idx_agencies_license_unique_approved ON public.agencies USING btree (city_id, license_number)
-  WHERE ((approval_status = 'approved'::text) AND (license_number IS NOT NULL))
-CREATE INDEX idx_agencies_city / agencies_pkey / agencies_slug_key
+ANTES · barrio "Centro"  (el que la gente usa)   → OUT_OF_CITY  157.8 km  Bartolomé Mitre, Barrio Centro, Añatuya, Municipio de Añatuya…
+ANTES · barrio "Parque"  (el mapeado)            → found          0.9 km  291, Mitre, Barrio Parque Aguirre, Santiago del Estero…
+ANTES · barrio "Cabildo" (otro cualquiera)       → not_found
+AHORA · SIN barrio                               → found          0.9 km  291, Mitre, Barrio Parque Aguirre, Santiago del Estero…
 ```
 
-**`agency_reviews` — 6 columnas** (`id`, `agency_id`, `decision`, `note` nullable,
-`reviewed_by` nullable, `created_at` NOT NULL `now()`):
-```
-agency_reviews_decision_check    CHECK ((decision = ANY (ARRAY['approved'::text, 'rejected'::text])))
-agency_reviews_agency_id_fkey    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE
-agency_reviews_reviewed_by_fkey  FOREIGN KEY (reviewed_by) REFERENCES auth.users(id) ON DELETE SET NULL
-CREATE INDEX idx_agency_reviews_agency ON public.agency_reviews USING btree (agency_id, created_at DESC)
-```
-RLS habilitada, **0 policies**. Hoy tiene **3 filas** (pruebas del panel).
+**Tu hallazgo queda confirmado, y el arreglo también:** sin barrio, "Mitre 291" se encuentra bien, a 0,9 km del centro. **Dos precisiones sobre el reporte**, que anoté porque el comentario del código tiene que llevar datos exactos si su trabajo es impedir que alguien vuelva a agregar el barrio:
 
-**Los tres triggers de `properties`:**
-```
-trg_check_agency_approved  BEFORE INSERT ON public.properties FOR EACH ROW EXECUTE FUNCTION check_agency_approved()
-trg_check_property_limit   BEFORE INSERT OR UPDATE ON public.properties FOR EACH ROW EXECUTE FUNCTION check_property_limit()
-trg_properties_updated_at  BEFORE UPDATE ON public.properties FOR EACH ROW EXECUTE FUNCTION update_updated_at()
-```
+1. **Con "Centro" el resultado no cae en otra provincia, sino en otra ciudad de la MISMA provincia:** Bartolomé Mitre en **Añatuya**, a 158 km. No cambia nada de la conclusión —el filtro de distancia lo descarta igual y el resultado sigue siendo incorrecto y lejano—, pero es lo que efectivamente devuelve el servicio.
+2. **Con "Cabildo" a mí me dio `not_found`, no un acierto.** Tu reporte decía "encuentra bien". Puede ser una diferencia de momento o de cómo se armó la consulta. Tampoco cambia la conclusión (un barrio que no coincide con lo mapeado o tapa la dirección o desvía la búsqueda), pero preferí escribir en el código lo que yo medí y no lo que me pasaron.
 
-**`check_agency_approved()`** (cuerpo medido, copiado literal al schema del repo):
-```sql
-DECLARE
-  agency_state TEXT;
-BEGIN
-  SELECT approval_status INTO agency_state FROM agencies WHERE id = NEW.agency_id;
-  -- Sin fila de agencia no se publica: es un estado inconsistente, no un permiso.
-  IF agency_state IS NULL OR agency_state <> 'approved' THEN
-    RAISE EXCEPTION 'La agencia no está aprobada para publicar propiedades'
-      USING ERRCODE = 'check_violation';
-  END IF;
-  RETURN NEW;
-END;
-```
+El comentario del orquestador quedó con estos números, no con los del enunciado.
 
-**`check_property_limit()`** — el único cambio respecto de la versión vieja:
-```sql
-  -- Sin fila de suscripción NO hay cupo: antes max_allowed quedaba NULL, la
-  -- comparación daba NULL y el insert pasaba sin límite alguno.
-  IF max_allowed IS NULL THEN
-    max_allowed := 0;
-  END IF;
-```
+---
 
-**Otras mediciones que usé:** 0 funciones y 0 policies mencionan `tenant_type`;
-`current_period_end` sigue en `null` en las 10 filas; siguen los **2 usuarios de Auth
-huérfanos**; y `useProperties` filtra por `city_id` + `status='active'` (+ `agency_id`
-opcional en white-label) — **no mira la agencia ni su suscripción**.
+## 1. Todos los lugares de los que salió el barrio
 
-### c. Baseline (paso 1) — y el de después
+Recorrido completo, de la interfaz al proveedor:
 
-Idéntico antes y después de esta tarea:
-
-| | Paso 1 | Después |
+| # | Archivo | Qué salió |
 |---|---|---|
-| `npx tsc --noEmit` | exit **0**, sin salida | exit **0**, sin salida |
-| `npm run lint` | exit **0** — `✖ 1 problem (0 errors, 1 warning)` | igual |
-| `npx next build` | exit **0**, **18 rutas** | exit **0**, **18 rutas** |
+| 1 | `src/components/properties/PropertyForm.tsx:274` | `const neighborhood = watch("neighborhood") ?? "";` — existía **solo** para alimentar el botón. |
+| 2 | `src/components/properties/PropertyForm.tsx:649` | La prop `neighborhood={...}` que se le pasaba a `<AddressSearchButton>`. |
+| 3 | `src/components/properties/AddressSearchButton.tsx:25` | El campo `neighborhood: string \| null` de `AddressSearchButtonProps`. |
+| 4 | `src/components/properties/AddressSearchButton.tsx:46` | El parámetro `neighborhood` de la desestructuración. |
+| 5 | `src/components/properties/AddressSearchButton.tsx:77` | El `neighborhood` del cuerpo JSON del `fetch`. Ahora manda solo `{ address }`. |
+| 6 | `src/app/api/geocode/route.ts:40` | El campo `neighborhood?: unknown` de `RequestBody`. La ruta ya no lo recibe. |
+| 7 | `src/app/api/geocode/route.ts:66` | `const neighborhood = sanitizeNeighborhood(body.neighborhood);` — ya no se valida. |
+| 8 | `src/app/api/geocode/route.ts:82` | El `neighborhood` que se le pasaba a `geocodeAddress`. |
+| 9 | `src/app/api/geocode/route.ts:2` | El import de `sanitizeNeighborhood`. |
+| 10 | `src/lib/geocoding/index.ts:94` | El campo `neighborhood: string \| null` de `GeocodeRequest`. El orquestador ya no lo acepta. |
+| 11 | `src/lib/geocoding/index.ts:77` | La constante `MAX_NEIGHBORHOOD_LENGTH`. |
+| 12 | `src/lib/geocoding/index.ts:121-123` | La función `sanitizeNeighborhood` completa. |
+| 13 | `src/lib/geocoding/index.ts:241` | El barrio dentro de `cacheKey`. |
+| 14 | `src/lib/geocoding/index.ts:356` | El `sanitizeNeighborhood(request.neighborhood)` de `geocodeAddress`. |
+| 15 | `src/lib/geocoding/nominatim.ts:76` | El `query.neighborhood` del armado del texto de consulta. |
+| 16 | `src/lib/geocoding/types.ts:20-21` | El campo `neighborhood` de `GeocodeQuery` (el tipo de la consulta genérica). |
 
-### d. Archivos nuevos del grupo de trabajo
+**Sacarlo del tipo `GeocodeQuery` no rompió nada más**: `tsc --noEmit` pasa en 0, y el único otro consumidor del tipo es `nominatim.ts`, ya ajustado.
 
-| Ruta | Qué hace |
-|---|---|
-| `src/lib/utils/resolveAgentSession.ts` | Resuelve usuario + agente + agencia. Unión de 3 estados (`no_session`/`unlinked`/`ok`), cacheada por request con `cache()` |
-| `src/lib/utils/getPublishBlock.ts` | Espejo en la interfaz de los dos triggers: si se puede publicar y por qué no |
-| `src/lib/utils/getLatestRejectionNote.ts` | Motivo del último rechazo (service role), verificando pertenencia |
-| `src/lib/utils/licenseNumber.ts` | Formato + normalización de la matrícula, compartidos client/server |
-| `src/components/feedback/Notice.tsx` | Aviso persistente reutilizable (Server Component, 3 tonos) |
-| `src/components/dashboard/AgencyApprovalNotice.tsx` | Aviso de dominio: pendiente / rechazada con el motivo |
-| `src/components/dashboard/AgencyIdentityForm.tsx` | Nombre + matrícula, editable o solo lectura según el estado |
-| `src/app/(agent)/logout/route.ts` | Route handler `GET`: `signOut()` + redirect al login con motivo |
-| `src/app/(agent)/login/LoginForm.tsx` | El formulario de login (client), separado de la page (Server) |
+**Verificación de que no quedó nada** en el camino de geocodificación:
+
+```
+$ grep -rn "neighborhood" src/lib/geocoding/ src/app/api/geocode/ src/components/properties/AddressSearchButton.tsx
+0 ocurrencias de código
+```
+
+### El barrio como campo de la propiedad: intacto
+
+Estas ocurrencias **siguen y tienen que seguir**, verificadas una por una:
+
+- `PropertyForm.tsx:81` — `neighborhood: z.string().optional()` en el esquema.
+- `PropertyForm.tsx:229` — valor inicial en modo edición.
+- `PropertyForm.tsx:351, 384` — se manda a las actions de alta y de edición.
+- `PropertyForm.tsx:634-636` — el input "Barrio" del formulario.
+- `propiedades/actions.ts:339, 447` — se persiste en la base.
+- `PropertyCard.tsx`, `PropertyModal.tsx` — se muestra al visitante.
+- `useProperties.ts:76-77` — filtro del mapa por barrio.
+- `types/index.ts` — el campo de `Property` y de `MapFilters`.
+
+**El agente sigue escribiendo el barrio y se sigue guardando tal cual.** Lo único que cambió es que dejó de viajar a la consulta de geocodificación.
+
+### La ciudad sigue resolviéndose en el servidor
+
+Sin tocar: `route.ts:68` sigue haciendo `getAgencyCity(session.agent.agency_id)`, y el cliente sigue sin poder influir en la ciudad, la provincia ni el país. Verificado en el banco de pruebas (comprobación 4): si un llamador cuela un `neighborhood` en el objeto, el orquestador lo ignora — ya no está en el tipo y nadie lo lee.
 
 ---
 
-## 2 · Archivos de documentación modificados
+## 2. Todo lo que se eliminó con la cascada, y la verificación de que nadie más lo usaba
 
-| Archivo | Líneas | Qué cambió |
+| Qué se eliminó | Dónde estaba | Verificación de que nada más lo usaba |
 |---|---|---|
-| `CLAUDE.md` | 397 → **465** | Dos secciones nuevas de modelo ("Aprobación de agencias" y "Bloqueo de publicación"), tres convenciones nuevas (sesión unificada, `/logout`, avisos), registro con matrícula + rollback, árbol de carpetas con los 9 archivos nuevos, `agency_reviews` y los triggers en la referencia rápida, 6 filas nuevas en la tabla de decisiones, baseline a 18 rutas |
-| `PENDIENTES.md` | 188 → **206** | A2 cerrada con su detalle; el **bucle de redirecciones tachado como RESUELTO**; bloque nuevo "A-bis — lo que falta para poder COBRAR" con el mapa sin filtrar; 4 ítems nuevos de deuda técnica; "eliminar agencias" agregado al panel de ida y vuelta; baseline y referencias muertas corregidas |
-| `DESIGN.md` | 720 (igual) | **3 correcciones de afirmaciones falsas** (§4), ninguna relacionada con esta fase |
-| `PLAN-ORIGINAL.md` | 476 (igual) | 3 referencias corregidas (§4) |
-| `supabase/migrations/…_initial_schema.sql` | 663 → **717** | `check_agency_approved()` + `trg_check_agency_approved` completos, el bloque de "límite 0" en `check_property_limit()`, y la nota de fidelidad de la cabecera |
+| **La constante `MIN_RETRY_BUDGET_MS`** (2 s) y su comentario | `index.ts:40-45` | `grep -rn "MIN_RETRY_BUDGET_MS" src/` → **0 usos** |
+| **La lógica de los dos intentos**: las variables `withNeighborhood` / `withoutNeighborhood`, el `deadline`, y las tres condiciones (`if (!neighborhood)`, `if (status !== "not_found")`, `if (deadline - Date.now() < …)`) | `index.ts:370-407` | `grep -n "withNeighborhood\|deadline"` → **0 ocurrencias** |
+| **La salvaguarda** `if (withoutNeighborhood.status === "unavailable") return withNeighborhood;` | `index.ts:405` | eliminada con el bloque; sin segundo intento no tiene sentido |
+| **El tipo auxiliar** `Omit<GeocodeQuery, "neighborhood">` de `baseQuery` | `index.ts:361` | existía solo para armar dos variantes de la misma consulta |
+| **La función `runAttempt`** | `index.ts:281-315` | ver punto 3 |
+| **El comentario de `cacheKey`** que explicaba cómo convivían las dos entradas de la cascada | `index.ts:223-233` | reemplazado por uno que describe la clave real |
+| **El comentario de cabecera "EL BARRIO ES UNA PISTA, NO UN REQUISITO"** con el diagrama de los dos intentos | `index.ts:322-343` | reemplazado por el de la tarea 3 |
 
-**El schema sigue siendo ejecutable.** Los dos objetos nuevos son **idénticos a los
-medidos** en el paso 1 (comparé cuerpo por cuerpo), y todo lo demás que agregué son
-comentarios. El archivo pasó de 297 a **338 líneas ejecutables**, que son exactamente las
-de la función y el trigger nuevos.
+**Relectura completa del orquestador después de sacar todo**, como pediste. Lo que encontré y resolví:
 
-**Lo más valioso que quedó escrito** son los porqués que no se pueden deducir del código:
-por qué el bloqueo es un trigger y no una policy (el service role saltea las policies),
-por qué el índice de matrícula es parcial (un UNIQUE común le confirmaría al impostor qué
-matrículas existen), por qué la nota vive en otra tabla (`Public read agencies` con
-`qual: true` + Postgres no restringe columnas en una policy), por qué `/logout` es un
-route handler (un Server Component no puede borrar cookies), y por qué los triggers se
-distinguen por el texto y no por el código (comparten SQLSTATE y el orden alfabético
-importa).
+- **`sanitizeNeighborhood`** quedaba definida y exportada sin ningún llamador → eliminada.
+- **`MAX_NEIGHBORHOOD_LENGTH`** quedaba sin usar → eliminada.
+- **`sanitizeQueryText` seguía exportada, y su comentario decía "se exporta porque la ruta valida la entrada con esto mismo"** — falso: la ruta importaba `sanitizeAddress` y `sanitizeNeighborhood`, nunca `sanitizeQueryText`, y ahora importa solo `sanitizeAddress`. Era superficie pública sin consumidor con un comentario que la justificaba con un consumidor inexistente. La bajé a función privada del módulo y corregí el comentario. Ver punto 7.
+- **Ninguna condición quedó siempre verdadera**: las tres del descarte de la cascada se fueron enteras, no se degradaron a `if (true)`.
+
+**Lo que NO se tocó y sigue intacto: ver punto 5.**
 
 ---
 
-## 3 · Diferencias entre el contexto que me diste y lo medido
+## 3. Qué decidí sobre `runAttempt`, y por qué
 
-**Una sola, y es menor.** Los 13 puntos del contexto se verificaron uno por uno contra el
-código o la base; 12 coinciden exactamente.
+**La reintegré al cuerpo de `geocodeAddress`.** Decisión mía, la pusiste en mis manos.
 
-**Punto 7 — "la consulta estaba copiada en 21 lugares".** Correcto para el momento de la
-unificación. Hoy hay **23 llamadas al helper**, porque la tanda siguiente sumó dos
-consumidores nuevos (`getLatestRejectionNote` y `updateAgencyIdentityAction`). No es un
-error tuyo: el 21 describe la duplicación que se eliminó, y así lo documenté. Lo aclaro
-para que nadie cuente 23 y crea que la documentación miente.
+**Por qué.** `runAttempt` no nació por claridad: nació porque la cascada necesitaba invocar dos veces la misma secuencia y compartir un `AbortSignal` entre las dos. Con un solo llamador, todo lo que aportaba se da vuelta:
 
-**Verificaciones puntuales de lo demás** (todo confirmado):
-- #1 — `tenant_type` sigue en la base: **0 funciones y 0 policies** la mencionan.
-- #5 — `Public read agencies` sigue con `qual: true`; `agency_reviews` con RLS y **0 policies**.
-- #6 — el índice parcial es exactamente `(city_id, license_number) WHERE approval_status = 'approved' AND license_number IS NOT NULL`.
-- #9 — el `catch` de `src/lib/supabase/server.ts` dice literalmente *"En Server Components el set no tiene efecto; lo maneja el proxy"*.
-- #10 — `createPropertyAction` usa service role cuando el `agent_id` de la propiedad ≠ el del creador.
-- #11 — los dos triggers comparten `ERRCODE = 'check_violation'` y los nombres confirman el orden alfabético.
-- #13 — `agencies` no tiene policy de UPDATE (su única policy es la de SELECT).
+1. **El parámetro `signal` dejaba de tener razón de ser.** Existía para que dos intentos compartieran un presupuesto. Con uno solo, el controller se crea y se usa en el mismo lugar, y el parámetro era una indirección que sugería una flexibilidad que ya no existe.
+2. **Partía en dos el manejo de errores.** `runAttempt` tenía `try/catch` y `geocodeAddress` tenía `try/finally`: dos bloques haciendo un trabajo. Ahora es un solo `try/catch/finally` que se lee de arriba abajo.
+3. **Obligaba a saltar de función para leer un flujo lineal de treinta líneas.** Con una sola invocación, la indirección cuesta más de lo que ahorra.
 
-**Y una verificación del paso 3 que confirma lo que dijiste:** `useProperties` filtra por
-`city_id` y `status='active'` y nada más. **Una agencia que deja de pagar mantiene sus
-propiedades visibles.** Quedó anotado como bloque propio y bloqueante en `PENDIENTES.md`.
+El resultado es exactamente la forma que el módulo tenía **antes** de que se agregara la cascada: una función, un camino, sin ramas. Si mañana volviera a hacer falta repetir un intento (no debería), extraerla de nuevo es mecánico.
 
 ---
 
-## 4 · Afirmaciones falsas encontradas en la documentación
+## 4. Qué quedó del orquestador — el flujo completo de un vistazo
 
-Tres en `DESIGN.md` y tres referencias muertas en `PLAN-ORIGINAL.md`. **Ninguna tiene que
-ver con este grupo de trabajo** — aparecieron al leer todo. Las corregí.
+`geocodeAddress` (`src/lib/geocoding/index.ts:297-346`), **sin una sola rama de estrategia**:
 
-| # | Dónde | Decía | Dice el código | Qué hice |
-|---|---|---|---|---|
-| 1 | `DESIGN.md` §7 (línea 463) | *"el dashboard usa `flex h-screen overflow-hidden` en el wrapper"* | **`flex h-dvh overflow-hidden`** en los dos layouts (`dashboard` y `admin`) | Corregido, con una nota de que decía `h-screen` — importa porque el propio `CLAUDE.md` prohíbe `h-screen` en wrappers de pantalla completa, así que el documento de diseño contradecía la regla |
-| 2 | `DESIGN.md` §7 (línea 485) | *"Modal 'Próximamente' usa el `Dialog` de shadcn"* | Ese modal **no existe**: el CTA abre un `AlertDialog` de confirmación y registra el pedido. `components/ui/dialog.tsx` **no lo importa nadie** | Corregido, con la aclaración de qué hace hoy |
-| 3 | `DESIGN.md` §12 (línea 628) | *"El CTA 'Pasar a {plan}' abre el Dialog 'Próximamente' (la activación es manual por ahora; contacto vía mailto)"* | El CTA escribe `pending_plan` + `status: 'pending'` de verdad, y la card pasa a "Pendiente" | Corregido |
-| 4 | `PLAN-ORIGINAL.md` ×2 | Remite a `03-schema.sql` como el schema ejecutable | Ese archivo **no está en el repo** | Apuntadas al `initial_schema.sql` real |
-| 5 | `PLAN-ORIGINAL.md` | Tabla con `plan` (free/pro) | Hoy son 4 valores, 3 de venta | Marcado inline como desactualizado (el archivo es histórico y ya lo dice en su encabezado; no lo reescribí) |
-| 6 | `PENDIENTES.md` | Ítem sobre *"`02-plan-app-inmobiliaria.md` (vive en el Project, NO en el repo)"* | El archivo **sí está en el repo**, como `PLAN-ORIGINAL.md` | Renombrada la referencia |
+```
+1. ¿Interruptor de caída simulada puesto?      → 'unavailable', y se termina.
+                                                  (antes de la caché, del limitador y de la red)
+2. Sanitizar la dirección                      → si queda vacía: 'not_found'
+3. Armar la consulta:
+       dirección + ciudad + provincia + país + centro + radio
+4. ¿Está en caché?                             → devolverla (sin turno ni red)
+5. Abrir el presupuesto de 5 s (AbortController + setTimeout)
+6. Esperar el turno del limitador (1 consulta/segundo)
+7. provider.search(query, signal)
+8. ¿No hay candidato?                          → 'not_found'
+   ¿Hay candidato?                             → evaluateCandidate:
+                                                    redondear a 7 decimales
+                                                    ¿a más de 25 km del centro? → 'out_of_city'
+                                                    si no                        → 'found'
+9. Guardar en caché (salvo 'unavailable')
+10. Devolver
 
-**Las 2 y 3 son las más molestas:** describen una pantalla que se rediseñó hace tiempo, y
-alguien que leyera `DESIGN.md` para tocar la suscripción habría buscado un modal que no
-existe.
+catch   → 'unavailable'   (red, HTTP no-2xx, JSON ilegible, timeout, turno cancelado)
+finally → clearTimeout
+```
+
+Un intento. Un presupuesto. Un `try`. Los cuatro desenlaces salen de tres lugares y nada más.
 
 ---
 
-## 5 · Verificación
+## 5. Confirmación de que las piezas que NO había que tocar siguen intactas
 
-### `npx tsc --noEmit` — exit code **0**
+Una por una, con la verificación:
+
+| Pieza | Estado | Verificación |
+|---|---|---|
+| **Presupuesto de tiempo total y su cancelación** | intacto, `GEOCODE_TIMEOUT_MS = 5_000` | comprobación 11 del banco: `unavailable` a los **5006 ms** con un `fetch` colgado 9 s |
+| **Límite de 1 consulta/segundo** | intacto, `MIN_REQUEST_INTERVAL_MS = 1_100`, `waitForSlot` sin cambios | comprobación 10: dos búsquedas seguidas tardaron **2201 ms** |
+| **Caché con su TTL** | intacta, `CACHE_TTL_MS` 24 h, `MAX_CACHE_ENTRIES` 500 | comprobación 7: repetición servida con **0 pedidos** |
+| **No cachear `unavailable`** | intacta, `writeCache` sigue cortando | comprobación 8: 1ª = `unavailable`, 2ª = `found` (volvió a salir) |
+| **Descarte por distancia y su umbral** | intacto, `CITY_RADIUS_KM = 25`, `evaluateCandidate` sin cambios | comprobaciones 6 y 14: lejano → `out_of_city`, centro → `found` |
+| **Interruptor de simulación de caída** | intacto, `GEOCODING_SIMULATE_OUTAGE`, primera línea de `geocodeAddress` | comprobaciones 12, 12b y 13: ON → `unavailable` con **0 pedidos**, incluso sobre una dirección cacheada como `found` |
+| **User-Agent propio** | intacto, `nominatim.ts` sin cambios salvo `searchText` | el `GEOCODING_USER_AGENT` y su default siguen igual |
+| **Los cuatro desenlaces y sus mensajes** | intactos | `GEOCODE_STATUS_MESSAGES` en `labels.ts` **no se tocó**; `GeocodeResponse` y `GeocodeStatus` en `types/index.ts` tampoco |
+| **La ciudad resuelta en el servidor** | intacta | `route.ts:68`, `getAgencyCity(session.agent.agency_id)` |
+| **El gate de sesión de la ruta** | intacto | `route.ts:47-50`, 401 sin sesión |
+
+### Banco de pruebas completo (15 comprobaciones, todas pasan)
+
+Corrido contra el **módulo real compilado**, con `fetch` interceptado para contar los pedidos que salen:
+
+```
+=== EL BARRIO YA NO PARTICIPA ===
+  OK   │ 1. la consulta es dirección + ciudad + provincia + país  → Mitre 291, Santiago del Estero, Santiago del Estero, Argentina
+  OK   │ 2. la consulta NO menciona ningún barrio
+  OK   │ 3. un solo intento, siempre  → status=found, intentos=1
+  OK   │ 4. un 'neighborhood' colado por el llamador se ignora
+
+=== SIN CASCADA: 'not_found' es final ===
+  OK   │ 5. vacío → not_found con UN intento (antes reintentaba)  → status=not_found, intentos=1
+  OK   │ 6. resultado lejano → out_of_city, UN intento  → status=out_of_city, intentos=1
+
+=== LO QUE NO HABÍA QUE TOCAR SIGUE INTACTO ===
+  OK   │ 7. caché: repetición sin salir a la red  → status=found, pedidos=0
+  OK   │ 8. 'unavailable' NO se cachea (el reintento del agente vuelve a salir)  → 1ª=unavailable, 2ª=found
+  OK   │ 9. HTTP 500 → unavailable  → status=unavailable
+  OK   │ 10. límite de 1 consulta/segundo respetado entre dos búsquedas  → 2201ms
+  OK   │ 11. presupuesto de 5 s con cancelación  → status=unavailable, 5006ms
+  OK   │ 12. interruptor ON → unavailable, cero pedidos  → pedidos=0
+  OK   │ 12b. se evalúa antes de la caché
+  OK   │ 13. interruptor ausente → comportamiento por defecto
+  OK   │ 14. umbral de distancia sigue en pie (centro → found)
+
+TODAS LAS COMPROBACIONES PASARON
+```
+
+La comprobación **5** es la que registra el cambio de comportamiento: antes ese caso disparaba un segundo intento, ahora `not_found` es final.
+
+---
+
+## 6. Verificación: los tres comandos
+
+### `npx tsc --noEmit`
+
 ```
 (sin salida)
 ```
+**exit code: 0**
 
-### `npm run lint` — exit code **0**
+### `npm run lint`
+
 ```
+> marka@0.1.0 lint
+> eslint
+
+
 /home/facuzavaleta89/dev/marka/src/components/properties/PropertyForm.tsx
-  232:20  warning  Compilation Skipped: Use of incompatible library
-  … React Hook Form's `useForm()` API returns a `watch()` function which cannot be memoized safely.
-  react-hooks/incompatible-library
+  269:20  warning  Compilation Skipped: Use of incompatible library
+
+This API returns functions which cannot be memoized without leading to stale UI. To prevent this, by default React Compiler will skip memoizing this component/hook. However, you may see issues if values from this API are passed to other components/hooks that are memoized.
+
+/home/facuzavaleta89/dev/marka/src/components/properties/PropertyForm.tsx:269:20
+  267 |   });
+  268 |
+> 269 |   const currency = watch("currency");
+      |                    ^^^^^ React Hook Form's `useForm()` API returns a `watch()` function which cannot be memoized safely.
+  270 |   const selectedAmenities = (watch("amenities") ?? []) as string[];
+  271 |   const lat = watch("lat");
+  272 |   const lng = watch("lng");  react-hooks/incompatible-library
 
 ✖ 1 problem (0 errors, 1 warning)
 ```
+**exit code: 0**
 
-### `npx next build` — exit code **0**
+### `npx next build`
+
 ```
-✓ Generating static pages using 3 workers (18/18) in 1315ms
+▲ Next.js 16.2.6 (Turbopack)
+- Environments: .env.local
 
-┌ ○ /                                   ├ ○ /_not-found
-├ ƒ /[slug]                             ├ ƒ /admin
-├ ○ /apple-icon.png                     ├ ƒ /dashboard
-├ ƒ /dashboard/equipo                   ├ ƒ /dashboard/leads
-├ ƒ /dashboard/perfil                   ├ ƒ /dashboard/preferencias
-├ ƒ /dashboard/propiedades              ├ ƒ /dashboard/propiedades/[id]/editar
-├ ƒ /dashboard/propiedades/nueva        ├ ƒ /dashboard/suscripcion
-├ ƒ /login                              ├ ƒ /logout
-├ ƒ /register                           └ ƒ /register/plan
+  Creating an optimized production build ...
+✓ Compiled successfully in 7.7s
+  Running TypeScript ...
+  Finished TypeScript in 8.5s ...
+  Collecting page data using 3 workers ...
+✓ Generating static pages using 3 workers (19/19) in 1189ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /[slug]
+├ ƒ /admin
+├ ƒ /api/geocode
+├ ○ /apple-icon.png
+├ ƒ /dashboard
+├ ƒ /dashboard/equipo
+├ ƒ /dashboard/leads
+├ ƒ /dashboard/perfil
+├ ƒ /dashboard/preferencias
+├ ƒ /dashboard/propiedades
+├ ƒ /dashboard/propiedades/[id]/editar
+├ ƒ /dashboard/propiedades/nueva
+├ ƒ /dashboard/suscripcion
+├ ƒ /login
+├ ƒ /logout
+├ ƒ /register
+└ ƒ /register/plan
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
 ```
+**exit code: 0**
 
-**Idéntico al paso 1.** Esperable: solo se tocaron `.md` y comentarios/objetos del
-schema, que no entra al build.
+### Comparación contra el baseline
 
-⚠ **Lo que no verifiqué:** que el schema corra en una base limpia. Los dos objetos nuevos
-son copia literal de lo medido, y el archivo mantiene su estructura de dependencias
-(función y trigger van después de `CREATE TABLE properties` y antes de los índices), pero
-**no lo ejecuté** — no ejecuto SQL de escritura.
+| Métrica | Baseline | Ahora | Veredicto |
+|---|---|---|---|
+| Errores de TypeScript | 0 | **0** | idéntico |
+| Errores de lint | 0 | **0** | idéntico |
+| Warnings de lint | exactamente 1 (`watch()` en `PropertyForm`) | **exactamente 1**, el mismo, en `PropertyForm.tsx:269` | idéntico |
+| Rutas del build | 19 | **19** | idéntico |
+
+**Idéntico en las cuatro.** Nota sobre el warning: se sacó una llamada a `watch()` de `PropertyForm` (la del barrio, que quedaron cinco), y el warning no se movió ni de línea ni de cantidad — la regla reporta una sola vez por componente, en la primera llamada (`watch("currency")`, línea 269).
 
 ---
 
-## 6 · Lo que dejé sin tocar, y por qué
+## 7. Decisiones que se apartan de las instrucciones
 
-1. **`README.md`** — es el de `create-next-app`, sin una sola línea del proyecto. Ponerlo
-   al día es una tarea propia (qué es Marka, cómo levantarlo, qué variables de entorno
-   hacen falta), no un ajuste dentro de esta. Es la puerta de entrada del repo y hoy no
-   dice nada; lo dejo señalado.
-2. **`AGENTS.md`** — 5 líneas de reglas de Next.js 16, sin relación con el dominio.
-3. **`PLAN-ORIGINAL.md` no se reescribió.** Es un documento histórico y su encabezado ya
-   avisa que su estado y su roadmap están desactualizados, remitiendo a `PENDIENTES.md` y
-   `CLAUDE.md`. Solo corregí las referencias muertas y marqué la tabla de planes.
-4. **El bloque de seed comentado del schema** sigue con el `INSERT` que no pasa `phone_wa`
-   (NOT NULL sin default) y que caería en `approval_status = 'pending'`. Ya tiene la nota
-   ⚠ que le puse en la tanda anterior; no toqué el SQL comentado en sí.
-5. **`DESIGN.md` no recibió secciones nuevas.** El aviso `Notice` está documentado en
-   `CLAUDE.md` con sus tonos, pero no lo agregué al sistema de diseño como componente
-   canónico: eso merece una pasada de diseño (dónde va cada tono, cómo convive con el
-   banner de error) y no era el alcance de esta tarea. Queda señalado acá.
-6. **Ningún archivo de código fuente**, como pediste — incluidos los comentarios de
-   código, que ya habían quedado al día en las tandas anteriores.
+**a) Bajé `sanitizeQueryText` de export a función privada del módulo.** No me lo pediste explícitamente, pero sí pediste releer el orquestador y sacar "comentarios que describen un comportamiento que ya no existe". Su comentario decía *"Se exporta porque la ruta valida la entrada con esto mismo antes de llamar"*, y eso era falso: la ruta nunca la importó (importaba los dos envoltorios) y ahora importa uno solo. Era superficie pública sin consumidor, justificada por un consumidor inexistente. La dejé privada y corregí el comentario. `tsc` confirma que nadie la usaba desde afuera.
+
+**b) Corregí los datos del caso medido en el comentario, respecto de cómo venían en el enunciado.** El comentario del código dice ahora "otra ciudad a 158 km (Añatuya)" en vez de "otra provincia", y "Cabildo → no encuentra nada" en vez de "encuentra bien", porque es lo que devolvió Nominatim cuando lo reproduje. Un comentario cuyo único trabajo es impedir una regresión pierde autoridad si sus números no aguantan una verificación. La conclusión es la misma y más fuerte.
+
+**c) Dejé una advertencia corta en `GeocodeQuery`** (`types.ts`) además del comentario largo en el orquestador: *"⚠ NO agregar el barrio acá"*, con puntero al porqué. Motivo: el tipo es el lugar donde alguien iría a agregar el campo, y el comentario largo está en otro archivo. Son tres líneas, no duplican la explicación.
+
+**d) Puse punteros al comentario canónico desde `nominatim.ts`, `route.ts` y `PropertyForm.tsx`,** en vez de repetir la explicación. La explicación completa vive en un solo lugar (`geocodeAddress`); los demás archivos dicen "el barrio no va, ver ahí". Ya se agregó dos veces: el que lo encuentre por cualquiera de las cuatro puertas tiene que llegar a la medición.
+
+---
+
+## 8. Restos que encontré y no pude sacar
+
+**Ninguno en el camino de geocodificación.** El `grep` de `neighborhood` sobre `src/lib/geocoding/`, `src/app/api/geocode/` y `AddressSearchButton.tsx` devuelve **0 ocurrencias de código** (solo quedan las menciones en comentarios, que están ahí a propósito).
+
+Tres cosas que quedan anotadas, ninguna es un resto de esta tarea:
+
+1. **El límite de 1/s y la caché siguen siendo por proceso.** Sin cambios. La buena noticia de esta tarea es que **el peor caso mejoró**: al desaparecer la cascada, una búsqueda vuelve a consumir como máximo **un** turno en vez de dos.
+
+2. **El barrio sigue participando del filtro del mapa público** (`useProperties.ts:76-77`, `filters.neighborhood` con un `ilike`). Eso **no** es geocodificación: filtra contra el texto que la propia agencia cargó en su propia base, así que el problema de "OSM lo llama distinto" no aplica. No se tocó y no debería tocarse.
+
+3. **`location_source` no distingue si una sugerencia salió de una consulta con barrio o sin él.** Las propiedades cargadas mientras el barrio participaba pueden tener un `suggested` cuya coordenada vino de una consulta peor. Son datos de prueba y hoy no hay ninguna propiedad real cargada, así que no hay nada que corregir; lo dejo dicho por si al analizar los primeros datos reales aparece algo raro en las cargas viejas.

@@ -57,6 +57,45 @@ export type TenantType = "individual" | "agency";
 // 'pending'. No existe un estado de rechazo permanente.
 export type ApprovalStatus = "pending" | "approved" | "rejected";
 
+// De dónde salió la coordenada final de una propiedad (columna
+// properties.location_source, CHECK 'manual' | 'suggested', nullable para las
+// filas anteriores a esta feature).
+//   - 'manual':    el agente arrastró el pin hasta el punto final.
+//   - 'suggested': el buscador de direcciones propuso el punto y el agente lo
+//                  confirmó TAL CUAL, sin moverlo. Si después lo arrastra, el
+//                  origen vuelve a 'manual': vale la última acción.
+// Existe SOLO para medir a posteriori si las ubicaciones sugeridas quedaron
+// peor puestas que las arrastradas. NO gatea ni condiciona nada en la app: si
+// alguna pantalla empieza a ramificar por este valor, es un bug de diseño.
+export type LocationSource = "manual" | "suggested";
+
+// Desenlaces posibles de una búsqueda de dirección (ver src/lib/geocoding).
+// Los cuatro son estados normales del flujo, no excepciones: en TODOS el
+// camino manual (arrastrar el pin) sigue disponible intacto.
+//   - 'found':       hay una coordenada y está dentro de la ciudad.
+//   - 'not_found':   el servicio respondió, pero sin resultados utilizables.
+//   - 'out_of_city': hubo resultado pero cayó lejos del centro de la ciudad
+//                    (típicamente una calle homónima en otra provincia).
+//   - 'unavailable': el servicio falló, tardó de más o no está configurado.
+export type GeocodeStatus =
+  | "found"
+  | "not_found"
+  | "out_of_city"
+  | "unavailable";
+
+// Contrato de respuesta de la ruta /api/geocode. Es una forma PROPIA y acotada:
+// nunca se le devuelve al cliente la respuesta ni el error crudos del servicio
+// externo.
+export type GeocodeResponse =
+  | {
+      status: "found";
+      lat: number;
+      lng: number;
+      /** Etiqueta legible de lo que encontró el proveedor, para mostrarla. */
+      label: string | null;
+    }
+  | { status: Exclude<GeocodeStatus, "found"> };
+
 // Amenities disponibles en el sistema
 export type Amenity =
   | "pileta"
@@ -254,6 +293,11 @@ export interface Property {
   country: string;
   lat: number;
   lng: number;
+  // Origen de la coordenada de arriba. Es un dato de MEDICIÓN, no de negocio:
+  // sirve para comparar después la calidad de las ubicaciones sugeridas contra
+  // las arrastradas a mano. Nullable: las propiedades cargadas antes de que
+  // existiera el buscador de direcciones no lo tienen.
+  location_source: LocationSource | null;
 
   // Extras
   amenities: Amenity[];

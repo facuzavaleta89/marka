@@ -400,6 +400,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=     # Requerido: registro de agentes + suscripciones
 ADMIN_USER_ID=                 # Requerido para /admin: auth.uid() (UUID) del dueño de la plataforma. Server-side (sin NEXT_PUBLIC_). Fail-closed: si falta, /admin deniega a todos
 NEXT_PUBLIC_MAPTILER_KEY=      # Opcional
+GEOCODING_USER_AGENT=          # Opcional pero MUY recomendado en producción: User-Agent con contacto para el buscador de direcciones (política de Nominatim). Server-side (sin NEXT_PUBLIC_). Si falta, se usa un default que identifica la app pero no lleva dirección de contacto
+GEOCODING_SIMULATE_OUTAGE=     # ⚠ SOLO PRUEBA LOCAL, NUNCA EN PRODUCCIÓN. Server-side (sin NEXT_PUBLIC_). Con cualquier valor distinto de vacío/"0"/"false", TODA búsqueda de direcciones devuelve "servicio no disponible" sin salir a la red. Existe para verificar a mano que una caída del buscador no rompe el alta ni la edición de propiedades (cortar internet no sirve: también corta Supabase y entonces no se puede guardar nada). Ausente = apagado
 ```
 
 ---

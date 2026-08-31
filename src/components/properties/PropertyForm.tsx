@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
+import { Check } from "lucide-react";
 import { useForm, Controller, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -18,13 +19,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ImageUploader } from "./ImageUploader";
+import { AddressSearchButton } from "./AddressSearchButton";
 import {
   createPropertyAction,
   updatePropertyAction,
 } from "@/app/(agent)/dashboard/propiedades/actions";
 import { cn } from "@/lib/utils";
 import { AMENITY_LABELS } from "@/lib/utils/labels";
-import type { Property, PropertyImage, Amenity } from "@/types";
+import { roundCoords, type Coords } from "@/lib/utils/coords";
+import type { LocationChangeCause } from "./LocationPicker";
+import type {
+  Property,
+  PropertyImage,
+  Amenity,
+  LocationSource,
+} from "@/types";
 
 // LocationPicker cargado solo en el cliente (Leaflet usa window)
 const LocationPicker = dynamic(() => import("./LocationPicker"), { ssr: false });
@@ -156,9 +165,37 @@ export function PropertyForm({
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  // En edición el pin ya tiene una ubicación real; en alta hay que colocarlo.
-  const [pinMoved, setPinMoved] = useState(mode === "edit");
-  const [pinError, setPinError] = useState(false);
+
+  // ─── Confirmación de la ubicación (ÚNICA FUENTE DE VERDAD) ───
+  //
+  // Antes esto eran DOS estados en dos componentes que no se conocían: un
+  // `pinMoved` acá y un `hasBeenMoved` adentro del LocationPicker. Y la regla
+  // era "el pin se movió alguna vez", irreversible: nada la devolvía a falso.
+  // Eso permitía un bug real, sin ningún buscador de por medio — arrastrar el
+  // pin (regla satisfecha), después tocar "Centrar" (el pin vuelve al centro de
+  // la ciudad sin tocar el estado) y publicar: la propiedad quedaba justo en el
+  // centro de la ciudad, que es lo que la regla existía para impedir.
+  //
+  // La regla ahora es "la ubicación ACTUAL está confirmada", y vive solo acá:
+  //   - arrastrar el pin           → confirma  (acto deliberado sobre un punto)
+  //   - "Centrar" en la ciudad     → DESCONFIRMA (es volver al punto de partida)
+  //   - sugerencia del buscador    → DESCONFIRMA (la propuso una máquina)
+  //   - botón "Confirmar ubicación"→ confirma
+  //
+  // En edición nace confirmada: la propiedad ya tenía una ubicación real y no
+  // tiene sentido obligar a recolocar el pin para cambiarle el precio. Pero si
+  // durante la edición la coordenada cambia por sugerencia o por centrar, se
+  // desconfirma igual que en el alta.
+  const [locationConfirmed, setLocationConfirmed] = useState(mode === "edit");
+  // Se enciende solo si se intentó enviar sin confirmar.
+  const [locationError, setLocationError] = useState(false);
+
+  // Origen de la coordenada final, para medición posterior (no gatea nada).
+  // En edición arranca con lo que tenga la propiedad; las cargadas antes de
+  // esta feature no tienen valor y se asumen manuales, que es lo que eran.
+  const [locationSource, setLocationSource] = useState<LocationSource>(
+    mode === "edit" ? initialData?.location_source ?? "manual" : "manual"
+  );
 
   // UUID estable para el modo creación — permite subir imágenes antes de guardar
   const propertyId = useMemo(
@@ -233,6 +270,7 @@ export function PropertyForm({
   const selectedAmenities = (watch("amenities") ?? []) as string[];
   const lat = watch("lat");
   const lng = watch("lng");
+  const address = watch("address") ?? "";
 
   const toggleAmenity = (amenity: string) => {
     const next = selectedAmenities.includes(amenity)
@@ -241,10 +279,45 @@ export function PropertyForm({
     setValue("amenities", next);
   };
 
+  // ─── Movimientos del pin ──────────────────────────────────────
+
+  const applyCoords = (coords: Coords) => {
+    const rounded = roundCoords(coords);
+    setValue("lat", rounded.lat);
+    setValue("lng", rounded.lng);
+  };
+
+  // Cambio originado DENTRO del mapa: arrastre o botón "Centrar".
+  const handlePickerChange = (coords: Coords, cause: LocationChangeCause) => {
+    applyCoords(coords);
+    // Arrastrar es confirmar; centrar en la ciudad es deshacer. En los dos
+    // casos el origen es manual: "suggested" se reserva para una coordenada que
+    // propuso el buscador y quedó tal cual.
+    setLocationConfirmed(cause === "drag");
+    setLocationSource("manual");
+    if (cause === "drag") setLocationError(false);
+  };
+
+  // Sugerencia del buscador de direcciones: mueve el pin pero NO confirma.
+  // Hasta que el agente confirme (o arrastre el pin él mismo) el envío sigue
+  // bloqueado — si esto confirmara, la garantía se satisfaría sola y la feature
+  // empeoraría la calidad de los datos en vez de mejorarla.
+  const handleSuggestion = (coords: Coords) => {
+    applyCoords(coords);
+    setLocationConfirmed(false);
+    setLocationSource("suggested");
+  };
+
+  const confirmLocation = () => {
+    setLocationConfirmed(true);
+    setLocationError(false);
+  };
+
   const onSubmit = async (data: FormValues) => {
-    // El agente debe colocar el pin en el mapa (no dejar el centro de la ciudad)
-    if (!pinMoved) {
-      setPinError(true);
+    // La ubicación actual tiene que estar confirmada (arrastrada a mano o
+    // confirmada explícitamente después de una sugerencia).
+    if (!locationConfirmed) {
+      setLocationError(true);
       return;
     }
 
@@ -278,6 +351,7 @@ export function PropertyForm({
         neighborhood: data.neighborhood ?? null,
         lat: data.lat,
         lng: data.lng,
+        location_source: locationSource,
         amenities: data.amenities as Amenity[],
         year_built: data.year_built ?? null,
         is_featured: data.is_featured,
@@ -310,6 +384,7 @@ export function PropertyForm({
         neighborhood: data.neighborhood ?? null,
         lat: data.lat,
         lng: data.lng,
+        location_source: locationSource,
         amenities: data.amenities as Amenity[],
         year_built: data.year_built ?? null,
         is_featured: data.is_featured,
@@ -565,22 +640,48 @@ export function PropertyForm({
           </Field>
         </FieldRow>
 
+        {/* Atajo: ubicar el pin desde la dirección escrita. La búsqueda sale de
+            un click explícito (nunca del tipeo) y lo que devuelve es una
+            SUGERENCIA: mueve el pin y deja la ubicación sin confirmar.
+            Solo se manda la DIRECCIÓN: el barrio de arriba no participa de la
+            búsqueda (ver el comentario de `geocodeAddress`), aunque se sigue
+            guardando en la propiedad como siempre. */}
+        <AddressSearchButton
+          address={address}
+          onSuggestion={handleSuggestion}
+          disabled={submitting}
+        />
+
         <LocationPicker
           value={{ lat, lng }}
-          onChange={({ lat: newLat, lng: newLng }) => {
-            setValue("lat", newLat);
-            setValue("lng", newLng);
-          }}
+          onChange={handlePickerChange}
           cityCenter={cityCenter}
-          error={pinError}
-          onMoved={() => {
-            setPinMoved(true);
-            setPinError(false);
-          }}
+          error={locationError}
         />
-        {pinError && (
+
+        {/* Confirmación de la ubicación. El botón es secundario a propósito: el
+            terracota está reservado para el CTA de publicar y dos botones
+            terracota compitiendo confunden cuál es el paso final. */}
+        {locationConfirmed ? (
+          <p className="inline-flex items-center gap-1.5 font-sans text-xs text-success">
+            <Check size={14} />
+            Ubicación confirmada
+          </p>
+        ) : (
+          <button
+            type="button"
+            onClick={confirmLocation}
+            className="inline-flex items-center gap-1.5 h-10 px-4 font-sans text-sm font-medium text-black bg-transparent border border-stone rounded-md transition-colors duration-[120ms] hover:bg-mist hover:border-graphite"
+          >
+            <Check size={16} />
+            Confirmar esta ubicación
+          </button>
+        )}
+
+        {locationError && (
           <p className="font-sans text-xs text-error">
-            Arrastrá el pin hasta la ubicación exacta del inmueble
+            Confirmá la ubicación antes de guardar: arrastrá el pin hasta el
+            punto exacto, o buscá la dirección y confirmá la sugerencia.
           </p>
         )}
       </Section>
