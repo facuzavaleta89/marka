@@ -38,6 +38,15 @@
 --     check_property_limit() actualizada (sin fila de suscripción → límite 0):
 --     YA MIGRADOS (28 ago 2026). Son los DOS gates de publicación, incluidos
 --     abajo con el porqué de que sean triggers y no policies.
+--   * location_source en properties: YA MIGRADO por ALTER (31 ago 2026), junto
+--     con el atajo que sugiere la ubicación del pin desde la dirección. Es un
+--     dato de MEDICIÓN y no gatea nada. Incluido abajo, en el bloque de
+--     ubicación de la tabla. Ojo con el ORDEN de las columnas: en la base real
+--     quedó última (posición 34), porque se agregó por ALTER; acá va junto a
+--     lat/lng, que es donde se entiende. El orden de columnas no cambia el
+--     comportamiento (todos los INSERT son por nombre, y los únicos select('*')
+--     del código van con head:true, o sea que cuentan filas sin traer columnas),
+--     pero conviene saberlo si algún día se comparan las dos definiciones.
 -- ============================================================
 
 -- Extensiones necesarias (PostGIS ya viene activado en Supabase)
@@ -242,6 +251,11 @@ CREATE TABLE properties (
   -- Ubicación
   -- IMPORTANTE: address es escrito por el agente, pero lat/lng se colocan
   -- MANUALMENTE moviendo un pin en el mapa (no por geocoding automático).
+  -- Esa regla NO se derogó, se refinó (31 ago 2026): el formulario tiene un
+  -- atajo OPCIONAL que, a pedido explícito del agente, sugiere una ubicación a
+  -- partir de la dirección. Sigue sin haber geocodificación automática (nada
+  -- busca solo) y la coordenada que se guarda es siempre la que el agente
+  -- confirmó. Qué camino se usó queda registrado en location_source, abajo.
   address          TEXT NOT NULL,
   neighborhood     TEXT,
   city             TEXT NOT NULL,    -- nombre legible; city_id es la relación real
@@ -249,6 +263,30 @@ CREATE TABLE properties (
   country          TEXT NOT NULL DEFAULT 'Argentina',
   lat              DOUBLE PRECISION NOT NULL,
   lng              DOUBLE PRECISION NOT NULL,
+  -- ── Origen de la coordenada (31 ago 2026, YA MIGRADO por ALTER) ────────
+  -- De dónde salió el lat/lng de arriba:
+  --   'manual'    → el agente arrastró el pin hasta el punto final.
+  --   'suggested' → la ubicación la propuso el geocodificador a partir de la
+  --                 dirección escrita, y el agente la confirmó SIN moverla.
+  -- En los DOS casos el pin manual sigue siendo la fuente de verdad: la
+  -- sugerencia es solo un punto de partida y no se guarda nada que el agente no
+  -- haya confirmado. 'suggested' NO significa "sin revisar": significa
+  -- "propuesta y aceptada tal cual".
+  -- Vale la ÚLTIMA acción: si el agente pide una sugerencia y después arrastra
+  -- el pin, la coordenada queda como 'manual'.
+  --
+  -- NULLABLE a propósito: las propiedades cargadas antes de que existiera el
+  -- buscador de direcciones no tienen forma de saberlo, y ponerles un valor
+  -- sería inventar el dato. Por eso el CHECK admite NULL explícitamente y la
+  -- columna no tiene DEFAULT (que también sería inventarlo, en cada insert).
+  --
+  -- ⚠ Existe SOLO para poder MEDIR más adelante si las ubicaciones sugeridas
+  -- quedaron peor puestas que las arrastradas a mano. NO gatea ni condiciona
+  -- nada en la aplicación: ninguna query, policy, trigger ni pantalla ramifica
+  -- por este valor, y no debe hacerlo. Si alguna vez condiciona una decisión,
+  -- deja de medir el comportamiento y pasa a alterarlo.
+  location_source  TEXT
+                   CHECK (location_source IS NULL OR location_source IN ('manual','suggested')),
 
   -- Columna geográfica generada automáticamente desde lat/lng
   location         GEOGRAPHY(POINT, 4326)
