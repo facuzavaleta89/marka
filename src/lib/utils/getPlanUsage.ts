@@ -1,10 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { PlanUsage, SubscriptionPlan } from "@/types";
+import type { PlanUsage, SubscriptionPlan, SubscriptionStatus } from "@/types";
 import { PLANS } from "@/types";
 
 // Fila de suscripción que consultamos (subset de columnas).
 type SubscriptionRow = {
   plan: SubscriptionPlan;
+  status: SubscriptionStatus;
   property_limit: number;
   has_featured: boolean;
   has_white_label: boolean;
@@ -27,7 +28,7 @@ export async function getPlanUsage(
   const [{ data: sub }, { count }] = await Promise.all([
     supabase
       .from("subscriptions")
-      .select("plan, property_limit, has_featured, has_white_label, has_metrics")
+      .select("plan, status, property_limit, has_featured, has_white_label, has_metrics")
       .eq("agency_id", agencyId)
       .single(),
 
@@ -52,6 +53,10 @@ export async function getPlanUsage(
   // Sin suscripción → default al plan free (límite y entitlements de PLANS.free).
   return {
     plan: subscription?.plan ?? "free",
+    // Sin fila de suscripción se reporta 'active' a propósito: ese caso ya lo
+    // bloquea el límite 0, y declararlo inactivo cambiaría el motivo que se le
+    // muestra al agente sin que su situación haya cambiado.
+    status: subscription?.status ?? "active",
     used,
     limit,
     available,

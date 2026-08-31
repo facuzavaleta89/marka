@@ -1,258 +1,212 @@
-# Informe — Alinear el sitio de marca (`/[slug]`) con la regla de visibilidad pública
+# Informe — Tres correcciones sobre la baja de agencias
 
-> Modo ejecución. Se modificaron **2 archivos** del proyecto (más este informe).
-> No se ejecutó ningún comando de git ni ningún SQL de escritura: los cambios de base ya
-> estaban aplicados y solo se **midieron** por MCP en solo lectura. Fecha: 31 ago 2026.
+> Modo ejecución. **5 archivos modificados**, ninguno creado. No se ejecutó ningún comando de
+> git ni ningún SQL de escritura. Fecha: 31 ago 2026.
 
----
-
-## 1. Lo medido en la base
-
-### 1.1 La función
-
-`pg_get_functiondef`, textual:
-
-```sql
-CREATE OR REPLACE FUNCTION public.agency_is_publicly_visible(target_agency_id uuid)
- RETURNS boolean
- LANGUAGE sql
- STABLE SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-  SELECT EXISTS (
-    SELECT 1
-    FROM agencies a
-    JOIN subscriptions s ON s.agency_id = a.id
-    WHERE a.id = target_agency_id
-      AND a.approval_status = 'approved'
-      AND s.status = 'active'
-      AND s.plan <> 'free'
-  );
-$function$
-```
-
-| Propiedad | Valor medido |
-|---|---|
-| Argumentos | `target_agency_id uuid` |
-| Retorna | `boolean` |
-| Volatilidad | `s` = **STABLE** ✅ |
-| `prosecdef` | **true** = SECURITY DEFINER ✅ |
-| `proconfig` | `search_path=public` |
-| Owner | `postgres` |
-
-**Coincide con lo descrito**, y con un extra que no mencionaste y que importa: la función
-lleva `SET search_path TO 'public'`. En una función `SECURITY DEFINER` eso no es decorativo —
-sin fijar el `search_path`, quien pueda crear objetos en un esquema anterior en la ruta de
-búsqueda podría interponer una tabla `agencies` propia y hacer que la función responda lo que
-él quiera, con los permisos del owner. Está bien puesto.
-
-Permisos de ejecución medidos (`has_function_privilege`):
-
-| Rol | EXECUTE |
-|---|---|
-| `anon` | ✅ |
-| `authenticated` | ✅ |
-| `service_role` | ✅ |
-| `postgres` | ✅ |
-
-### 1.2 Las tres policies
-
-Medidas con `pg_policy` + `pg_get_expr`. Las tres invocan la función:
-
-**`properties` · `Public read active properties`** (SELECT, PUBLIC, permissive) — `qual`:
-```sql
-((status = 'active'::text) AND agency_is_publicly_visible(agency_id))
-```
-
-**`property_images` · `Public read property images`** (SELECT, PUBLIC, permissive) — `qual`:
-```sql
-(EXISTS ( SELECT 1
-   FROM properties p
-  WHERE ((p.id = property_images.property_id) AND (p.status = 'active'::text) AND agency_is_publicly_visible(p.agency_id))))
-```
-
-**`leads` · `Public insert lead`** (INSERT, PUBLIC, permissive) — `with_check`:
-```sql
-(EXISTS ( SELECT 1
-   FROM properties p
-  WHERE ((p.id = leads.property_id) AND (p.status = 'active'::text) AND (p.agent_id = leads.agent_id) AND (p.agency_id = leads.agency_id) AND agency_is_publicly_visible(p.agency_id))))
-```
-
-Las policies del área privada quedaron **sin tocar**, como corresponde: `Agency members read
-agency properties` (`agency_id IN (SELECT agents.agency_id FROM agents WHERE agents.id =
-auth.uid())`), `Agent manages own properties` (`agent_id = auth.uid()`) y `Agency members read
-own subscription`. Una agencia que dejó de pagar sigue entrando a su panel y viendo todo lo suyo.
-
-**No hay diferencias con lo que describiste. No hubo que parar.**
-
-### 1.3 Verificación del efecto (con una salvedad honesta)
-
-No pude reproducir tu verificación ejecutando como visitante anónimo: el usuario de solo
-lectura del MCP no puede cambiar de rol (`ERROR: 42501: permission denied to set role "anon"`)
-y **tampoco puede ejecutar la función** (`ERROR: 42501: permission denied for function
-agency_is_publicly_visible` — el `GRANT EXECUTE` está para `anon`/`authenticated`/`service_role`,
-no para el rol de lectura del MCP).
-
-Lo que sí hice fue evaluar **las mismas condiciones del cuerpo de la función** con SQL propio,
-y el resultado coincide con el tuyo: **10 de las 12 propiedades activas quedan visibles**, y las
-2 ocultas son de agencias en plan `free` (`Inmobiliaria Gaio`, con la suscripción en `pending`
-esperando activación de `inicial`; e `Inmobiliaria Zavaleta2`, en `free`/`active`). Los números
-de esta parte del informe salen de esa evaluación equivalente, no de una llamada a la función.
+> ⚠ **Dos cosas se apartan de lo que pediste, y las dos porque medí antes de tocar:**
+> el orden del helper **ya era el correcto** —el bug estaba en otro lado, en un consumidor— y
+> el orden de los triggers en la base **también**, así que no hay SQL para correr. El detalle
+> está en los puntos 1 y 2.
 
 ---
 
-## 2. Archivos modificados
+## 1. El orden del helper: ya era correcto, el bug era otro
 
-| Archivo | Qué cambió |
-|---|---|
-| `src/lib/utils/resolveAgencyBySlug.ts` | Se agregó el **tercer gate** de visibilidad pública (llamada a `agency_is_publicly_visible` vía RPC, en un helper privado `isAgencyPubliclyVisible` que falla cerrado), más los comentarios que explican por qué el service role no queda cubierto por las policies y por qué `has_white_label` no alcanza. |
-| `src/app/(agent)/admin/page.tsx` | La StatsCard "Propiedades activas" ahora lleva `description="Cargadas, incluso las ocultas al público"`, con un comentario que explica que cuenta con service role y por qué el número no coincide con el del mapa. |
+### Lo que medí
 
-**No se creó ningún archivo nuevo** y **no se cambió la forma de `AgencyResolution`**: se
-reusó el estado `disabled` que ya existía, como pediste.
+`src/lib/utils/getPublishBlock.ts` **ya evaluaba los motivos en el orden que pedías**:
+
+```
+1. approvalStatus !== "approved"                     → not_approved
+2. status ∈ ("canceled", "past_due")                 → subscription_inactive
+3. !planUsage.canCreate                              → plan_limit
+```
+
+O sea que `getPublishBlock` devolvía `subscription_inactive` con el mensaje correcto
+(*"Tu suscripción está dada de baja. Escribinos para reactivarla."*). **No hubo nada que
+reordenar.**
+
+### Dónde estaba el bug de verdad
+
+En **`src/components/dashboard/NewPropertyButton.tsx:51-55`**, que no usaba `block.message`
+sino que elegía un componente con un **ternario binario**:
+
+```tsx
+{block.reason === "not_approved" ? (
+  <NotApprovedMessage approvalStatus={approvalStatus} />
+) : (
+  <PlanLimitMessage planUsage={planUsage} />   // ← todo lo que no sea not_approved
+)}
+```
+
+Cuando se agregó el motivo `subscription_inactive`, **cayó en el `else`** y se renderizó
+`PlanLimitMessage`, que además arma su texto por su cuenta: con plan `free` calcula el
+siguiente plan y escribe *"Alcanzaste el límite de tu plan Gratis. Pasá a Inicial para publicar
+más. **Ver planes**"*. Es exactamente el mensaje que viste, con el agravante del enlace a la
+lista de planes.
+
+El bloqueo era **correcto** (la agencia no podía publicar); lo que estaba mal era solo el
+cartel. Y por eso el síntoma aparecía en el botón y no en otros lados: los otros tres puntos de
+entrada (`dashboard/page.tsx:168`, `PropertiesTable.tsx:171`, y el `redirect` de
+`nueva/page.tsx`) usan `publishBlock.message`, o sea el string que arma el helper, así que
+**ya mostraban el mensaje correcto**. Solo el botón se armaba el suyo.
+
+### Cómo quedó
+
+El ternario pasó a ser un **switch exhaustivo** con guarda `never`:
+
+```tsx
+function BlockMessage({ reason, planUsage, approvalStatus }) {
+  switch (reason) {
+    case "not_approved":          return <NotApprovedMessage approvalStatus={approvalStatus} />;
+    case "subscription_inactive": return <SubscriptionInactiveMessage status={planUsage.status} />;
+    case "plan_limit":            return <PlanLimitMessage planUsage={planUsage} />;
+    default: {
+      const exhaustive: never = reason;
+      return exhaustive;
+    }
+  }
+}
+```
+
+**Agregar un motivo nuevo a `PublishBlockReason` sin darle mensaje ya no compila.** Es lo que
+evita que esto se repita: el problema no fue el orden, fue que un consumidor tenía un `else`
+que se tragaba lo que no conocía.
+
+El mensaje nuevo **no ofrece un upgrade**: manda a `/dashboard/suscripcion`, donde ahora está
+el aviso completo (corrección 2), porque lo que destraba a esa agencia es reactivar lo que ya
+tenía.
 
 ---
 
-## 3. Cómo se evalúa la regla en el helper, y por qué así
+## 2. El orden de los triggers: medido, ya es correcto. No hay SQL
 
-### La forma elegida: preguntarle a la base (RPC), no reescribir las condiciones
+Medido con `pg_get_triggerdef` sobre `properties`, ordenado por nombre:
+
+| Trigger | Definición |
+|---|---|
+| `trg_check_agency_approved` | `BEFORE INSERT ... EXECUTE FUNCTION check_agency_approved()` |
+| `trg_check_agency_subscription` | `BEFORE INSERT ... EXECUTE FUNCTION check_agency_subscription()` |
+| `trg_check_property_limit` | `BEFORE INSERT OR UPDATE ... EXECUTE FUNCTION check_property_limit()` |
+| `trg_properties_updated_at` | `BEFORE UPDATE ... EXECUTE FUNCTION update_updated_at()` |
+
+**El trigger de suscripción está aplicado** (corriste el SQL de la tanda anterior). Y el orden
+alfabético da exactamente la prioridad pedida:
+
+```
+trg_check_agency_approved  <  trg_check_agency_subscription  <  trg_check_property_limit
+        (1) aprobación             (2) suscripción                   (3) cupo
+```
+
+Prefijo común `trg_check_agency_`, y después `approved` < `subscription` porque `'a' < 's'`;
+y `trg_check_agency_*` < `trg_check_property_*` porque `'a' < 'p'`.
+
+**Conclusión: el orden ya es correcto y no toqué nada.** No hay archivo con SQL para correr en
+esta tanda.
+
+⚠ **Una asimetría real que sí encontré, y que no es de orden sino de alcance:**
+`trg_check_agency_subscription` es **BEFORE INSERT**, mientras que `trg_check_property_limit`
+es **BEFORE INSERT OR UPDATE**. O sea que **re-activar una propiedad pausada** (status
+`paused` → `active`) de una agencia dada de baja **no pasa por el trigger de suscripción**:
+solo por el de cupo. Fue una decisión deliberada de la tanda anterior (*"editar una propiedad
+ya cargada sigue permitido aunque la agencia se dé de baja después"*), y ampliarla es una
+decisión de producto, no una corrección de orden — así que la dejé y la anoto en el punto 7.
+
+---
+
+## 3. La pantalla de suscripción del agente
+
+Archivo: `src/components/dashboard/SubscriptionContent.tsx`.
+
+**La causa exacta:** la pantalla calculaba `hasPendingRequest = status === "pending" && ...` y
+**nada más**. `canceled` y `past_due` caían en la misma rama que una suscripción sana.
+
+### Cómo quedó
+
+Se agregó un solo predicado —`isInactive = status === "canceled" || status === "past_due"`—
+del que cuelgan tres cambios. **`pending` no entra**, como pediste.
+
+**a. Un `Notice` arriba de todo**, con el componente reutilizable que ya existía
+(`src/components/feedback/Notice.tsx`), **tono `warning`, no `error`**. El propio componente
+documenta los tonos: `error` es *"algo salió mal de verdad"*, y acá no salió mal nada — puede
+ser una baja acordada, una prueba que terminó o un pago pendiente, y el sistema no sabe cuál.
+`warning` es *"requiere atención o acción de quien lo lee"*, que es exactamente el caso.
+
+El texto, con título según el estado (*"Tu suscripción está dada de baja"* / *"...está
+vencida"*):
+
+> Mientras tanto, tus propiedades no se muestran en el mapa público, tu sitio propio está
+> apagado si tenías uno, y no podés publicar nuevas.
+>
+> **Tus datos están intactos:** tus propiedades, tus fotos y tu equipo siguen acá y volvés a
+> verlos publicados apenas se reactive. Escribinos a hola@marka.app y lo resolvemos.
+
+Dice las tres consecuencias concretas, dice qué **no** se perdió, y da la salida. No acusa a
+nadie ni usa la palabra "impago".
+
+**b. La fecha de vencimiento se oculta** mientras la suscripción no rige. "Plan activo hasta el
+X" de un plan dado de baja es justo la contradicción que esto viene a sacar.
+
+**c. Los botones de mejora de plan: los saqué.** Dos motivos, y el segundo no es de tono:
+
+1. Es la misma mentira que el mensaje de cupo: lo que destraba a esa agencia es **reactivar lo
+   que ya tenía**, no comprar un plan mayor.
+2. **Era un agujero real, no cosmético.** `requestPlanUpgradeAction`
+   (`suscripcion/actions.ts:37-41`) escribe `status: "pending"` **sin mirar el estado previo**.
+   Una agencia en `canceled` que tocaba "Pasá a Inicial" pasaba a `pending`, que **no está en
+   la lista de estados que bloquean la publicación** → **se sacaba la baja sola y volvía a
+   poder publicar**, sin que el dueño hiciera nada. (Sus propiedades seguían ocultas, porque
+   `agency_is_publicly_visible` exige `active`, así que quedaba en un estado incoherente: podía
+   cargar propiedades que nadie iba a ver.)
+
+Por eso **también agregué el corte en la server action**: si la suscripción está `canceled` o
+`past_due`, el pedido se rechaza con *"Tu suscripción no está activa. Escribinos para
+reactivarla antes de cambiar de plan."* Esconder los botones sin eso habría sido cosmético —
+una server action se invoca sin pasar por el render, que es el criterio que usa todo el repo.
+Lo marco como decisión propia en el punto 6.
+
+---
+
+## 4. La comparación del nombre
+
+**La causa exacta:** el `Label` de este preset de shadcn lleva **`uppercase` en su clase base**
+(`src/components/ui/label.tsx`), y el nombre estaba **adentro** del `<Label>`. Así que el cartel
+decía `ESCRIBÍ INMOBILIARIA PRUEBA PARA CONFIRMAR` mientras la comparación exigía
+`Inmobiliaria Prueba` exacto. Escribir lo que la pantalla indicaba no funcionaba.
+
+**En el servidor** (`admin/actions.ts`), helper nuevo, que es la comparación que cuenta —
+contra el nombre **real leído de la base**:
 
 ```ts
-async function isAgencyPubliclyVisible(
-  supabase: ReturnType<typeof createAdminClient>,
-  agencyId: string
-): Promise<boolean> {
-  const { data, error } = await supabase.rpc("agency_is_publicly_visible", {
-    target_agency_id: agencyId,
-  });
-
-  if (error) return false;
-  return data === true;
+function nameMatches(typed: string, actual: string): boolean {
+  const normalize = (value: string) => value.trim().toLocaleLowerCase("es-AR");
+  return normalize(typed) === normalize(actual) && actual.trim() !== "";
 }
 ```
 
-y en el flujo, después de los dos gates que ya estaban:
+**En el cliente** (`AgenciesTable.tsx`, `DeleteAgencyPanel`), el mismo criterio, solo para
+habilitar el botón:
 
 ```ts
-if (row.approval_status !== "approved") {
-  return { status: "disabled" };
-}
-if (subscription?.has_white_label !== true || !city) {
-  return { status: "disabled" };
-}
-if (!(await isAgencyPubliclyVisible(supabase, row.id))) {
-  return { status: "disabled" };
-}
+const matches =
+  typed.trim().toLocaleLowerCase("es-AR") ===
+  row.name.trim().toLocaleLowerCase("es-AR");
 ```
 
-### Por qué la RPC y no repetir las condiciones en la consulta
+**Qué se relaja y qué no:** se ignoran mayúsculas y espacios de los bordes. **No** se relajan
+los espacios internos ni los acentos: sigue teniendo que ser el nombre de esa agencia, no algo
+parecido. (El `&& actual.trim() !== ""` del server evita el caso patológico de una agencia con
+nombre vacío, donde un input vacío "coincidiría".)
 
-Vos mismo pusiste el criterio de decisión: *"la regla tiene que decir lo mismo en los dos
-lugares y si mañana cambia no puede quedar una mitad desactualizada."* Con eso, la comparación
-es corta:
+**El cartel** también cambió: el nombre salió de adentro del `<Label>` —que lo pasaba a
+mayúsculas— y ahora va en un `<p>` aparte, **tal cual está guardado**, con la aclaración
+explícita:
 
-- **Repitiendo las condiciones en TypeScript** hubiera salido gratis en latencia (la consulta
-  que ya existe podía traer `subscription.status` y `subscription.plan` en el mismo embed, sin
-  round trip extra). Pero la regla quedaría escrita **dos veces**: una en la función SQL que
-  usan las tres policies, otra en este archivo. El día que cambie —el ejemplo realista es que
-  un `past_due` pase a tener período de gracia— habría que acordarse de tocar las dos. Y el
-  síntoma de olvidarse es silencioso y feo: el mapa mostrando propiedades de una agencia cuyo
-  sitio de marca está apagado, o al revés. Nadie se entera hasta que un cliente lo reporta.
-- **Con la RPC**, la condición vive en **un solo lugar** (la función), y los cuatro consumidores
-  —las tres policies y este helper— la leen de ahí. Cambiar la regla es cambiar la función.
-
-**El precio es un viaje extra a la base**, y lo acoté a propósito:
-
-- Se paga **solo si los otros dos gates pasan**. Los gates 1 y 2 se evalúan sobre datos que ya
-  están en la fila (gratis), y cortan antes; con los datos de hoy, 9 de 11 agencias ni siquiera
-  llegan a la llamada.
-- **No está en el camino caliente.** Esto corre una vez por render de la página `/[slug]`, en un
-  Server Component. La consulta caliente del proyecto (`useProperties`, que corre en cada
-  paneo del mapa) **no se tocó** y sigue resolviéndose con la policy, sin round trips extra.
-
-### Detalles de implementación
-
-- **Falla cerrada.** Si la RPC devuelve error, el helper responde `false` → `disabled`. La
-  dirección importa: si el sitio de una agencia al día queda abajo por un error transitorio, el
-  dueño de la agencia reclama y se arregla; si el de una agencia que no paga queda arriba, no se
-  entera nadie y es justo lo que este trabajo vino a cerrar.
-- **Sin `any`.** El `data` de la RPC no se anota ni se castea: se compara con `data === true`,
-  que produce un `boolean` y deja la firma de la función explícita en `Promise<boolean>`.
-- **La lógica quedó en `lib/`**, en el mismo archivo del helper. No la extraje a un archivo
-  propio porque tiene un solo consumidor; si mañana aparece un segundo, ahí sí conviene sacarla.
-- **El gate 1 (aprobación) quedó redundante a propósito** y está documentado como tal: la
-  función también exige `approval_status = 'approved'`, así que el chequeo local no agrega
-  seguridad — agrega la posibilidad de cortar **antes** del viaje a la base. Lo dejé porque
-  respeta tu instrucción ("las tres tienen que cumplirse") y porque el corte temprano es real.
+> Escribí **Inmobiliaria Prueba** para confirmar. No importan las mayúsculas.
 
 ---
 
-## 4. Qué agencia tendría su sitio de marca visible hoy
-
-Los tres gates, agencia por agencia (evaluados con SQL equivalente al cuerpo de la función):
-
-| Agencia | slug | 1 · Aprobada | 2 · `has_white_label` | 3 · Al día (`plan` / `status`) | Resultado |
-|---|---|---|---|---|---|
-| Inmobiliaria Demo | `inmobiliaria-demo` | ✅ approved | ✅ true | ✅ profesional / active | **SITIO VISIBLE** |
-| Inmobiliaria Juan Lopez2 | `inmobiliaria-juan-lopez2-php0fa` | ✅ approved | ✅ true | ✅ profesional / active | **SITIO VISIBLE** |
-| Inmobiliaria Prueba Gaio | `inmobiliaria-prueba-gaio` | ✅ approved | ❌ **false** | ✅ inicial / active | APAGADO — plan pago pero **sin white-label** (gate 2) |
-| Inmobiliaria Zavaleta3 | `inmobiliaria-zavaleta3-05ervf` | ✅ approved | ❌ **false** | ✅ inicial / active | APAGADO — plan pago pero **sin white-label** (gate 2) |
-| Inmobiliaria Gaio | `inmobiliaria-gaio` | ✅ approved | ❌ false | ❌ free / **pending** | APAGADO — gates 2 y 3 |
-| Inmobiliaria Juan Lopez | `inmobiliaria-juan-lopez-dw2w9x` | ✅ approved | ❌ false | ❌ free / active | APAGADO — gates 2 y 3 |
-| Inmobiliaria Prueba | `inmobiliaria-prueba` | ✅ approved | ❌ false | ❌ free / active | APAGADO — gates 2 y 3 |
-| Inmobiliaria Prueba *(2ª agencia, mismo nombre)* | `inmobiliaria-prueba-2` | ✅ approved | ❌ false | ❌ free / active | APAGADO — gates 2 y 3 |
-| Inmobiliaria Zavaleta | `inmobiliaria-zavaleta-oybcap` | ✅ approved | ❌ false | ❌ free / active | APAGADO — gates 2 y 3 |
-| Inmobiliaria Zavaleta2 | `inmobiliaria-zavaleta2-yufqg7` | ✅ approved | ❌ false | ❌ free / active | APAGADO — gates 2 y 3 |
-| Miguel Andrade | `miguel-andrade-sjeo8g` | ✅ approved | ❌ false | ❌ free / active | APAGADO — gates 2 y 3 |
-
-**Resultado: 2 sitios visibles, 9 apagados.** Las 11 agencias están `approved`, así que el gate 1
-no apaga a nadie hoy.
-
-**⚠ Lo importante, y hay que decirlo claro: con los datos de hoy este cambio no apaga ni un
-solo sitio que antes estuviera prendido.** Las dos agencias con `has_white_label = true` pasan
-también el gate 3 (profesional / active), así que el comportamiento observable es idéntico al
-de antes. **Esto no significa que el cambio no haga nada**: cierra el agujero para el futuro —
-el día que una de esas dos suscripciones pase a `past_due` o `canceled`, el flag va a seguir en
-`true` (nada lo apaga) y hoy su sitio quedaría en pie mostrando un mapa vacío. Con el gate 3, se
-apaga.
-
-**Para probar el cambio a mano hace falta preparar datos**: no hay hoy ninguna agencia con
-`has_white_label = true` y suscripción no-activa, que es exactamente el caso que este gate
-existe para cubrir.
-
----
-
-## 5. Confirmación: no quedó ningún filtro duplicado en las consultas públicas
-
-Verificado por búsqueda sobre los cinco archivos del camino público
-(`useProperties.ts`, `PropertyModal.tsx`, `MapView.tsx`, `PropertyList.tsx`, `AgencyMapView.tsx`)
-de los términos `approval_status`, `has_white_label`, `subscriptions`, `plan` y
-`agency_is_publicly_visible`:
-
-```
->>> SIN filtros de agencia/suscripción en las consultas públicas
-```
-
-Los filtros de `useProperties.ts` siguen siendo exactamente los de antes —`city_id`,
-`status='active'`, el `agency_id` opcional del white-label y los filtros de la UI— y
-`PropertyModal.tsx` sigue con `id` + `status='active'`. **Los dos se apoyan solo en la policy.**
-
-La única referencia a la regla en todo `src/` es la del helper (más dos menciones en
-comentarios):
-
-```
-src/app/(agent)/admin/page.tsx:188   ← comentario
-src/lib/utils/resolveAgencyBySlug.ts:29, 71   ← comentarios
-src/lib/utils/resolveAgencyBySlug.ts:86       ← la única llamada real
-```
-
-También verifiqué lo que pediste sobre el helper antes de asumirlo: **usa service role**
-(`createAdminClient()` en `resolveAgencyBySlug.ts:97`), por eso la policy no lo cubre y el gate
-tuvo que escribirse en el código.
-
----
-
-## 6. Verificación
+## 5. Verificación
 
 ### `npx tsc --noEmit`
 ```
@@ -286,11 +240,7 @@ This API returns functions which cannot be memoized without leading to stale UI.
 
 ### `npx next build`
 ```
-  Creating an optimized production build ...
-✓ Compiled successfully in 7.8s
-  Running TypeScript ...
-  Finished TypeScript in 8.4s ...
-✓ Generating static pages using 3 workers (19/19) in 1506ms
+✓ Generating static pages using 3 workers (19/19) in 1148ms
   Finalizing page optimization ...
 
 Route (app)
@@ -311,74 +261,79 @@ Route (app)
 
 ### Comparación contra el baseline
 
-| Métrica | Baseline esperado | Medido | ¿Igual? |
+| Métrica | Baseline | Medido | ¿Igual? |
 |---|---|---|---|
 | Errores de TypeScript | 0 | 0 | ✅ |
 | Errores de lint | 0 | 0 | ✅ |
-| Warnings de lint | 1 (`react-hooks/incompatible-library`, `PropertyForm.tsx`) | 1, mismo, `PropertyForm.tsx:269` | ✅ |
-| Build | verde, 19 rutas | verde, 19 rutas | ✅ |
+| Warnings de lint | 1 (`react-hooks/incompatible-library`, formulario de propiedad) | 1, el mismo, `PropertyForm.tsx:269` | ✅ |
+| Build | verde, 19 rutas | verde, **19 rutas** | ✅ |
 
 **Idéntico al baseline.**
 
----
+### Archivos modificados
 
-## 7. Decisiones que se apartan de las instrucciones
-
-Una sola, y es menor:
-
-- **Dejé el chequeo de aprobación (gate 1) aunque quedó redundante.** La función
-  `agency_is_publicly_visible` ya exige `approval_status = 'approved'`, así que estrictamente
-  el gate 1 podría borrarse y la regla se seguiría cumpliendo por dentro del gate 3. Lo
-  conservé porque (a) pediste explícitamente que las tres condiciones se cumplan y que la
-  nueva se **sume** a las dos existentes, y (b) evaluarlo localmente permite cortar sin pagar
-  el viaje a la base. Está documentado en el código como redundancia deliberada, no como
-  descuido, para que nadie lo "limpie" pensando que se coló.
-  ⚠ El riesgo que asumo, y lo dejo dicho: si algún día la función dejara de exigir la
-  aprobación, este chequeo local quedaría siendo más estricto que el mapa. Es poco probable
-  (la aprobación es el eje de legitimidad y no se negocia), pero es el costo de la redundancia.
-
-Fuera de eso, todo salió como estaba pedido: se reusó el estado `disabled`, no se cambió la
-forma del retorno, `has_white_label` se conservó como gate propio, la lógica quedó en `lib/`,
-los comentarios de negocio están en español, y no se tocó ni el panel privado, ni el hook del
-mapa, ni el modal.
+| Archivo | Qué cambió |
+|---|---|
+| `src/components/dashboard/NewPropertyButton.tsx` | El ternario binario pasó a switch exhaustivo con guarda `never` + mensaje propio para `subscription_inactive`. **Es el arreglo del síntoma reportado.** |
+| `src/components/dashboard/SubscriptionContent.tsx` | Aviso `Notice` (tono warning) cuando la suscripción no rige, sin fecha de vencimiento y sin cards de upgrade. |
+| `src/app/(agent)/dashboard/suscripcion/actions.ts` | `requestPlanUpgradeAction` rechaza pedidos si la suscripción está `canceled`/`past_due`. |
+| `src/app/(agent)/admin/actions.ts` | `nameMatches()`: la confirmación por nombre ignora mayúsculas y espacios de los bordes. |
+| `src/app/(agent)/admin/AgenciesTable.tsx` | Misma comparación en el cliente + el nombre sale del `<Label>` (que lo ponía en mayúsculas) y se aclara que no importan. |
 
 ---
 
-## 8. Encontrado y NO tocado, por estar fuera del alcance
+## 6. Decisiones que se apartan de las instrucciones
 
-1. **Nada apaga `has_white_label`.** Es la causa raíz de todo esto: el flag se escribe al
-   activar un plan desde `/admin` y no existe ningún flujo que lo ponga en `false`. Este trabajo
-   **compensa el síntoma** (el sitio de marca ya no depende solo del flag), pero la deuda sigue
-   ahí y es la misma que `PENDIENTES.md` anota como *"el panel admin es de una sola vía"*. Si
-   alguna vez se agrega "dar de baja / bajar de plan", ahí hay que decidir qué pasa con el flag.
+**1. No reordené el helper, porque el orden ya era el correcto.** Pediste "revisá en qué orden
+evalúa hoy los motivos y corregilo"; al medirlo, ya evaluaba aprobación → suscripción → cupo.
+Cambiar algo ahí habría sido trabajo inventado y no habría arreglado el síntoma. El arreglo fue
+en el consumidor (`NewPropertyButton`), que es donde estaba el `else` que se tragaba el motivo
+nuevo. Lo mismo con el punto 2: los triggers ya disparan en el orden correcto, así que **no hay
+SQL para correr** — dijiste explícitamente que si ya era correcto lo dijera y no tocara nada.
 
-2. **El sitio de marca se apaga, pero la agencia sigue siendo pública en `agencies`.** La policy
-   `Public read agencies` tiene `qual: true`, así que cualquiera con la anon key sigue leyendo
-   nombre, slug, matrícula y estado de aprobación de **todas** las agencias, paguen o no. Es
-   preexistente y ya está documentado en CLAUDE.md; no lo toqué porque cambiarlo afecta a
-   consumidores que no son de esta pieza.
+**2. Agregué un corte en `requestPlanUpgradeAction`, que no estaba en el pedido.** Pediste
+decidir sobre los botones de upgrade y justificarlo. Al mirarlo encontré que no era una decisión
+de presentación: esa action escribe `status: 'pending'` sin mirar el estado previo, así que una
+agencia dada de baja podía **sacarse la baja sola** pidiendo un upgrade y recuperar la
+posibilidad de publicar. Esconder los botones sin cerrar la action habría dejado el agujero
+abierto, y "la interfaz no es una barrera" es la regla que sigue todo el repo. Es un cambio
+chico (una lectura y un `return`), pero está fuera de las tres correcciones que enumeraste.
 
-3. **La ruta `/[slug]` no manda `noindex` cuando está `disabled`.** Un sitio que se apaga por
-   falta de pago sigue devolviendo 200 con la página `AgencyUnavailable`, así que un buscador
-   puede indexarla. No es parte de lo pedido y tiene decisiones de producto detrás (¿404?
-   ¿410? ¿410 solo si vencida?), así que lo dejo anotado.
+**3. Usé el mensaje de suscripción inactiva del botón para mandar a `/dashboard/suscripcion`,
+no a la lista de planes.** El `PlanLimitMessage` original enlaza a "Ver planes" porque su
+bloqueo se resuelve pagando más. El de baja no: enlaza a la pantalla de suscripción, que ahora
+es donde está la explicación completa.
 
-4. **`src/types/supabase.ts` no existe.** `CLAUDE.md` lo lista en la estructura de carpetas
-   ("Generado por Supabase CLI (no editar)") y en Comandos Útiles, pero **el archivo no está en
-   el repo y nadie lo importa**. Consecuencia concreta para este trabajo: los clients de
-   Supabase no llevan el genérico `<Database>`, así que `.rpc()` no está tipado — el nombre de
-   la función y el de su parámetro son strings que TypeScript no valida. Si esos types se
-   generaran, un error de tipeo en `"agency_is_publicly_visible"` o en `target_agency_id`
-   pasaría a fallar en compilación en vez de en runtime. **No lo generé** porque requiere
-   correr la CLI de Supabase contra el proyecto y toca el tipado de todo el repo, que es una
-   pieza propia y bastante más grande que esta.
+---
 
-5. **El `EXECUTE` de la función no está restringido.** `anon` puede llamar directamente a
-   `agency_is_publicly_visible(uuid)` con la anon key y averiguar si una agencia cualquiera está
-   al día. No es información sensible (es deducible mirando si sus propiedades aparecen en el
-   mapa) y el `GRANT` a `anon` es **necesario** para que las policies funcionen para el
-   visitante, así que no hay nada que arreglar — pero lo dejo dicho para que no sorprenda.
+## 7. Encontrado y NO tocado, por estar fuera del alcance
 
-6. **El contador de `/admin` sigue contando con service role.** Lo pediste así; solo agregué la
-   aclaración en la interfaz. No revisé si las otras seis métricas del panel tienen
-   desalineaciones parecidas, porque estaba fuera del alcance.
+1. **⚠ Re-activar una propiedad pausada saltea el trigger de suscripción.**
+   `trg_check_agency_subscription` es solo `BEFORE INSERT`; `trg_check_property_limit` es
+   `BEFORE INSERT OR UPDATE`. Una agencia dada de baja **puede pasar una propiedad de `paused` a
+   `active`** (mientras tenga cupo), y si no tiene cupo el error que ve es el de límite, no el de
+   la baja. En la práctica la propiedad no se ve igual (la oculta
+   `agency_is_publicly_visible`), así que el daño es acotado. Ampliar el trigger a UPDATE es una
+   decisión de producto —contradice lo que se decidió a propósito en la tanda anterior ("editar
+   una propiedad ya cargada sigue permitido")— así que la dejo planteada, no resuelta.
+
+2. **El dashboard (`/dashboard`) tampoco avisa de la baja.** `getPublishBlock` le da el mensaje
+   correcto al estado vacío y al botón, pero no hay un aviso de estado como el que sí tiene la
+   agencia no aprobada (`AgencyApprovalNotice`, montado en `/dashboard` y en Preferencias). El
+   equivalente para la suscripción sería montar el `Notice` nuevo también ahí. Pediste
+   explícitamente la pantalla de suscripción, así que no lo extendí.
+
+3. **`past_due` no lo escribe nadie todavía.** Lo contemplé en las tres correcciones porque
+   comparte el bloqueo con `canceled`, pero ninguna action del panel lo produce: hoy solo se
+   llega ahí por SQL a mano. Cuando exista el cobro automático va a llegar solo.
+
+4. **El schema documentado sigue mintiendo sobre dos FKs** (`properties.agent_id` es NOT NULL +
+   CASCADE, `leads.agent_id` es NOT NULL + NO ACTION, contra lo que dicen el archivo de
+   migración y `CLAUDE.md`). Sin relación con estas tres correcciones; lo repito porque sigue
+   ahí y sigue afectando a `deleteAgentAction`.
+
+5. **No probé nada contra la base**, como en la tanda anterior: el modo prohíbe SQL de
+   escritura. Lo que conviene reprobar a mano ahora, con la agencia que ya tenés dada de baja:
+   que el botón "Nueva propiedad" diga *"Tu suscripción está dada de baja..."* en vez del
+   mensaje de cupo; que `/dashboard/suscripcion` muestre el aviso, sin fecha y sin cards de
+   upgrade; y que eliminar una agencia acepte el nombre en minúsculas.

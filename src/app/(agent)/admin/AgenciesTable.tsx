@@ -2,10 +2,29 @@
 
 import { useState, useMemo, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { X, CheckCircle2, ShieldCheck, ShieldX, Undo2 } from "lucide-react";
+import {
+  X,
+  CheckCircle2,
+  ShieldCheck,
+  ShieldX,
+  Undo2,
+  MoreHorizontal,
+  Ban,
+  RotateCcw,
+  Trash2,
+  CircleSlash,
+} from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,16 +42,30 @@ import {
   type SubscriptionPlan,
   type SubscriptionStatus,
 } from "@/types";
-import { APPROVAL_STATUS_LABELS } from "@/lib/utils/labels";
+import {
+  APPROVAL_STATUS_LABELS,
+  SUBSCRIPTION_STATUS_LABELS,
+} from "@/lib/utils/labels";
 import {
   activatePlanAction,
   approveAgencyAction,
+  cancelPendingPlanAction,
+  cancelSubscriptionAction,
+  deleteAgencyAction,
   rejectAgencyAction,
   reopenAgencyAction,
+  restoreSubscriptionAction,
 } from "./actions";
 
 // Override del Checkbox de shadcn a terracota en estado marcado (mismo patrón
 // que FilterPanel/PropertyForm, para consistencia en toda la app).
+// Mismo tratamiento de campo que el resto de los formularios del proyecto
+// (DESIGN §6: fondo white, borde stone, rounded-md, foco terracota). El Input
+// base del preset es de borde inferior, así que se lo sobreescribe igual que en
+// PropertyForm y AgencyIdentityForm.
+const FIELD =
+  "rounded-md border border-stone border-b-stone bg-white px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracota/20 focus-visible:ring-offset-1 focus-visible:border-graphite focus-visible:border-b-graphite";
+
 const CHECKBOX_TERRACOTA =
   "border-stone data-[state=checked]:bg-terracota data-[state=checked]:border-terracota data-[state=checked]:text-paper";
 
@@ -58,6 +91,11 @@ export interface AgencyRow {
   approval_status: ApprovalStatus;
   city_name: string | null;
   subscription: AgencySubscription | null;
+  // ¿Está vacía (sin propiedades y sin consultas)? Lo calcula la página en el
+  // server. Acá solo decide si se OFRECE eliminar: la regla real la vuelve a
+  // verificar deleteAgencyAction contra la base, porque un booleano que viaja al
+  // cliente no es una barrera.
+  can_delete: boolean;
 }
 
 interface AgenciesTableProps {
@@ -74,12 +112,18 @@ interface AgenciesTableProps {
 // suscripción, o estados past_due/canceled). Antes esos casos devolvían null y
 // la fila desaparecía del listado aunque estuvieran todos los filtros marcados;
 // con "other" eso ya no puede pasar.
-type PlanCategory = "pendingPlan" | "paidActive" | "free" | "other";
+type PlanCategory =
+  | "pendingPlan"
+  | "paidActive"
+  | "free"
+  | "canceled"
+  | "other";
 
 const PLAN_FILTERS: { key: PlanCategory; label: string }[] = [
   { key: "pendingPlan", label: "Plan pendiente" },
   { key: "paidActive", label: "Pagas activas" },
   { key: "free", label: "Free" },
+  { key: "canceled", label: "Dadas de baja" },
   { key: "other", label: "Otras" },
 ];
 
@@ -99,7 +143,12 @@ function planCategoryOf(row: AgencyRow): PlanCategory {
   if (sub.status === "pending") return "pendingPlan";
   if (sub.status === "active" && sub.plan !== "free") return "paidActive";
   if (sub.status === "active" && sub.plan === "free") return "free";
-  return "other"; // past_due / canceled
+  // Categoría propia: una agencia dada de baja es un grupo que el dueño va a
+  // querer listar (a quién llamar, a quién reactivar). Antes caía en "other"
+  // mezclada con las que no tienen fila de suscripción, que es una situación
+  // completamente distinta.
+  if (sub.status === "canceled") return "canceled";
+  return "other"; // past_due, y cualquier estado futuro
 }
 
 // "9 jun 2026" o "—" si no hay fecha de activación.
@@ -124,16 +173,20 @@ function SubscriptionStatusBadge({ sub }: { sub: AgencySubscription | null }) {
       </span>
     );
   }
-  const map: Record<SubscriptionStatus, { label: string; className: string }> = {
-    pending: { label: "Pendiente", className: "bg-mist text-graphite" },
-    active: { label: "Activa", className: "bg-success/10 text-success" },
-    past_due: { label: "Vencida", className: "bg-stone text-graphite" },
-    canceled: { label: "Cancelada", className: "bg-stone text-graphite" },
+  // Las etiquetas salen de labels.ts (mapa de un literal del dominio); acá vive
+  // solo el tratamiento visual, que es propio de esta tabla.
+  const className: Record<SubscriptionStatus, string> = {
+    pending: "bg-mist text-graphite",
+    active: "bg-success/10 text-success",
+    past_due: "bg-stone text-graphite",
+    // Dada de baja: se distingue del resto de los "apagados" porque es una
+    // decisión del dueño y es reversible, no un estado a la deriva.
+    canceled: "bg-error/10 text-error",
   };
-  const { label, className } = map[sub.status];
+  const label = SUBSCRIPTION_STATUS_LABELS[sub.status];
   return (
     <span
-      className={`inline-block font-sans text-[11px] font-semibold uppercase tracking-wide rounded-sm px-2 py-0.5 ${className}`}
+      className={`inline-block font-sans text-[11px] font-semibold uppercase tracking-wide rounded-sm px-2 py-0.5 ${className[sub.status]}`}
     >
       {label}
     </span>
@@ -200,10 +253,65 @@ function limitLabel(plan: SubscriptionPlan): string {
   return n === 1 ? "1 propiedad" : `${n} propiedades`;
 }
 
-// Acciones disponibles para una fila, en una sola pieza reusada por la tabla
-// (desktop) y por las cards (mobile). Se apilan verticalmente en la celda para
-// que no queden tres botones apretados en una columna angosta (DESIGN §4: el
-// aire es parte del diseño); en mobile van en fila, que hay ancho de sobra.
+// ─── Qué acciones aplican a una fila ──────────────────────────
+//
+// FUENTE ÚNICA de las condiciones. Antes cada condición estaba escrita dos
+// veces: adentro de RowActions y otra vez en la card de mobile, que decidía si
+// renderizar el bloque entero. Las dos copias se desincronizaron —la de mobile
+// solo contemplaba el eje de aprobación y el plan pendiente, así que una agencia
+// aprobada con plan activo (justo el caso de "dar de baja") no mostraba NINGÚN
+// botón en el celular—. Con esto, agregar una acción no puede volver a dejar
+// mobile atrás.
+interface RowActionAvailability {
+  approve: boolean;
+  reject: boolean;
+  reopen: boolean;
+  activate: boolean;
+  cancelPlan: boolean;
+  suspend: boolean;
+  restore: boolean;
+  remove: boolean;
+}
+
+function availableActions(row: AgencyRow): RowActionAvailability {
+  const sub = row.subscription;
+  const hasPendingPlan = sub?.pending_plan != null;
+
+  return {
+    // Eje de legitimidad
+    approve: row.approval_status === "pending",
+    reject: row.approval_status === "pending",
+    reopen: row.approval_status === "rejected",
+    // Eje comercial. Activar y cancelar son las dos salidas del mismo estado.
+    activate: hasPendingPlan,
+    cancelPlan: hasPendingPlan,
+    // Solo tiene sentido dar de baja un plan PAGO y vigente: 'free' es el estado
+    // de aterrizaje, no algo contratado.
+    suspend: sub != null && sub.status === "active" && sub.plan !== "free",
+    restore: sub?.status === "canceled",
+    remove: row.can_delete,
+  };
+}
+
+function hasAnyAction(row: AgencyRow): boolean {
+  return Object.values(availableActions(row)).some(Boolean);
+}
+
+// Acciones de una fila, en una sola pieza reusada por la tabla (desktop) y por
+// las cards (mobile).
+//
+// ⚠ REPARTO ENTRE BOTONES Y MENÚ, que es lo que evita que la celda reviente:
+// una agencia recién registrada puede estar pendiente de aprobación Y tener un
+// plan pedido Y estar vacía, o sea SIETE acciones aplicables a la vez. Siete
+// botones apilados son ~250 px de alto de fila: ilegible, y contra DESIGN §1
+// ("jerarquía antes que decoración").
+//
+// El corte no es por cantidad sino por naturaleza: quedan como BOTONES las
+// acciones que hacen avanzar el flujo —aprobar, rechazar, activar el plan, que
+// son la bandeja de entrada diaria del dueño— y se van al menú "⋯" las de
+// DESHACER y las destructivas, que son excepcionales y conviene que cuesten un
+// click más. Precedente del repo: PropertiesTable usa el mismo menú para lo
+// mismo. Peor caso visible: 3 botones + el disparador del menú.
 function RowActions({
   row,
   loading,
@@ -212,6 +320,10 @@ function RowActions({
   onReject,
   onReopen,
   onActivate,
+  onCancelPlan,
+  onSuspend,
+  onRestore,
+  onDelete,
 }: {
   row: AgencyRow;
   loading: boolean;
@@ -220,38 +332,44 @@ function RowActions({
   onReject: () => void;
   onReopen: () => void;
   onActivate: () => void;
+  onCancelPlan: () => void;
+  onSuspend: () => void;
+  onRestore: () => void;
+  onDelete: () => void;
 }) {
-  const hasPendingPlan = row.subscription?.pending_plan != null;
+  const can = availableActions(row);
   const wrapper =
     layout === "stacked"
       ? "flex flex-col items-end gap-2"
-      : "flex flex-wrap justify-end gap-2";
+      : "flex flex-wrap justify-end items-center gap-2";
+
+  const hasMenu = can.cancelPlan || can.suspend || can.restore || can.remove;
 
   return (
     <div className={wrapper}>
       {/* Eje de aprobación */}
-      {row.approval_status === "pending" && (
-        <>
-          <RowButton
-            variant="primary"
-            loading={loading}
-            onClick={onApprove}
-            icon={<ShieldCheck size={14} />}
-          >
-            Aprobar
-          </RowButton>
-          <RowButton
-            variant="destructive"
-            loading={loading}
-            onClick={onReject}
-            icon={<ShieldX size={14} />}
-          >
-            Rechazar
-          </RowButton>
-        </>
+      {can.approve && (
+        <RowButton
+          variant="primary"
+          loading={loading}
+          onClick={onApprove}
+          icon={<ShieldCheck size={14} />}
+        >
+          Aprobar
+        </RowButton>
+      )}
+      {can.reject && (
+        <RowButton
+          variant="destructive"
+          loading={loading}
+          onClick={onReject}
+          icon={<ShieldX size={14} />}
+        >
+          Rechazar
+        </RowButton>
       )}
       {/* El rechazo no es definitivo: el dueño puede devolverla a pendiente. */}
-      {row.approval_status === "rejected" && (
+      {can.reopen && (
         <RowButton
           variant="secondary"
           loading={loading}
@@ -262,7 +380,7 @@ function RowActions({
         </RowButton>
       )}
       {/* Eje de suscripción (independiente del anterior) */}
-      {hasPendingPlan && (
+      {can.activate && (
         <RowButton
           variant="primary"
           loading={loading}
@@ -272,6 +390,64 @@ function RowActions({
           Activar plan
         </RowButton>
       )}
+
+      {hasMenu && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              disabled={loading}
+              className="p-1.5 rounded-md text-graphite hover:text-black hover:bg-mist transition-colors disabled:opacity-40"
+              aria-label="Más acciones"
+            >
+              <MoreHorizontal size={16} />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-60">
+            {can.cancelPlan && (
+              <DropdownMenuItem
+                onSelect={onCancelPlan}
+                className="flex items-center gap-2"
+              >
+                <CircleSlash size={14} />
+                Cancelar la solicitud
+              </DropdownMenuItem>
+            )}
+            {can.suspend && (
+              <DropdownMenuItem
+                onSelect={onSuspend}
+                className="flex items-center gap-2"
+              >
+                <Ban size={14} />
+                Dar de baja
+              </DropdownMenuItem>
+            )}
+            {can.restore && (
+              <DropdownMenuItem
+                onSelect={onRestore}
+                className="flex items-center gap-2"
+              >
+                <RotateCcw size={14} />
+                Reactivar suscripción
+              </DropdownMenuItem>
+            )}
+            {can.remove && (
+              <>
+                {(can.cancelPlan || can.suspend || can.restore) && (
+                  <DropdownMenuSeparator />
+                )}
+                {/* Irreversible: separada del resto y en color de error. */}
+                <DropdownMenuItem
+                  onSelect={onDelete}
+                  className="flex items-center gap-2 text-error focus:text-error"
+                >
+                  <Trash2 size={14} />
+                  Eliminar agencia
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </div>
   );
 }
@@ -280,12 +456,18 @@ function RowActions({
 
 export function AgenciesTable({ rows }: AgenciesTableProps) {
   const router = useRouter();
-  const [toActivate, setToActivate] = useState<AgencyRow | null>(null);
   const [toApprove, setToApprove] = useState<AgencyRow | null>(null);
   const [toReopen, setToReopen] = useState<AgencyRow | null>(null);
-  // Rechazo: no es una confirmación sí/no sino un formulario (pide el motivo),
-  // así que se resuelve con un panel inline y no con el AlertDialog. Ver informe.
+  // Confirmaciones sí/no del eje comercial (sin campos → AlertDialog).
+  const [toCancelPlan, setToCancelPlan] = useState<AgencyRow | null>(null);
+  const [toSuspend, setToSuspend] = useState<AgencyRow | null>(null);
+  const [toRestore, setToRestore] = useState<AgencyRow | null>(null);
+  // Paneles inline: los dos piden que el dueño ESCRIBA algo (el motivo del
+  // rechazo, la fecha de vencimiento opcional, el nombre para confirmar el
+  // borrado), así que no son confirmaciones sí/no y no van en el AlertDialog.
   const [toReject, setToReject] = useState<AgencyRow | null>(null);
+  const [toActivate, setToActivate] = useState<AgencyRow | null>(null);
+  const [toDelete, setToDelete] = useState<AgencyRow | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -298,6 +480,7 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
     pendingPlan: true,
     paidActive: true,
     free: true,
+    canceled: true,
     other: true,
   });
   const [activeApproval, setActiveApproval] = useState<
@@ -416,6 +599,41 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
         />
       )}
 
+      {/* Activación de plan (panel inline: lleva la fecha de vencimiento) */}
+      {toActivate && (
+        <ActivatePlanPanel
+          row={toActivate}
+          loading={pendingId === toActivate.agency_id}
+          onCancel={() => setToActivate(null)}
+          onConfirm={(periodEnd) => {
+            const target = toActivate;
+            setToActivate(null);
+            run(target.agency_id, () =>
+              activatePlanAction({ agencyId: target.agency_id, periodEnd })
+            );
+          }}
+        />
+      )}
+
+      {/* Eliminación (panel inline: hay que tipear el nombre) */}
+      {toDelete && (
+        <DeleteAgencyPanel
+          row={toDelete}
+          loading={pendingId === toDelete.agency_id}
+          onCancel={() => setToDelete(null)}
+          onConfirm={(confirmationName) => {
+            const target = toDelete;
+            setToDelete(null);
+            run(target.agency_id, () =>
+              deleteAgencyAction({
+                agencyId: target.agency_id,
+                confirmationName,
+              })
+            );
+          }}
+        />
+      )}
+
       {visibleRows.length === 0 ? (
         <div className="bg-paper border border-stone rounded-lg px-6 py-16 text-center">
           <p className="font-sans text-base text-graphite">
@@ -521,8 +739,9 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
                         </span>
                       </td>
 
-                      {/* Acciones */}
-                      <td className="px-5 py-3 text-right">
+                      {/* Acciones. min-w para que los botones no se compriman
+                          cuando la tabla scrollea horizontalmente. */}
+                      <td className="px-5 py-3 text-right min-w-[180px]">
                         <RowActions
                           row={row}
                           loading={loading}
@@ -531,6 +750,10 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
                           onReject={() => setToReject(row)}
                           onReopen={() => setToReopen(row)}
                           onActivate={() => setToActivate(row)}
+                          onCancelPlan={() => setToCancelPlan(row)}
+                          onSuspend={() => setToSuspend(row)}
+                          onRestore={() => setToRestore(row)}
+                          onDelete={() => setToDelete(row)}
                         />
                       </td>
                     </tr>
@@ -578,8 +801,11 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
                       <SubscriptionStatusBadge sub={sub} />
                     </div>
                   </div>
-                  {(row.approval_status !== "approved" ||
-                    sub?.pending_plan != null) && (
+                  {/* ⚠ La condición sale de availableActions (fuente única):
+                      antes estaba escrita a mano acá y se quedó vieja — una
+                      agencia aprobada con plan activo no mostraba ningún botón
+                      en mobile, justo el caso de "dar de baja". */}
+                  {hasAnyAction(row) && (
                     <div className="mt-3 pt-3 border-t border-stone">
                       <RowActions
                         row={row}
@@ -589,6 +815,10 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
                         onReject={() => setToReject(row)}
                         onReopen={() => setToReopen(row)}
                         onActivate={() => setToActivate(row)}
+                        onCancelPlan={() => setToCancelPlan(row)}
+                        onSuspend={() => setToSuspend(row)}
+                        onRestore={() => setToRestore(row)}
+                        onDelete={() => setToDelete(row)}
                       />
                     </div>
                   )}
@@ -599,46 +829,126 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
         </>
       )}
 
-      {/* AlertDialog de confirmación antes de activar un plan */}
+      {/* ── Confirmaciones del eje comercial (sí/no, sin campos) ──
+          Las tres son reversibles y de una sola frase, así que el AlertDialog
+          alcanza. Las que piden escribir algo viven en paneles, más arriba. */}
+
+      {/* Cancelar la solicitud de plan */}
       <AlertDialog
-        open={!!toActivate}
-        onOpenChange={(open) => !open && setToActivate(null)}
+        open={!!toCancelPlan}
+        onOpenChange={(open) => !open && setToCancelPlan(null)}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              ¿Activar plan{" "}
-              {toActivate?.subscription?.pending_plan
-                ? PLANS[toActivate.subscription.pending_plan].name
-                : ""}
-              ?
-            </AlertDialogTitle>
+            <AlertDialogTitle>¿Cancelar la solicitud?</AlertDialogTitle>
             <AlertDialogDescription>
-              Vas a activar el plan{" "}
               <strong className="text-black">
-                {toActivate?.subscription?.pending_plan
-                  ? PLANS[toActivate.subscription.pending_plan].name
-                  : ""}
+                &quot;{toCancelPlan?.name ?? "—"}&quot;
               </strong>{" "}
-              para{" "}
+              pidió el plan{" "}
               <strong className="text-black">
-                &quot;{toActivate?.name ?? "—"}&quot;
+                {toCancelPlan?.subscription?.pending_plan
+                  ? PLANS[toCancelPlan.subscription.pending_plan].name
+                  : "—"}
               </strong>
-              . El plan pedido pasará a regir, con sus límites y beneficios reales.
+              . Se descarta el pedido y la agencia vuelve a poder elegir otro
+              plan desde su panel. El plan que rige hoy no cambia.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>Volver</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
-                if (!toActivate) return;
-                const id = toActivate.agency_id;
-                setToActivate(null);
-                run(id, () => activatePlanAction(id));
+                if (!toCancelPlan) return;
+                const id = toCancelPlan.agency_id;
+                setToCancelPlan(null);
+                run(id, () => cancelPendingPlanAction({ agencyId: id }));
               }}
               className="bg-terracota text-paper hover:bg-terracota-hover border-0"
             >
-              Activar
+              Cancelar la solicitud
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Dar de baja la suscripción */}
+      <AlertDialog
+        open={!!toSuspend}
+        onOpenChange={(open) => !open && setToSuspend(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Dar de baja la suscripción?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <strong className="text-black">
+                &quot;{toSuspend?.name ?? "—"}&quot;
+              </strong>{" "}
+              deja de estar al día. Sus propiedades{" "}
+              <strong className="text-black">
+                desaparecen del mapa público
+              </strong>
+              , su sitio de marca se apaga y no va a poder publicar nuevas. Sigue
+              entrando a su panel y ve todo lo suyo. Se conserva el plan{" "}
+              <strong className="text-black">
+                {toSuspend?.subscription
+                  ? PLANS[toSuspend.subscription.plan].name
+                  : "—"}
+              </strong>{" "}
+              para poder reactivarla después.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Volver</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!toSuspend) return;
+                const id = toSuspend.agency_id;
+                setToSuspend(null);
+                run(id, () => cancelSubscriptionAction({ agencyId: id }));
+              }}
+              className="bg-terracota text-paper hover:bg-terracota-hover border-0"
+            >
+              Dar de baja
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Reactivar la suscripción */}
+      <AlertDialog
+        open={!!toRestore}
+        onOpenChange={(open) => !open && setToRestore(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Reactivar la suscripción?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <strong className="text-black">
+                &quot;{toRestore?.name ?? "—"}&quot;
+              </strong>{" "}
+              vuelve a estar al día con el plan{" "}
+              <strong className="text-black">
+                {toRestore?.subscription
+                  ? PLANS[toRestore.subscription.plan].name
+                  : "—"}
+              </strong>
+              , con los beneficios que ese plan incluye. Sus propiedades vuelven
+              a verse en el mapa y puede publicar de nuevo.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Volver</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!toRestore) return;
+                const id = toRestore.agency_id;
+                setToRestore(null);
+                run(id, () => restoreSubscriptionAction({ agencyId: id }));
+              }}
+              className="bg-terracota text-paper hover:bg-terracota-hover border-0"
+            >
+              Reactivar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -790,6 +1100,205 @@ function RejectPanel({
           className="h-11 px-4 rounded-md font-sans text-sm font-medium bg-terracota hover:bg-terracota-hover text-paper transition-colors duration-[120ms] disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {loading ? "Rechazando..." : "Rechazar agencia"}
+        </button>
+        <button
+          onClick={onCancel}
+          className="h-11 px-4 rounded-md font-sans text-sm font-medium text-graphite hover:text-black transition-colors duration-[120ms]"
+        >
+          Cancelar
+        </button>
+      </div>
+    </section>
+  );
+}
+
+// ─── Panel de activación de plan ──────────────────────────────
+// Activar era una confirmación sí/no en un AlertDialog. Ahora lleva la fecha de
+// vencimiento, así que pasa a panel inline, por el mismo criterio que el de
+// rechazo: un AlertDialog es para "¿seguro?" y su botón de acción CIERRA al
+// hacer click, lo que deja sin lugar la validación local del campo (fecha mal
+// formada, fecha pasada). El panel puede mostrar el error sin cerrarse.
+//
+// La fecha es OPCIONAL DE VERDAD: el botón está habilitado con el campo vacío y
+// activar sin fecha deja la columna como estaba, igual que antes de esta pieza.
+function ActivatePlanPanel({
+  row,
+  loading,
+  onCancel,
+  onConfirm,
+}: {
+  row: AgencyRow;
+  loading: boolean;
+  onCancel: () => void;
+  onConfirm: (periodEnd: string) => void;
+}) {
+  const [periodEnd, setPeriodEnd] = useState("");
+  const pendingPlan = row.subscription?.pending_plan ?? null;
+
+  // Mínimo del input nativo: mañana. Es una ayuda del navegador, no la barrera
+  // (la action revalida en el server, que es donde importa).
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const minDate = tomorrow.toISOString().slice(0, 10);
+
+  // Validación local espejo de la del server, para no mandar un pedido que ya
+  // sabemos que va a rebotar.
+  const isPastDate = periodEnd !== "" && periodEnd < minDate;
+  const canSubmit = !isPastDate && !loading;
+
+  return (
+    <section className="mb-4 bg-paper border border-stone rounded-lg p-6">
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <h2 className="font-serif text-2xl font-semibold text-black">
+            Activar plan {pendingPlan ? PLANS[pendingPlan].name : ""} ·{" "}
+            {row.name}
+          </h2>
+          <p className="mt-1 font-sans text-xs text-graphite">
+            El plan pedido pasa a regir, con sus límites y beneficios reales.
+          </p>
+        </div>
+        <button
+          onClick={onCancel}
+          className="p-1 text-graphite hover:text-black transition-colors shrink-0"
+          aria-label="Cerrar"
+        >
+          <X size={18} />
+        </button>
+      </div>
+
+      <div className="space-y-1.5 max-w-xs">
+        <Label
+          htmlFor="activate-period-end"
+          className="font-sans text-sm font-medium text-black"
+        >
+          Vencimiento del plan{" "}
+          <span className="font-normal text-graphite">(opcional)</span>
+        </Label>
+        {/* Campo de fecha NATIVO: sin dependencias nuevas y en el celular abre
+            el selector del sistema. Estilado como el resto de los inputs
+            (DESIGN §6: fondo white, borde stone, focus terracota). */}
+        <Input
+          id="activate-period-end"
+          type="date"
+          value={periodEnd}
+          min={minDate}
+          onChange={(e) => setPeriodEnd(e.target.value)}
+          className={`${FIELD} ${isPastDate ? "border-error border-b-error" : ""}`}
+        />
+        <p
+          className={`font-sans text-xs ${isPastDate ? "text-error" : "text-graphite"}`}
+        >
+          {isPastDate
+            ? "La fecha tiene que ser posterior a hoy."
+            : "Para las fundadoras con prueba gratuita: cargá hasta cuándo les rige. La agencia lo ve en su panel y vos sabés a quién llamar cuando se acerque. Si lo dejás vacío, el plan no vence."}
+        </p>
+      </div>
+
+      <div className="mt-5 flex items-center gap-3">
+        <button
+          onClick={() => onConfirm(periodEnd)}
+          disabled={!canSubmit}
+          className="h-11 px-4 rounded-md font-sans text-sm font-medium bg-terracota hover:bg-terracota-hover text-paper transition-colors duration-[120ms] disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {loading ? "Activando..." : "Activar plan"}
+        </button>
+        <button
+          onClick={onCancel}
+          className="h-11 px-4 rounded-md font-sans text-sm font-medium text-graphite hover:text-black transition-colors duration-[120ms]"
+        >
+          Cancelar
+        </button>
+      </div>
+    </section>
+  );
+}
+
+// ─── Panel de eliminación ─────────────────────────────────────
+// IRREVERSIBLE y toca varias tablas, así que no alcanza con un "¿seguro?": el
+// dueño tiene que TIPEAR el nombre exacto de la agencia. La comparación de acá
+// es solo para habilitar el botón; la action la repite contra el nombre real
+// leído de la base, porque el nombre que conoce el cliente no prueba nada.
+function DeleteAgencyPanel({
+  row,
+  loading,
+  onCancel,
+  onConfirm,
+}: {
+  row: AgencyRow;
+  loading: boolean;
+  onCancel: () => void;
+  onConfirm: (confirmationName: string) => void;
+}) {
+  const [typed, setTyped] = useState("");
+  // Espejo de nameMatches() en la server action: ignora mayúsculas y espacios de
+  // los bordes. Escribir el nombre es una barrera contra el click distraído, no
+  // un examen de ortografía. Acá solo habilita el botón; la comparación que
+  // cuenta es la del server, contra el nombre real de la base.
+  const matches =
+    typed.trim().toLocaleLowerCase("es-AR") ===
+    row.name.trim().toLocaleLowerCase("es-AR");
+  const canSubmit = matches && !loading;
+
+  return (
+    <section className="mb-4 bg-paper border border-error rounded-lg p-6">
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <h2 className="font-serif text-2xl font-semibold text-black">
+            Eliminar &quot;{row.name}&quot;
+          </h2>
+          <p className="mt-1 font-sans text-xs text-graphite">
+            Se eliminan la agencia, su suscripción, su historial de decisiones,
+            las cuentas de sus agentes y sus archivos. No se puede deshacer.
+            Solo se ofrece para agencias sin propiedades ni consultas.
+          </p>
+        </div>
+        <button
+          onClick={onCancel}
+          className="p-1 text-graphite hover:text-black transition-colors shrink-0"
+          aria-label="Cerrar"
+        >
+          <X size={18} />
+        </button>
+      </div>
+
+      <div className="space-y-1.5 max-w-md">
+        {/* ⚠ El nombre NO va adentro del <Label>: el Label del preset lleva
+            `uppercase`, así que el cartel mostraba el nombre en mayúsculas
+            mientras la comparación exigía la capitalización exacta — escribir lo
+            que la pantalla indicaba no funcionaba. Va en un <p> aparte, con el
+            nombre tal cual está guardado, y se aclara que las mayúsculas no
+            importan (la comparación ya las ignora en las dos puntas). */}
+        <Label
+          htmlFor="delete-confirm-name"
+          className="font-sans text-sm font-medium text-black"
+        >
+          Confirmá el nombre de la agencia
+        </Label>
+        <p className="font-sans text-sm text-graphite">
+          Escribí{" "}
+          <span className="font-semibold text-error normal-case">
+            {row.name}
+          </span>{" "}
+          para confirmar. No importan las mayúsculas.
+        </p>
+        <Input
+          id="delete-confirm-name"
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+          placeholder={row.name}
+          autoComplete="off"
+          className={FIELD}
+        />
+      </div>
+
+      <div className="mt-5 flex items-center gap-3">
+        <button
+          onClick={() => onConfirm(typed.trim())}
+          disabled={!canSubmit}
+          className="h-11 px-4 rounded-md font-sans text-sm font-medium bg-transparent border border-error text-error hover:bg-terracota-subtle transition-colors duration-[120ms] disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {loading ? "Eliminando..." : "Eliminar definitivamente"}
         </button>
         <button
           onClick={onCancel}

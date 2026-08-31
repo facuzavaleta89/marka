@@ -29,9 +29,32 @@ export async function requestPlanUpgradeAction(
   if (session.status === "unlinked") redirect("/logout?reason=no_agency");
   const { agent } = session;
 
+  const admin = createAdminClient();
+
+  // ⚠ UNA SUSCRIPCIÓN DADA DE BAJA (o vencida) NO PUEDE PEDIR UN UPGRADE.
+  // Esta action escribe status = 'pending' sin mirar el estado previo, así que
+  // sin este corte una agencia en 'canceled' se sacaba la baja sola: pasaba a
+  // 'pending', que NO está en la lista de estados que bloquean la publicación
+  // (getPublishBlock), y volvía a poder publicar sin que el dueño hiciera nada.
+  // La pantalla ya no ofrece los botones de upgrade en ese estado, pero la
+  // interfaz no es una barrera: una server action se invoca sin pasar por el
+  // render. Lo que esa agencia necesita es que le REACTIVEN lo que ya tenía,
+  // no pedir un plan mayor.
+  const { data: current } = await admin
+    .from("subscriptions")
+    .select("status")
+    .eq("agency_id", agent.agency_id)
+    .maybeSingle();
+
+  if (current?.status === "canceled" || current?.status === "past_due") {
+    return {
+      error:
+        "Tu suscripción no está activa. Escribinos para reactivarla antes de cambiar de plan.",
+    };
+  }
+
   // Solo pending_plan + status. `plan` (el que rige), property_limit, has_* y
   // activated_at quedan como están.
-  const admin = createAdminClient();
   const { error } = await admin
     .from("subscriptions")
     .update({

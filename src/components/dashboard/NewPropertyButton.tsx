@@ -3,7 +3,10 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import type { ApprovalStatus, PlanUsage } from "@/types";
 import { PLANS, PLAN_ORDER } from "@/types";
-import { getPublishBlock } from "@/lib/utils/getPublishBlock";
+import {
+  getPublishBlock,
+  type PublishBlockReason,
+} from "@/lib/utils/getPublishBlock";
 
 interface NewPropertyButtonProps {
   planUsage: PlanUsage;
@@ -14,12 +17,22 @@ interface NewPropertyButtonProps {
 // Server Component presentacional: recibe el PlanUsage ya calculado por
 // getPlanUsage() (por agency_id, solo server) — no hace fetch propio.
 //
-// Dos motivos posibles de bloqueo, con mensajes distintos (DESIGN.md §12: el
+// TRES motivos posibles de bloqueo, cada uno con su mensaje (DESIGN.md §12: el
 // botón NUNCA se oculta, se muestra deshabilitado con un mensaje constructivo):
-//   - agencia no aprobada → no se invita a pagar, se explica qué falta;
-//   - cupo del plan lleno → se invita al upgrade.
-// Confundirlos sería mentirle a alguien sin aprobar diciéndole que llegó a un
-// límite que no alcanzó.
+//   - agencia no aprobada     → no se invita a pagar, se explica qué falta;
+//   - suscripción dada de baja → no se invita a pagar MÁS, se explica cómo
+//                                reactivar lo que ya tenía;
+//   - cupo del plan lleno      → se invita al upgrade.
+// Confundirlos es mentirle a la persona y mandarla a resolver algo que no la
+// destraba.
+//
+// ⚠ EL REPARTO ES EXHAUSTIVO A PROPÓSITO (switch con guarda `never`). Antes esto
+// era un ternario binario: "¿es not_approved? si no, mostrá el mensaje de cupo".
+// Cuando se agregó el motivo 'subscription_inactive', cayó en el `else` y una
+// agencia dada de baja veía "alcanzaste el límite de tu plan Gratis, pasá a
+// Inicial" —el bloqueo correcto, con el mensaje equivocado, invitándola a pagar
+// un upgrade que no le destraba nada—. Con el switch exhaustivo, agregar un
+// motivo nuevo sin darle mensaje NO compila.
 export function NewPropertyButton({
   planUsage,
   approvalStatus,
@@ -48,12 +61,62 @@ export function NewPropertyButton({
         <Plus size={20} />
         Nueva propiedad
       </button>
-      {block.reason === "not_approved" ? (
-        <NotApprovedMessage approvalStatus={approvalStatus} />
-      ) : (
-        <PlanLimitMessage planUsage={planUsage} />
-      )}
+      <BlockMessage
+        reason={block.reason}
+        planUsage={planUsage}
+        approvalStatus={approvalStatus}
+      />
     </div>
+  );
+}
+
+// Despacho por motivo. El `never` del default es lo que obliga a que todo motivo
+// nuevo de PublishBlockReason tenga su mensaje: si se agrega uno y no se lo
+// contempla acá, TypeScript no deja compilar.
+function BlockMessage({
+  reason,
+  planUsage,
+  approvalStatus,
+}: {
+  reason: PublishBlockReason;
+  planUsage: PlanUsage;
+  approvalStatus: ApprovalStatus;
+}) {
+  switch (reason) {
+    case "not_approved":
+      return <NotApprovedMessage approvalStatus={approvalStatus} />;
+    case "subscription_inactive":
+      return <SubscriptionInactiveMessage status={planUsage.status} />;
+    case "plan_limit":
+      return <PlanLimitMessage planUsage={planUsage} />;
+    default: {
+      const exhaustive: never = reason;
+      return exhaustive;
+    }
+  }
+}
+
+// Suscripción dada de baja o vencida: NO se ofrece un upgrade. Lo que destraba
+// esto es reactivar lo que la agencia ya tenía, no comprar un plan mayor, así
+// que el enlace va a su pantalla de suscripción (donde el aviso explica el
+// estado completo) y no a la lista de planes.
+function SubscriptionInactiveMessage({
+  status,
+}: {
+  status: PlanUsage["status"];
+}) {
+  return (
+    <p className="font-sans text-xs text-graphite max-w-xs sm:text-right">
+      {status === "canceled"
+        ? "Tu suscripción está dada de baja, así que no podés publicar."
+        : "Tu suscripción está vencida, así que no podés publicar."}{" "}
+      <Link
+        href="/dashboard/suscripcion"
+        className="text-terracota hover:underline"
+      >
+        Ver mi suscripción
+      </Link>
+    </p>
   );
 }
 

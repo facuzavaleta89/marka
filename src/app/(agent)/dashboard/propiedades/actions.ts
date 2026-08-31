@@ -221,15 +221,22 @@ export async function deletePropertyAction(id: string): Promise<ActionResult> {
 }
 
 // Traduce el error de la base a un mensaje propio. Sobre `properties` hay DOS
-// triggers BEFORE INSERT que rechazan el alta y AMBOS usan el mismo SQLSTATE
+// triggers BEFORE INSERT que rechazan el alta y TODOS usan el mismo SQLSTATE
 // (23514, check_violation), así que el código NO alcanza para distinguirlos: hay
 // que mirar el mensaje.
-//   - trg_check_agency_approved → "La agencia no está aprobada para publicar…"
-//   - trg_check_property_limit  → "Límite de propiedades alcanzado…"
-// Se chequea primero el de aprobación porque es el que dispara primero (Postgres
-// corre los triggers en orden alfabético de nombre) y porque decirle "alcanzaste
-// el límite de tu plan" a alguien que todavía no fue aprobado es falso: no llegó
-// a ningún límite y lo mandaría a pagar un plan que no le va a destrabar nada.
+//   - trg_check_agency_approved     → "La agencia no está aprobada para publicar…"
+//   - trg_check_agency_subscription → "La suscripción de la agencia no está activa…"
+//   - trg_check_property_limit      → "Límite de propiedades alcanzado…"
+// El orden de los chequeos ES el orden en que disparan los triggers (Postgres
+// los corre alfabéticamente por nombre) y también el orden de prioridad de
+// getPublishBlock: aprobación → suscripción → cupo. Decirle "alcanzaste el
+// límite de tu plan" a alguien que no fue aprobado, o a alguien dado de baja, es
+// falso en los dos casos y lo manda a pagar un plan que no le destraba nada.
+//
+// ⚠ El último chequeo es un CAJÓN DE SASTRE: `code === "23514"` matchea
+// CUALQUIER check violation. Por eso los motivos específicos van ANTES; si se
+// agrega un trigger nuevo sobre properties, su rama va arriba de esa línea o se
+// va a reportar como límite de plan.
 // `fallback` es el mensaje para cualquier otro error de base.
 type DbLikeError = { code?: string; message: string };
 
@@ -240,6 +247,9 @@ function translatePropertyWriteError(
 ): string {
   if (dbError.message.includes("no está aprobada")) {
     return "Tu inmobiliaria todavía no está aprobada, así que no podés publicar propiedades.";
+  }
+  if (dbError.message.includes("suscripción")) {
+    return "La suscripción de tu inmobiliaria no está activa, así que no podés publicar propiedades. Escribinos para reactivarla.";
   }
   if (dbError.code === "23514" || dbError.message.includes("Límite")) {
     return limitMessage;

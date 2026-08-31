@@ -70,6 +70,8 @@ export default async function AdminPage() {
     { count: agentsCount },
     { count: activePropertiesCount },
     { count: leadsMonthCount },
+    { data: propertyOwners },
+    { data: leadOwners },
   ] = await Promise.all([
     // La lista parte de AGENCIES, no de subscriptions. El sentido importa: esta
     // es la única pantalla donde se aprueba una agencia, así que ninguna agencia
@@ -114,7 +116,29 @@ export default async function AdminPage() {
       .from("leads")
       .select("*", { count: "exact", head: true })
       .gte("created_at", thirtyDaysAgo.toISOString()),
+
+    // Qué agencias tienen datos cargados, para decidir a cuáles se les OFRECE
+    // la eliminación. Se traen los agency_id y se arman dos conjuntos, en vez
+    // de un count por agencia (que serían N queries). Mismo patrón que
+    // dashboard/equipo/page.tsx para contar propiedades por agente.
+    //
+    // ⚠ ESTO NO ES LA BARRERA: deleteAgencyAction vuelve a contar contra la
+    // base antes de borrar. Acá solo se decide si el botón aparece, y por eso
+    // se puede resolver con una lectura barata y potencialmente desactualizada.
+    admin.from("properties").select("agency_id"),
+    admin.from("leads").select("agency_id"),
   ]);
+
+  // Conjuntos de agencias "no vacías". Si alguna de las dos lecturas fallara,
+  // `data` viene null y el conjunto queda vacío → se ofrecería eliminar de más;
+  // la action lo rechaza igual, así que el peor caso es un botón que no
+  // funciona, nunca un borrado indebido.
+  const agenciesWithProperties = new Set(
+    (propertyOwners ?? []).map((p) => p.agency_id as string)
+  );
+  const agenciesWithLeads = new Set(
+    (leadOwners ?? []).map((l) => l.agency_id as string)
+  );
 
   // Mapeo a la forma que consume la tabla. La suscripción puede faltar: en ese
   // caso `subscription` queda en null y la tabla lo muestra como "sin plan", no
@@ -130,6 +154,11 @@ export default async function AdminPage() {
         license_number: agency.license_number,
         approval_status: agency.approval_status as ApprovalStatus,
         city_name: city?.name ?? null,
+        // Vacía = sin propiedades y sin consultas. Es la única condición bajo la
+        // que se ofrece eliminar.
+        can_delete:
+          !agenciesWithProperties.has(agency.id) &&
+          !agenciesWithLeads.has(agency.id),
         subscription: subscription
           ? {
               plan: subscription.plan as SubscriptionPlan,

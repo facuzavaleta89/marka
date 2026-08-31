@@ -3,7 +3,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, X } from "lucide-react";
+import { Check, X, PauseCircle } from "lucide-react";
+import { Notice } from "@/components/feedback/Notice";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -193,11 +194,36 @@ export function SubscriptionContent({
   // rige (`plan`) NO cambia mientras tanto; `pendingPlan` es solo el pedido.
   const hasPendingRequest = status === "pending" && pendingPlan !== null;
 
-  const currentIdx = PLAN_ORDER.indexOf(plan);
-  // Planes superiores al que rige (las opciones de upgrade); el primero es el "recomendado".
-  const upgrades = PLAN_ORDER.slice(currentIdx + 1);
+  // ⚠ SUSCRIPCIÓN QUE NO RIGE. Antes esta pantalla solo preguntaba por
+  // 'pending', así que 'canceled' y 'past_due' caían en la MISMA rama que una
+  // suscripción sana: la agencia dada de baja veía su plan anterior como plan
+  // actual, con su fecha de vencimiento, sin un solo aviso. Era la única
+  // pantalla que no se lo decía (el bloqueo al publicar sí, y sus propiedades ya
+  // no se veían en el mapa).
+  //
+  // 'pending' NO entra acá y no debe entrar: es "pidió un plan y espera
+  // activación", una agencia al día que esta pantalla ya maneja bien.
+  const isInactive = status === "canceled" || status === "past_due";
 
-  const endDate = currentPeriodEnd
+  const currentIdx = PLAN_ORDER.indexOf(plan);
+
+  // Planes superiores al que rige (las opciones de upgrade); el primero es el
+  // "recomendado".
+  //
+  // ⚠ CON LA SUSCRIPCIÓN DE BAJA NO SE OFRECE NINGÚN UPGRADE. Dos motivos:
+  //   1. Es la misma mentira que el mensaje de cupo: lo que destraba a esta
+  //      agencia es REACTIVAR lo que ya tenía, no comprar un plan mayor.
+  //   2. Y es más que cosmético: requestPlanUpgradeAction escribe
+  //      status = 'pending' sin mirar el estado previo, así que pedir un upgrade
+  //      sacaba a la agencia del estado 'canceled' por su cuenta y le devolvía
+  //      la posibilidad de publicar. La barrera real está en esa action (la
+  //      interfaz nunca alcanza); esto es la mitad visible.
+  const upgrades = isInactive ? [] : PLAN_ORDER.slice(currentIdx + 1);
+
+  // La fecha de vencimiento NO se muestra mientras la suscripción no rige:
+  // "plan activo hasta el X" de un plan que está dado de baja es exactamente la
+  // contradicción que esta corrección viene a sacar.
+  const endDate = !isInactive && currentPeriodEnd
     ? new Date(currentPeriodEnd).toLocaleDateString("es-AR", {
         day: "numeric",
         month: "long",
@@ -224,6 +250,42 @@ export function SubscriptionContent({
   return (
     <>
       <div className="space-y-6">
+        {/* Aviso de suscripción que no rige. Tono `warning`, no `error`: puede
+            ser una baja acordada, una prueba que terminó o un pago pendiente —
+            el sistema no sabe cuál, así que no acusa a nadie. Dice qué pasa,
+            qué NO se perdió, y cómo se resuelve. */}
+        {isInactive && (
+          <Notice
+            tone="warning"
+            title={
+              status === "canceled"
+                ? "Tu suscripción está dada de baja"
+                : "Tu suscripción está vencida"
+            }
+            icon={<PauseCircle size={18} />}
+          >
+            <p>
+              Mientras tanto, tus propiedades no se muestran en el mapa público,
+              tu sitio propio está apagado si tenías uno, y no podés publicar
+              nuevas.
+            </p>
+            <p className="mt-2">
+              <strong className="text-black">
+                Tus datos están intactos:
+              </strong>{" "}
+              tus propiedades, tus fotos y tu equipo siguen acá y volvés a verlos
+              publicados apenas se reactive. Escribinos a{" "}
+              <a
+                href="mailto:hola@marka.app"
+                className="text-terracota hover:underline"
+              >
+                hola@marka.app
+              </a>{" "}
+              y lo resolvemos.
+            </p>
+          </Notice>
+        )}
+
         {/* Barra de uso del plan que rige */}
         <div className="bg-paper border border-stone rounded-lg p-6">
           <p className="font-sans text-sm font-medium text-black mb-1">
