@@ -7,6 +7,7 @@ import type {
   Amenity,
   Currency,
   ApprovalStatus,
+  GeocodeStatus,
 } from "@/types";
 
 export const PROPERTY_TYPE_LABELS: Record<PropertyType, string> = {
@@ -63,4 +64,25 @@ export const APPROVAL_STATUS_LABELS: Record<ApprovalStatus, string> = {
   pending: "Por aprobar",
   approved: "Aprobada",
   rejected: "Rechazada",
+};
+
+// Desenlaces de la búsqueda de direcciones, tal como se los cuenta al agente.
+// Son frases y no etiquetas cortas, pero viven acá porque son un mapa indexado
+// por un literal del dominio (GeocodeStatus) y este archivo es el único lugar
+// del proyecto donde vive esa clase de mapa.
+//
+// Tono (DESIGN §10): ninguno de los cuatro es culpa de la persona, así que
+// ninguno la reta ni le pide que "reintente". Los tres que no encuentran nada
+// terminan diciendo lo mismo —el camino manual sigue ahí—, porque esa es la
+// información que necesita para seguir trabajando: la búsqueda es un ATAJO, y
+// que falte un atajo no bloquea nada.
+export const GEOCODE_STATUS_MESSAGES: Record<GeocodeStatus, string> = {
+  found:
+    "Movimos el pin a esta dirección. Revisá que sea el lugar exacto y confirmá la ubicación, o arrastrá el pin si hay que corregirlo.",
+  not_found:
+    "No encontramos esa dirección en el mapa. Podés colocar el pin a mano, como siempre.",
+  out_of_city:
+    "Lo que encontramos queda lejos de tu ciudad, así que no movimos el pin. Colocalo a mano en el mapa.",
+  unavailable:
+    "El buscador de direcciones no está disponible en este momento. Podés colocar el pin a mano, como siempre.",
 };

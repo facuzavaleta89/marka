@@ -247,6 +247,20 @@ function translatePropertyWriteError(
   return fallback;
 }
 
+// Normaliza el origen de la coordenada antes de escribirlo. La columna tiene un
+// CHECK ('manual' | 'suggested'), así que cualquier cosa que no sea exactamente
+// 'suggested' se guarda como 'manual': es el valor honesto por defecto (una
+// coordenada que no salió del buscador la puso una persona) y garantiza que el
+// CHECK no pueda hacer fallar un alta por un dato que NO gatea nada.
+//
+// ⚠ Este campo es solo para medir después la calidad de las ubicaciones
+// sugeridas contra las arrastradas. No debe condicionar ninguna decisión.
+function normalizeLocationSource(
+  value: PropertyInsert["location_source"]
+): "manual" | "suggested" {
+  return value === "suggested" ? "suggested" : "manual";
+}
+
 // ─── Alta de propiedad ────────────────────────────────────────
 
 export async function createPropertyAction(
@@ -328,6 +342,7 @@ export async function createPropertyAction(
     country: "Argentina",
     lat: data.lat,
     lng: data.lng,
+    location_source: normalizeLocationSource(data.location_source),
     amenities: data.amenities,
     year_built: data.year_built ?? null,
     is_featured: isFeatured,
@@ -432,6 +447,7 @@ export async function updatePropertyAction(
       neighborhood: data.neighborhood ?? null,
       lat: data.lat,
       lng: data.lng,
+      location_source: normalizeLocationSource(data.location_source),
       amenities: data.amenities,
       year_built: data.year_built ?? null,
       is_featured: isFeatured,
