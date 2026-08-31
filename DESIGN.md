@@ -550,35 +550,46 @@ El visitante puede estar en una ciudad pero querer ver otra. El selector es disc
 - Si el usuario concede ubicación y hay una ciudad cercana: cambiar suavemente, sin recargar
 - Nunca mostrar un modal intrusivo pidiendo ubicación al entrar — la app funciona sin ella
 
-### LocationPicker (pin manual en el formulario)
+### LocationPicker (pin manual en el formulario) + sugerencia desde la dirección
 
-El componente más delicado del dashboard. El agente coloca la ubicación exacta arrastrando un pin. **No hay geocoding automático.**
+El componente más delicado del dashboard. El agente coloca la ubicación exacta arrastrando un pin. **No hay geocoding automático** — nada busca solo, ni al tipear, ni al montar, ni al guardar. Lo que sí hay es un **atajo opcional**: un botón que, a pedido explícito, propone un punto de partida. **La coordenada que se guarda es siempre la que el agente confirmó**; el pin manual sigue siendo la fuente de verdad. (El porqué de cada pieza —incluida la política de uso del servicio que prohíbe el autocompletado— está en `CLAUDE.md` → "Ubicación de la propiedad".)
 
 ```
 ┌─────────────────────────────────────────┐
-│  Ubicación en el mapa                     │  ← label DM Sans 13px Medium
-│  Arrastrá el pin hasta la ubicación       │  ← instructivo DM Sans 12px graphite
-│  exacta del inmueble                      │
+│  [🔍 Buscar esta dirección en el mapa]   │  ← botón SECUNDARIO (borde stone), h-40px
+│  Movimos el pin a esta dirección…        │  ← resultado, DM Sans 12px graphite / error
 ├─────────────────────────────────────────┤
-│                                           │
+│  Arrastrá el pin hasta la ubicación      │  ← instructivo DM Sans 12px graphite
+│  exacta del inmueble, o buscá la          │
+│  dirección más arriba y ajustalo desde ahí│
+├─────────────────────────────────────────┤
+│                          [◎ Centrar]     │  ← overlay top-right, paper + borde stone
 │        [Mini-mapa Leaflet]                │  altura 280px, rounded-md
-│              📍 (pin terracota)           │  pin draggable, centrado al inicio
+│              📍 (pin terracota)           │  pin draggable
 │                                           │
 ├─────────────────────────────────────────┤
 │  Lat: -27.7951   Lng: -64.2615           │  ← DM Sans 12px graphite, solo lectura
+├─────────────────────────────────────────┤
+│  [✓ Confirmar esta ubicación]            │  ← secundario; pasa a "✓ Ubicación
+│                                           │     confirmada" en `success` al confirmar
 └─────────────────────────────────────────┘
 ```
 
-- El mini-mapa se centra al inicio en el `center_lat`/`center_lng` de la ciudad de la agencia
-- El pin es terracota, arrastrable, con `shadow-md`
+- El mini-mapa **abre centrado donde está el pin**: en el alta eso es el centro de la ciudad de la agencia; en la edición, la propiedad. (Antes abría siempre en el centro de la ciudad, y al editar una propiedad alejada el pin podía quedar fuera del recuadro de 280 px.)
+- El pin es terracota, arrastrable, con sombra propia (`drop-shadow` sobre `.marka-loc-pin__inner`) y un **pulse de 450 ms** al reubicarse — micro-feedback de que algo pasó
 - Las coordenadas se muestran abajo en modo solo-lectura, como confirmación visual
 - El instructivo es permanente, no un tooltip que se oculta — es la pieza que evita errores de ubicación
+- **Ambos botones son secundarios (borde `stone`, fondo transparente), nunca terracota**: el terracota está reservado para el CTA de publicar, y dos botones terracota compitiendo confunden cuál es el paso final
+
+**Voz de los mensajes de la búsqueda** (`GEOCODE_STATUS_MESSAGES` en `lib/utils/labels.ts`, uno por desenlace): ninguno de los cuatro es culpa de la persona, así que ninguno la reta ni le pide "reintentar". Los tres que no encuentran nada terminan diciendo lo mismo —*el camino manual sigue ahí*—, porque esa es la información que necesita para seguir trabajando: la búsqueda es un atajo, y que falte un atajo no bloquea nada. El mensaje se esconde solo en cuanto el agente corrige la dirección (sin efectos y sin disparar ninguna búsqueda).
 
 ### Estados de validación del formulario de propiedad
 
-Cuando el agente intenta guardar sin completar la ubicación:
+Cuando el agente intenta guardar sin **confirmar** la ubicación:
 - El borde del mini-mapa pasa a `error`
-- Mensaje bajo el componente: "Colocá el pin en el mapa" en DM Sans 12px `error`
+- Mensaje bajo el componente, en DM Sans 12px `error`: "Confirmá la ubicación antes de guardar: arrastrá el pin hasta el punto exacto, o buscá la dirección y confirmá la sugerencia."
+
+La regla que habilita guardar es **"la ubicación actual está confirmada"**, no "el pin se movió alguna vez": arrastrar confirma, "Centrar" desconfirma, una sugerencia desconfirma. Al editar, la ubicación nace confirmada (ya era real), pero se desconfirma si la coordenada cambia. El detalle y el bug que cierra están en `CLAUDE.md`.
 
 ---
 

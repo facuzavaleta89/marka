@@ -1,315 +1,342 @@
-# Informe de ejecución — El barrio sale de la búsqueda; se elimina la cascada
+# Informe — Documentación de la sugerencia de ubicación (geocodificación)
 
-**Modo:** ejecución. **No se ejecutó ningún comando de git.** No se ejecutó SQL de escritura.
-
-**Fecha:** 2026-08-31.
-
-**Balance: se sacó código, no se agregó.** El orquestador pasó de 434 a 369 líneas, y de esas 369 una parte creció porque el comentario que documenta *por qué* el barrio no va es deliberadamente largo (tarea 3). En código ejecutable la reducción es mayor de lo que sugiere el conteo.
-
-**Archivos modificados: 6.** Ninguno creado, ninguno eliminado.
+> Tarea de documentación. Solo se modificaron archivos `.md`. No se tocó código fuente,
+> no se ejecutó ningún comando de git ni ningún SQL de escritura. La base se leyó por MCP
+> (solo lectura). Fecha del relevamiento: 31 ago 2026.
 
 ---
 
-## 0. Reproducción del caso medido (antes de tocar nada, y después)
+## 1. Lo relevado (Paso 1)
 
-Antes de escribir el informe reproduje tu medición contra Nominatim real, con exactamente la consulta que arma este módulo (`viewbox` incluido), espaciando 1,5 s entre pedidos por la política de uso:
+### a. Archivos nuevos de la feature
 
-```
-ANTES · barrio "Centro"  (el que la gente usa)   → OUT_OF_CITY  157.8 km  Bartolomé Mitre, Barrio Centro, Añatuya, Municipio de Añatuya…
-ANTES · barrio "Parque"  (el mapeado)            → found          0.9 km  291, Mitre, Barrio Parque Aguirre, Santiago del Estero…
-ANTES · barrio "Cabildo" (otro cualquiera)       → not_found
-AHORA · SIN barrio                               → found          0.9 km  291, Mitre, Barrio Parque Aguirre, Santiago del Estero…
-```
+Todos salieron del commit `5c0115c` ("feat: sugerir ubicación desde la dirección y arreglar
+la confirmación del pin"), mergeado en `eafa72d` (PR #10).
 
-**Tu hallazgo queda confirmado, y el arreglo también:** sin barrio, "Mitre 291" se encuentra bien, a 0,9 km del centro. **Dos precisiones sobre el reporte**, que anoté porque el comentario del código tiene que llevar datos exactos si su trabajo es impedir que alguien vuelva a agregar el barrio:
+**Módulo de geocodificación — `src/lib/geocoding/` (server-only, 3 archivos):**
 
-1. **Con "Centro" el resultado no cae en otra provincia, sino en otra ciudad de la MISMA provincia:** Bartolomé Mitre en **Añatuya**, a 158 km. No cambia nada de la conclusión —el filtro de distancia lo descarta igual y el resultado sigue siendo incorrecto y lejano—, pero es lo que efectivamente devuelve el servicio.
-2. **Con "Cabildo" a mí me dio `not_found`, no un acierto.** Tu reporte decía "encuentra bien". Puede ser una diferencia de momento o de cómo se armó la consulta. Tampoco cambia la conclusión (un barrio que no coincide con lo mapeado o tapa la dirección o desvía la búsqueda), pero preferí escribir en el código lo que yo medí y no lo que me pasaron.
+| Archivo | Qué hace |
+|---|---|
+| `types.ts` | Contrato **genérico**: `GeocodeQuery`, `GeocodeCandidate`, `GeocodeProvider`. Es la costura de cambio de proveedor: nada específico de Nominatim puede aparecer acá. Reglas del contrato: `null` = "respondió y no hay resultado utilizable" (no es error); cualquier falla se **lanza**; el `signal` es el presupuesto de tiempo de toda la operación. Ya lleva un `⚠ NO agregar el barrio acá` explícito |
+| `nominatim.ts` | **Único archivo del repo que sabe qué es Nominatim**: URL (`/search`), parámetros (`q`, `format=jsonv2`, `limit=1`, `addressdetails=0`, `viewbox`, `accept-language=es`), User-Agent, armado del `viewbox` (sesgo, **sin `bounded=1`** a propósito) y parseo defensivo de la respuesta. En la cabecera lleva el enlace a la política y el reparto de qué obligación se cumple dónde |
+| `index.ts` | Orquestador. Presupuesto de tiempo, limitador de 1 consulta/s, caché con TTL, descarte por distancia, sanitización de entrada y salida, y el interruptor de simulación de caída. Expone `geocodeAddress()` (**nunca lanza**) y `sanitizeAddress()`. Contiene la línea `const provider = nominatimProvider`, la única referencia al proveedor en todo el repo, y el comentario largo con la medición del barrio |
 
-El comentario del orquestador quedó con estos números, no con los del enunciado.
+**Ruta de API:**
 
----
+| Archivo | Qué hace |
+|---|---|
+| `src/app/api/geocode/route.ts` | `POST /api/geocode`. Cuatro pasos: (1) **gate de sesión propio** con `resolveAgentSession()` → 401 (usa `resolveAgentSession`, no `requireAgentSession`, porque un route handler responde un código, no redirige); (2) cuerpo ilegible → 400; (3) la **ciudad la deriva el servidor** vía `getAgencyCity(session.agent.agency_id)`; (4) llama a `geocodeAddress` y devuelve `GeocodeResponse`. Nunca devuelve el error crudo del servicio externo |
 
-## 1. Todos los lugares de los que salió el barrio
+**Utilidades nuevas:**
 
-Recorrido completo, de la interfaz al proveedor:
+| Archivo | Qué hace |
+|---|---|
+| `src/lib/utils/coords.ts` | `Coords`, `roundCoord`/`roundCoords` (**7 decimales, único redondeo del proyecto**) y `distanceKm` (equirectangular con corrección del ancho del grado de longitud por latitud). Sin dependencias: lo usan servidor y cliente |
+| `src/lib/utils/getAgencyCity.ts` | Ciudad de una agencia (id, nombre, provincia, país, centro) para armar la consulta. Server-only, client normal (no service role: `cities` y `agencies` tienen lectura pública) |
 
-| # | Archivo | Qué salió |
+**Interfaz:**
+
+| Archivo | Qué hace |
+|---|---|
+| `src/components/properties/AddressSearchButton.tsx` (nuevo) | Botón "Buscar esta dirección en el mapa". `fetch` a `/api/geocode` desde el `onClick` **y solo desde ahí**. Timeout propio de cliente, cualquier respuesta ≠ 200 se trata como `unavailable`, y el mensaje se esconde solo si el agente edita la dirección (`staleResult`, que **no** dispara búsquedas) |
+| `src/components/properties/LocationPicker.tsx` (reescrito) | Pasó a **componente controlado**: `value` es la fuente de verdad y ya no guarda copia. `onChange(coords, cause)` con `cause: "drag" \| "center"`. Efecto que recentra + pulsa cuando la posición llega de afuera, sin ningún camino de escritura hacia el padre (no puede realimentarse) |
+| `src/components/properties/PropertyForm.tsx` (modificado) | Dueño único de la confirmación (`locationConfirmed`) y del `locationSource`. Monta el botón de búsqueda, aplica la sugerencia, y bloquea el submit si la ubicación no está confirmada |
+| `src/lib/utils/labels.ts` | `GEOCODE_STATUS_MESSAGES`: un mensaje por desenlace |
+| `src/types/index.ts` | `LocationSource`, `GeocodeStatus`, `GeocodeResponse` (unión discriminada) y `location_source` en `Property` |
+| `src/app/(agent)/dashboard/propiedades/actions.ts` | `normalizeLocationSource`: todo lo que no sea exactamente `'suggested'` se guarda como `'manual'` |
+
+### b. Variables de entorno
+
+| Variable | Obligatoria | Ámbito | Notas |
+|---|---|---|---|
+| `GEOCODING_USER_AGENT` | **No**, pero **hay que setearla en producción** | Server-side (sin `NEXT_PUBLIC_`) | La política exige un User-Agent propio que permita contactar. Si falta, se usa `"Marka/1.0 (marketplace inmobiliario; https://marka.com.ar)"`, que identifica la app pero **no lleva dirección de contacto**. Se dejó un default en vez de fallar a propósito: la feature es un atajo, y quedarse sin atajo por una variable sin setear sería peor. Está presente en el `.env.local` de este repo |
+| `GEOCODING_SIMULATE_OUTAGE` | No | Server-side | **Uso local únicamente, NUNCA en producción.** Ausente / vacía / `"0"` / `"false"` = apagado; cualquier otro valor la enciende. **No está en el `.env.local` actual** |
+
+Ninguna de las dos es necesaria para que la app arranque. Las que sí hay que configurar en
+producción son las que ya estaban (`NEXT_PUBLIC_SUPABASE_*`, `SUPABASE_SERVICE_ROLE_KEY`,
+`ADMIN_USER_ID`) más `GEOCODING_USER_AGENT`.
+
+### c. Valores concretos (leídos del código, no supuestos)
+
+| Constante | Valor | Dónde |
 |---|---|---|
-| 1 | `src/components/properties/PropertyForm.tsx:274` | `const neighborhood = watch("neighborhood") ?? "";` — existía **solo** para alimentar el botón. |
-| 2 | `src/components/properties/PropertyForm.tsx:649` | La prop `neighborhood={...}` que se le pasaba a `<AddressSearchButton>`. |
-| 3 | `src/components/properties/AddressSearchButton.tsx:25` | El campo `neighborhood: string \| null` de `AddressSearchButtonProps`. |
-| 4 | `src/components/properties/AddressSearchButton.tsx:46` | El parámetro `neighborhood` de la desestructuración. |
-| 5 | `src/components/properties/AddressSearchButton.tsx:77` | El `neighborhood` del cuerpo JSON del `fetch`. Ahora manda solo `{ address }`. |
-| 6 | `src/app/api/geocode/route.ts:40` | El campo `neighborhood?: unknown` de `RequestBody`. La ruta ya no lo recibe. |
-| 7 | `src/app/api/geocode/route.ts:66` | `const neighborhood = sanitizeNeighborhood(body.neighborhood);` — ya no se valida. |
-| 8 | `src/app/api/geocode/route.ts:82` | El `neighborhood` que se le pasaba a `geocodeAddress`. |
-| 9 | `src/app/api/geocode/route.ts:2` | El import de `sanitizeNeighborhood`. |
-| 10 | `src/lib/geocoding/index.ts:94` | El campo `neighborhood: string \| null` de `GeocodeRequest`. El orquestador ya no lo acepta. |
-| 11 | `src/lib/geocoding/index.ts:77` | La constante `MAX_NEIGHBORHOOD_LENGTH`. |
-| 12 | `src/lib/geocoding/index.ts:121-123` | La función `sanitizeNeighborhood` completa. |
-| 13 | `src/lib/geocoding/index.ts:241` | El barrio dentro de `cacheKey`. |
-| 14 | `src/lib/geocoding/index.ts:356` | El `sanitizeNeighborhood(request.neighborhood)` de `geocodeAddress`. |
-| 15 | `src/lib/geocoding/nominatim.ts:76` | El `query.neighborhood` del armado del texto de consulta. |
-| 16 | `src/lib/geocoding/types.ts:20-21` | El campo `neighborhood` de `GeocodeQuery` (el tipo de la consulta genérica). |
+| `GEOCODE_TIMEOUT_MS` | **5.000 ms** (presupuesto TOTAL: espera del cupo + red) | `lib/geocoding/index.ts` |
+| `MIN_REQUEST_INTERVAL_MS` | **1.100 ms** (el límite es 1/s; 100 ms de margen de reloj) | `lib/geocoding/index.ts` |
+| `CACHE_TTL_MS` | **24 h** (`24 * 60 * 60 * 1000`) | `lib/geocoding/index.ts` |
+| `MAX_CACHE_ENTRIES` | **500** (desaloja la entrada más vieja) | `lib/geocoding/index.ts` |
+| `CITY_RADIUS_KM` | **25 km** | `lib/geocoding/index.ts` |
+| `MAX_ADDRESS_LENGTH` / `MAX_LABEL_LENGTH` | **200 / 120** caracteres | `lib/geocoding/index.ts` |
+| `COORD_DECIMALS` | **7** (≈ 1 cm) | `lib/utils/coords.ts` |
+| `CLIENT_TIMEOUT_MS` | **8.000 ms** (techo del cliente, por encima del servidor) | `AddressSearchButton.tsx` |
+| `SUGGESTION_ZOOM` / `CITY_ZOOM` | **16 / 15** | `LocationPicker.tsx` |
 
-**Sacarlo del tipo `GeocodeQuery` no rompió nada más**: `tsc --noEmit` pasa en 0, y el único otro consumidor del tipo es `nominatim.ts`, ya ajustado.
+Matiz de la caché que no estaba en el contexto y sí en el código: **es por desenlace**.
+`found`, `not_found` y `out_of_city` se guardan; **`unavailable` nunca** (cachear una caída
+de un minuto dejaría el atajo roto 24 horas).
 
-**Verificación de que no quedó nada** en el camino de geocodificación:
+### d. Columna nueva de `properties` (medida por MCP)
 
 ```
-$ grep -rn "neighborhood" src/lib/geocoding/ src/app/api/geocode/ src/components/properties/AddressSearchButton.tsx
-0 ocurrencias de código
+column_name      | data_type | is_nullable | column_default
+location_source  | text      | YES         | (ninguno)
+
+properties_location_source_check:
+  CHECK ((location_source IS NULL) OR (location_source = ANY (ARRAY['manual'::text, 'suggested'::text])))
 ```
 
-### El barrio como campo de la propiedad: intacto
+Nullable y sin default: las propiedades cargadas antes de la feature no lo tienen. De las 12
+propiedades de la base, **2** tienen valor. El CHECK admite `NULL` explícitamente.
 
-Estas ocurrencias **siguen y tienen que seguir**, verificadas una por una:
+También se midió `cities`, para verificar el supuesto del umbral de distancia: sus columnas
+son `id, name, slug, province, country, center_lat, center_lng, default_zoom, is_active,
+created_at` — **no hay ningún límite geográfico**, solo el punto central y el zoom. El
+supuesto documentado es correcto.
 
-- `PropertyForm.tsx:81` — `neighborhood: z.string().optional()` en el esquema.
-- `PropertyForm.tsx:229` — valor inicial en modo edición.
-- `PropertyForm.tsx:351, 384` — se manda a las actions de alta y de edición.
-- `PropertyForm.tsx:634-636` — el input "Barrio" del formulario.
-- `propiedades/actions.ts:339, 447` — se persiste en la base.
-- `PropertyCard.tsx`, `PropertyModal.tsx` — se muestra al visitante.
-- `useProperties.ts:76-77` — filtro del mapa por barrio.
-- `types/index.ts` — el campo de `Property` y de `MapFilters`.
+### e. Baseline
 
-**El agente sigue escribiendo el barrio y se sigue guardando tal cual.** Lo único que cambió es que dejó de viajar a la consulta de geocodificación.
-
-### La ciudad sigue resolviéndose en el servidor
-
-Sin tocar: `route.ts:68` sigue haciendo `getAgencyCity(session.agent.agency_id)`, y el cliente sigue sin poder influir en la ciudad, la provincia ni el país. Verificado en el banco de pruebas (comprobación 4): si un llamador cuela un `neighborhood` en el objeto, el orquestador lo ignora — ya no está en el tipo y nadie lo lee.
-
----
-
-## 2. Todo lo que se eliminó con la cascada, y la verificación de que nadie más lo usaba
-
-| Qué se eliminó | Dónde estaba | Verificación de que nada más lo usaba |
+| Comando | Exit code | Resultado |
 |---|---|---|
-| **La constante `MIN_RETRY_BUDGET_MS`** (2 s) y su comentario | `index.ts:40-45` | `grep -rn "MIN_RETRY_BUDGET_MS" src/` → **0 usos** |
-| **La lógica de los dos intentos**: las variables `withNeighborhood` / `withoutNeighborhood`, el `deadline`, y las tres condiciones (`if (!neighborhood)`, `if (status !== "not_found")`, `if (deadline - Date.now() < …)`) | `index.ts:370-407` | `grep -n "withNeighborhood\|deadline"` → **0 ocurrencias** |
-| **La salvaguarda** `if (withoutNeighborhood.status === "unavailable") return withNeighborhood;` | `index.ts:405` | eliminada con el bloque; sin segundo intento no tiene sentido |
-| **El tipo auxiliar** `Omit<GeocodeQuery, "neighborhood">` de `baseQuery` | `index.ts:361` | existía solo para armar dos variantes de la misma consulta |
-| **La función `runAttempt`** | `index.ts:281-315` | ver punto 3 |
-| **El comentario de `cacheKey`** que explicaba cómo convivían las dos entradas de la cascada | `index.ts:223-233` | reemplazado por uno que describe la clave real |
-| **El comentario de cabecera "EL BARRIO ES UNA PISTA, NO UN REQUISITO"** con el diagrama de los dos intentos | `index.ts:322-343` | reemplazado por el de la tarea 3 |
+| `npx tsc --noEmit` | 0 | Sin salida (0 errores) |
+| `npm run lint` | 0 | **0 errores, 1 warning** — `react-hooks/incompatible-library` en `PropertyForm.tsx:269` |
+| `npx next build` | 0 | Verde, **19 rutas** |
 
-**Relectura completa del orquestador después de sacar todo**, como pediste. Lo que encontré y resolví:
-
-- **`sanitizeNeighborhood`** quedaba definida y exportada sin ningún llamador → eliminada.
-- **`MAX_NEIGHBORHOOD_LENGTH`** quedaba sin usar → eliminada.
-- **`sanitizeQueryText` seguía exportada, y su comentario decía "se exporta porque la ruta valida la entrada con esto mismo"** — falso: la ruta importaba `sanitizeAddress` y `sanitizeNeighborhood`, nunca `sanitizeQueryText`, y ahora importa solo `sanitizeAddress`. Era superficie pública sin consumidor con un comentario que la justificaba con un consumidor inexistente. La bajé a función privada del módulo y corregí el comentario. Ver punto 7.
-- **Ninguna condición quedó siempre verdadera**: las tres del descarte de la cascada se fueron enteras, no se degradaron a `if (true)`.
-
-**Lo que NO se tocó y sigue intacto: ver punto 5.**
+**Dos números de la documentación quedaron desactualizados y se corrigieron:** el warning
+está en `PropertyForm.tsx:**269**` (la documentación decía `:232`; es el mismo warning, el
+archivo creció con la confirmación de ubicación) y el build tiene **19 rutas**, no 18 (la
+nueva es `/api/geocode`).
 
 ---
 
-## 3. Qué decidí sobre `runAttempt`, y por qué
+## 2. Archivos de documentación modificados
 
-**La reintegré al cuerpo de `geocodeAddress`.** Decisión mía, la pusiste en mis manos.
+### `CLAUDE.md`
 
-**Por qué.** `runAttempt` no nació por claridad: nació porque la cascada necesitaba invocar dos veces la misma secuencia y compartir un `AbortSignal` entre las dos. Con un solo llamador, todo lo que aportaba se da vuelta:
+1. **Baseline del encabezado:** `PropertyForm.tsx:232` → `:269`; 18 → **19 rutas**.
+2. **Párrafo de la hoja de ruta de modelo:** la sugerencia de ubicación pasó de "pendiente"
+   a la lista de "ya aplicado", nombrando el ítem D1.
+3. **Estructura de carpetas:** se agregaron `src/app/api/geocode/route.ts` (como hermano de
+   los route groups, con la nota de que el proxy no la cubre), `AddressSearchButton.tsx`,
+   la carpeta `lib/geocoding/` con sus tres archivos, y `lib/utils/coords.ts` +
+   `getAgencyCity.ts`. La línea de `LocationPicker.tsx` dejó de decir "Pin manual (NO
+   geocoding)" y ahora dice que es **controlado** y que emite la causa del cambio.
+4. **Sección "Ubicación — pin manual" → reescrita como "Ubicación de la propiedad — pin
+   manual + sugerencia desde la dirección"** (es el grueso del trabajo). Contiene:
+   - Un párrafo de apertura destacado: **la regla no se derogó, se refinó** — sigue sin haber
+     geocodificación automática, el pin manual sigue siendo la fuente de verdad, y la
+     sugerencia es un punto de partida opcional que no confirma nada.
+   - El flujo completo en 6 pasos, del botón al pin, con los cuatro desenlaces.
+   - **Tabla de obligaciones de la política de Nominatim**, con el enlace, presentadas como
+     restricciones que el código tiene que seguir cumpliendo y con el archivo donde se
+     cumple cada una. Incluye la advertencia de que la política puede cambiar sin aviso y
+     que advierte específicamente a las aplicaciones comerciales.
+   - Por qué la llamada sale del servidor; por qué la ruta tiene gate propio (con el detalle
+     del `POST` redirigido que devolvería HTML con **200** y el cliente leería como éxito);
+     por qué la ciudad la resuelve el servidor.
+   - **Cómo se cambia de proveedor:** los dos pasos concretos, con el nombre del archivo a
+     escribir, las reglas del contrato y **la línea exacta** (`const provider =
+     nominatimProvider;` en `src/lib/geocoding/index.ts`).
+   - **La regla del barrio**, como sub-sección con título en mayúsculas ("⚠ EL BARRIO NO
+     PARTICIPA DE LA BÚSQUEDA. NO LO VUELVAS A AGREGAR"), con la tabla de los cuatro casos
+     medidos y los números reales (0,9 km / Añatuya / 158 km).
+   - La **regla nueva de confirmación**, con tabla de qué confirma y qué desconfirma, el bug
+     que cierra (que existía sin geocodificador), y qué pasa al editar.
+   - Por qué `LocationPicker` pasó a controlado, y por qué `roundCoord` es load-bearing.
+   - "La feature es un ATAJO, nunca un requisito", con las cuatro capas que lo garantizan.
+   - **Tabla de valores** que gobiernan el comportamiento, con el porqué de cada uno, más el
+     supuesto explícito del umbral de 25 km.
+   - El **interruptor de prueba**, con su advertencia de producción.
+   - La **columna `location_source`**, con tipo, nullability, CHECK y el aviso de que no
+     gatea nada.
+5. **Tabla de la base de datos:** la fila de `properties` menciona `location_source`; la de
+   `cities` deja anotado que **no tiene límites geográficos** (que es la razón del umbral).
+6. **Tabla "Decisiones de Arquitectura":** la fila "Pin manual sin geocoding" se reemplazó
+   por una que refleja el modelo nuevo, y se agregaron **siete filas**: búsqueda por botón,
+   llamada desde el servidor, gate adentro del handler, el barrio fuera de la consulta, la
+   regla de confirmación, el picker controlado y `location_source` que no gatea nada.
+7. **Variables de entorno:** el bloque ya las tenía (las agregó el commit de la feature); se
+   sumó debajo una línea que aclara cuál hay que setear en producción y cuál no debe existir.
 
-1. **El parámetro `signal` dejaba de tener razón de ser.** Existía para que dos intentos compartieran un presupuesto. Con uno solo, el controller se crea y se usa en el mismo lugar, y el parámetro era una indirección que sugería una flexibilidad que ya no existe.
-2. **Partía en dos el manejo de errores.** `runAttempt` tenía `try/catch` y `geocodeAddress` tenía `try/finally`: dos bloques haciendo un trabajo. Ahora es un solo `try/catch/finally` que se lee de arriba abajo.
-3. **Obligaba a saltar de función para leer un flujo lineal de treinta líneas.** Con una sola invocación, la indirección cuesta más de lo que ahorra.
+### `DESIGN.md`
 
-El resultado es exactamente la forma que el módulo tenía **antes** de que se agregara la cascada: una función, un camino, sin ramas. Si mañana volviera a hacer falta repetir un intento (no debería), extraerla de nuevo es mecánico.
+- **§11 · LocationPicker** reescrita como "LocationPicker (pin manual en el formulario) +
+  sugerencia desde la dirección": diagrama actualizado con el botón de búsqueda, el botón
+  "Centrar" y el de confirmación; la nota de que **ambos botones son secundarios y nunca
+  terracota** (el terracota está reservado para el CTA de publicar); la voz de los mensajes
+  de los cuatro desenlaces (§10); el pulse del pin.
+- **§11 · Estados de validación:** la condición pasó a ser "guardar sin **confirmar**", con
+  el texto real del mensaje de error, más el resumen de qué confirma y qué desconfirma.
+
+### `PENDIENTES.md`
+
+- Fecha de última actualización → 31 ago 2026, con el motivo.
+- Calendario de lanzamiento: la autosugerencia figuraba como algo que "sube" de prioridad;
+  ahora aclara que **ya está hecha**.
+- **D1 marcado `[x]` con su cierre**, incluyendo que la trampa anotada era más grande de lo
+  que el ítem creía (la regla vieja ya estaba rota sin geocoder) y la regla del barrio.
+- **Tres ítems nuevos de deuda técnica** (Paso 3): limitador y caché en proceso, ciudades sin
+  límites geográficos, y el módulo como candidato a estrenar pruebas automatizadas.
+- Baseline de la sección de deuda técnica actualizado (269 / 19 rutas).
+- Conteos de la base corregidos (ver punto 4).
+
+### `PLAN-ORIGINAL.md`
+
+- Una sola línea: la del árbol que describía `LocationPicker` como "(NO geocoding)" quedó
+  marcada como desactualizada, con puntero a `CLAUDE.md`. El archivo entero sigue estando
+  globalmente desactualizado y ya tiene su ítem propio en `PENDIENTES.md`; no se reescribió.
+
+### No se tocaron
+
+`README.md` (es el boilerplate de `create-next-app`, no documenta el proyecto) y `AGENTS.md`
+(regla de Next.js, ajena a esto).
 
 ---
 
-## 4. Qué quedó del orquestador — el flujo completo de un vistazo
+## 3. Diferencias entre el contexto dado y lo medido en el código
 
-`geocodeAddress` (`src/lib/geocoding/index.ts:297-346`), **sin una sola rama de estrategia**:
+El contexto era **exacto en todo lo sustantivo**. Las diferencias son de detalle, y en todos
+los casos ganó lo medido:
 
-```
-1. ¿Interruptor de caída simulada puesto?      → 'unavailable', y se termina.
-                                                  (antes de la caché, del limitador y de la red)
-2. Sanitizar la dirección                      → si queda vacía: 'not_found'
-3. Armar la consulta:
-       dirección + ciudad + provincia + país + centro + radio
-4. ¿Está en caché?                             → devolverla (sin turno ni red)
-5. Abrir el presupuesto de 5 s (AbortController + setTimeout)
-6. Esperar el turno del limitador (1 consulta/segundo)
-7. provider.search(query, signal)
-8. ¿No hay candidato?                          → 'not_found'
-   ¿Hay candidato?                             → evaluateCandidate:
-                                                    redondear a 7 decimales
-                                                    ¿a más de 25 km del centro? → 'out_of_city'
-                                                    si no                        → 'found'
-9. Guardar en caché (salvo 'unavailable')
-10. Devolver
-
-catch   → 'unavailable'   (red, HTTP no-2xx, JSON ilegible, timeout, turno cancelado)
-finally → clearTimeout
-```
-
-Un intento. Un presupuesto. Un `try`. Los cuatro desenlaces salen de tres lugares y nada más.
+1. **El nombre del barrio mapeado.** El contexto decía que OpenStreetMap mapea "Mitre 291"
+   en el barrio *"Parque"*. El comentario del código dice **"Barrio Parque Aguirre"**, y en
+   su tabla de mediciones el caso probado es el barrio escrito como `"Parque"`. Se documentó
+   como está en el código: `"Parque"` es lo que se le mandó al servicio, "Parque Aguirre" es
+   el nombre completo del barrio en OSM. No cambia nada del argumento.
+2. **La medición tiene cuatro casos, no dos.** El contexto describía "sin barrio" vs.
+   "Centro". El código registra **cuatro**: sin barrio (0,9 km ✅), `"Parque"` (0,9 km ✅),
+   `"Cabildo"` (no encuentra nada) y `"Centro"` (Añatuya, 158 km ❌). El tercer caso agrega
+   un matiz que vale la pena: un barrio equivocado **también** puede tapar la dirección sin
+   devolver nada. Se documentaron los cuatro.
+3. **Un motivo extra por el que el barrio se sacó**, que el contexto no mencionaba: el
+   módulo tenía una **cascada de dos intentos** que solo reintentaba ante "no encontré nada",
+   y el caso del barrio "Centro" no devuelve vacío — o sea, la cascada no cubría el único
+   caso para el que se había construido. Quedó documentado.
+4. **La caché es por desenlace.** El contexto decía "cachear los resultados". El código
+   distingue: `found`/`not_found`/`out_of_city` se guardan, **`unavailable` nunca**. Es un
+   detalle load-bearing (cachear una caída fijaría el atajo roto por 24 h) y se documentó.
+5. **Hay dos timeouts, no uno.** 5 s en el servidor (presupuesto total: espera del cupo +
+   red) y **8 s en el cliente**, por encima, para que la interfaz se recupere sola si la
+   ruta propia no responde. El contexto hablaba de "tiempo máximo de espera" en singular.
+6. **La feature arregló un tercer bug que el contexto no menciona:** el mini-mapa abría
+   siempre en el centro de la ciudad, también al **editar**, así que una propiedad alejada
+   del centro abría la cámara mirando otro lado y el pin podía quedar fuera del recuadro de
+   280 px. Ahora abre donde está el pin. Documentado en `DESIGN.md` y en `CLAUDE.md`.
+7. **El botón de la interfaz no se llama como decía la hoja de ruta.** `PENDIENTES.md`
+   anticipaba `"Ubicar dirección aproximada"`; el texto real es **"Buscar esta dirección en
+   el mapa"**. Se documentó el real.
+8. **El "punto 4" del contexto, matizado.** Es cierto que la ciudad se resuelve en el
+   servidor por disciplina, pero además **hacía falta**: las dos páginas que renderizan el
+   formulario leen `cities` con un select acotado a `center_lat, center_lng`, así que el
+   nombre y la provincia nunca llegan al cliente. Se documentaron los dos motivos.
+9. **El aviso de "aplicaciones comerciales" está en la política, no en el código.** El
+   comentario de `nominatim.ts` enlaza la política y lista las obligaciones, pero no repite
+   esa advertencia. Se documentó igual en `CLAUDE.md`, atribuida a la política, porque es
+   material para decidir si algún día hay que migrar a un proveedor pago.
 
 ---
 
-## 5. Confirmación de que las piezas que NO había que tocar siguen intactas
+## 4. Afirmaciones falsas encontradas en la documentación
 
-Una por una, con la verificación:
+Todas se corrigieron.
 
-| Pieza | Estado | Verificación |
+| Dónde decía | Qué decía | Qué se hizo |
 |---|---|---|
-| **Presupuesto de tiempo total y su cancelación** | intacto, `GEOCODE_TIMEOUT_MS = 5_000` | comprobación 11 del banco: `unavailable` a los **5006 ms** con un `fetch` colgado 9 s |
-| **Límite de 1 consulta/segundo** | intacto, `MIN_REQUEST_INTERVAL_MS = 1_100`, `waitForSlot` sin cambios | comprobación 10: dos búsquedas seguidas tardaron **2201 ms** |
-| **Caché con su TTL** | intacta, `CACHE_TTL_MS` 24 h, `MAX_CACHE_ENTRIES` 500 | comprobación 7: repetición servida con **0 pedidos** |
-| **No cachear `unavailable`** | intacta, `writeCache` sigue cortando | comprobación 8: 1ª = `unavailable`, 2ª = `found` (volvió a salir) |
-| **Descarte por distancia y su umbral** | intacto, `CITY_RADIUS_KM = 25`, `evaluateCandidate` sin cambios | comprobaciones 6 y 14: lejano → `out_of_city`, centro → `found` |
-| **Interruptor de simulación de caída** | intacto, `GEOCODING_SIMULATE_OUTAGE`, primera línea de `geocodeAddress` | comprobaciones 12, 12b y 13: ON → `unavailable` con **0 pedidos**, incluso sobre una dirección cacheada como `found` |
-| **User-Agent propio** | intacto, `nominatim.ts` sin cambios salvo `searchText` | el `GEOCODING_USER_AGENT` y su default siguen igual |
-| **Los cuatro desenlaces y sus mensajes** | intactos | `GEOCODE_STATUS_MESSAGES` en `labels.ts` **no se tocó**; `GeocodeResponse` y `GeocodeStatus` en `types/index.ts` tampoco |
-| **La ciudad resuelta en el servidor** | intacta | `route.ts:68`, `getAgencyCity(session.agent.agency_id)` |
-| **El gate de sesión de la ruta** | intacto | `route.ts:47-50`, 401 sin sesión |
-
-### Banco de pruebas completo (15 comprobaciones, todas pasan)
-
-Corrido contra el **módulo real compilado**, con `fetch` interceptado para contar los pedidos que salen:
-
-```
-=== EL BARRIO YA NO PARTICIPA ===
-  OK   │ 1. la consulta es dirección + ciudad + provincia + país  → Mitre 291, Santiago del Estero, Santiago del Estero, Argentina
-  OK   │ 2. la consulta NO menciona ningún barrio
-  OK   │ 3. un solo intento, siempre  → status=found, intentos=1
-  OK   │ 4. un 'neighborhood' colado por el llamador se ignora
-
-=== SIN CASCADA: 'not_found' es final ===
-  OK   │ 5. vacío → not_found con UN intento (antes reintentaba)  → status=not_found, intentos=1
-  OK   │ 6. resultado lejano → out_of_city, UN intento  → status=out_of_city, intentos=1
-
-=== LO QUE NO HABÍA QUE TOCAR SIGUE INTACTO ===
-  OK   │ 7. caché: repetición sin salir a la red  → status=found, pedidos=0
-  OK   │ 8. 'unavailable' NO se cachea (el reintento del agente vuelve a salir)  → 1ª=unavailable, 2ª=found
-  OK   │ 9. HTTP 500 → unavailable  → status=unavailable
-  OK   │ 10. límite de 1 consulta/segundo respetado entre dos búsquedas  → 2201ms
-  OK   │ 11. presupuesto de 5 s con cancelación  → status=unavailable, 5006ms
-  OK   │ 12. interruptor ON → unavailable, cero pedidos  → pedidos=0
-  OK   │ 12b. se evalúa antes de la caché
-  OK   │ 13. interruptor ausente → comportamiento por defecto
-  OK   │ 14. umbral de distancia sigue en pie (centro → found)
-
-TODAS LAS COMPROBACIONES PASARON
-```
-
-La comprobación **5** es la que registra el cambio de comportamiento: antes ese caso disparaba un segundo intento, ahora `not_found` es final.
+| `CLAUDE.md` (baseline del encabezado y sección ESLint) y `PENDIENTES.md` (deuda técnica) | El warning conocido está en `PropertyForm.tsx:**232**` | Corregido a **`:269`** en los tres lugares, aclarando en `PENDIENTES.md` que es el mismo warning y que el archivo creció |
+| `CLAUDE.md` (baseline) y `PENDIENTES.md` | Build verde con **18 rutas** | Corregido a **19** (la nueva es `/api/geocode`), con la nota de cuál se sumó |
+| `DESIGN.md` §11 | "El mini-mapa **se centra al inicio en el `center_lat`/`center_lng` de la ciudad de la agencia**" | **Era falso desde este commit**: el mapa abre donde está el pin (centro de la ciudad en el alta, la propiedad en la edición). Reescrito, con la explicación del bug que arregla |
+| `DESIGN.md` §11 | El mensaje de validación es "Colocá el pin en el mapa" | **Era falso**: ese texto no existe en el código. El mensaje real es *"Confirmá la ubicación antes de guardar: arrastrá el pin hasta el punto exacto, o buscá la dirección y confirmá la sugerencia."* Reemplazado por el literal |
+| `DESIGN.md` §11 | El pin tiene `shadow-md` | Inexacto: la sombra es un `drop-shadow` sobre `.marka-loc-pin__inner` en `globals.css`, no la utilidad de Tailwind. Reescrito |
+| `CLAUDE.md` (árbol) | `LocationPicker.tsx ← Pin manual (NO geocoding)` | Quedaba engañoso: seguía siendo cierto que no hay geocodificación automática, pero la línea suelta hacía parecer que el módulo nuevo incumple la regla. Reescrita para decir qué es hoy (controlado, emite causa) |
+| `PENDIENTES.md` (calendario) | "todo lo cargado es de prueba: **10 agencias, 8 propiedades**" | Medido: **11 agencias, 12 propiedades**, 11 agentes, 1 ciudad. Corregido con la fecha de la medición |
+| `PENDIENTES.md` (`current_period_end`) | "las **10** filas de la base están en `null`" | El *hecho* sigue siendo cierto (nadie escribe la columna), pero son **11** filas, todas en `null`. Corregido |
+| `PENDIENTES.md` (multi-agente) | "las **10** agencias de la base tienen exactamente 1 agente cada una" | Son **11**, y el máximo de agentes por agencia sigue siendo **1**: el hecho de fondo se sostiene. Corregido el número |
+| `PLAN-ORIGINAL.md` | `LocationPicker.tsx ← Pin manual en mini-mapa (NO geocoding)` | Marcado como desactualizado con puntero a `CLAUDE.md`. **No se reescribió el archivo**: ya está declarado globalmente obsoleto y tiene su propio ítem en `PENDIENTES.md` |
 
 ---
 
-## 6. Verificación: los tres comandos
+## 5. Salida de los tres comandos
 
-### `npx tsc --noEmit`
+Corridos **antes** (Paso 1) y **después** de documentar. **Resultado idéntico en las dos
+pasadas.**
 
 ```
+$ npx tsc --noEmit
 (sin salida)
+TSC_EXIT=0
 ```
-**exit code: 0**
-
-### `npm run lint`
 
 ```
-> marka@0.1.0 lint
-> eslint
-
+$ npm run lint
 
 /home/facuzavaleta89/dev/marka/src/components/properties/PropertyForm.tsx
   269:20  warning  Compilation Skipped: Use of incompatible library
 
-This API returns functions which cannot be memoized without leading to stale UI. To prevent this, by default React Compiler will skip memoizing this component/hook. However, you may see issues if values from this API are passed to other components/hooks that are memoized.
+This API returns functions which cannot be memoized without leading to stale UI. To prevent
+this, by default React Compiler will skip memoizing this component/hook. ...
 
-/home/facuzavaleta89/dev/marka/src/components/properties/PropertyForm.tsx:269:20
   267 |   });
   268 |
 > 269 |   const currency = watch("currency");
-      |                    ^^^^^ React Hook Form's `useForm()` API returns a `watch()` function which cannot be memoized safely.
+      |                    ^^^^^ React Hook Form's `useForm()` API returns a `watch()`
+                                 function which cannot be memoized safely.
   270 |   const selectedAmenities = (watch("amenities") ?? []) as string[];
   271 |   const lat = watch("lat");
   272 |   const lng = watch("lng");  react-hooks/incompatible-library
 
 ✖ 1 problem (0 errors, 1 warning)
-```
-**exit code: 0**
 
-### `npx next build`
+LINT_EXIT=0
+```
 
 ```
+$ npx next build
 ▲ Next.js 16.2.6 (Turbopack)
 - Environments: .env.local
-
-  Creating an optimized production build ...
-✓ Compiled successfully in 7.7s
-  Running TypeScript ...
-  Finished TypeScript in 8.5s ...
-  Collecting page data using 3 workers ...
-✓ Generating static pages using 3 workers (19/19) in 1189ms
-  Finalizing page optimization ...
+✓ Compiled successfully in 9.7s
+  Finished TypeScript ...
+✓ Generating static pages using 3 workers (19/19)
 
 Route (app)
-┌ ○ /
-├ ○ /_not-found
-├ ƒ /[slug]
-├ ƒ /admin
-├ ƒ /api/geocode
-├ ○ /apple-icon.png
-├ ƒ /dashboard
-├ ƒ /dashboard/equipo
-├ ƒ /dashboard/leads
-├ ƒ /dashboard/perfil
-├ ƒ /dashboard/preferencias
-├ ƒ /dashboard/propiedades
-├ ƒ /dashboard/propiedades/[id]/editar
-├ ƒ /dashboard/propiedades/nueva
-├ ƒ /dashboard/suscripcion
-├ ƒ /login
-├ ƒ /logout
-├ ƒ /register
-└ ƒ /register/plan
-
+┌ ○ /                                     ├ ƒ /dashboard/perfil
+├ ○ /_not-found                           ├ ƒ /dashboard/preferencias
+├ ƒ /[slug]                               ├ ƒ /dashboard/propiedades
+├ ƒ /admin                                ├ ƒ /dashboard/propiedades/[id]/editar
+├ ƒ /api/geocode        ← NUEVA           ├ ƒ /dashboard/propiedades/nueva
+├ ○ /apple-icon.png                       ├ ƒ /dashboard/suscripcion
+├ ƒ /dashboard                            ├ ƒ /login
+├ ƒ /dashboard/equipo                     ├ ƒ /logout
+├ ƒ /dashboard/leads                      ├ ƒ /register
+                                          └ ƒ /register/plan
 
 ƒ Proxy (Middleware)
-
-○  (Static)   prerendered as static content
-ƒ  (Dynamic)  server-rendered on demand
+BUILD_EXIT=0
 ```
-**exit code: 0**
 
-### Comparación contra el baseline
-
-| Métrica | Baseline | Ahora | Veredicto |
-|---|---|---|---|
-| Errores de TypeScript | 0 | **0** | idéntico |
-| Errores de lint | 0 | **0** | idéntico |
-| Warnings de lint | exactamente 1 (`watch()` en `PropertyForm`) | **exactamente 1**, el mismo, en `PropertyForm.tsx:269` | idéntico |
-| Rutas del build | 19 | **19** | idéntico |
-
-**Idéntico en las cuatro.** Nota sobre el warning: se sacó una llamada a `watch()` de `PropertyForm` (la del barrio, que quedaron cinco), y el warning no se movió ni de línea ni de cantidad — la regla reporta una sola vez por componente, en la primera llamada (`watch("currency")`, línea 269).
+**19 rutas** (18 anteriores + `/api/geocode`). `git status --porcelain` confirma que lo único
+modificado son archivos `.md`: `CLAUDE.md`, `DESIGN.md`, `PENDIENTES.md`, `PLAN-ORIGINAL.md`
+(más este informe). Ningún archivo de código fue tocado.
 
 ---
 
-## 7. Decisiones que se apartan de las instrucciones
+## 6. Lo que quedó sin tocar, y por qué
 
-**a) Bajé `sanitizeQueryText` de export a función privada del módulo.** No me lo pediste explícitamente, pero sí pediste releer el orquestador y sacar "comentarios que describen un comportamiento que ya no existe". Su comentario decía *"Se exporta porque la ruta valida la entrada con esto mismo antes de llamar"*, y eso era falso: la ruta nunca la importó (importaba los dos envoltorios) y ahora importa uno solo. Era superficie pública sin consumidor, justificada por un consumidor inexistente. La dejé privada y corregí el comentario. `tsc` confirma que nadie la usaba desde afuera.
-
-**b) Corregí los datos del caso medido en el comentario, respecto de cómo venían en el enunciado.** El comentario del código dice ahora "otra ciudad a 158 km (Añatuya)" en vez de "otra provincia", y "Cabildo → no encuentra nada" en vez de "encuentra bien", porque es lo que devolvió Nominatim cuando lo reproduje. Un comentario cuyo único trabajo es impedir una regresión pierde autoridad si sus números no aguantan una verificación. La conclusión es la misma y más fuerte.
-
-**c) Dejé una advertencia corta en `GeocodeQuery`** (`types.ts`) además del comentario largo en el orquestador: *"⚠ NO agregar el barrio acá"*, con puntero al porqué. Motivo: el tipo es el lugar donde alguien iría a agregar el campo, y el comentario largo está en otro archivo. Son tres líneas, no duplican la explicación.
-
-**d) Puse punteros al comentario canónico desde `nominatim.ts`, `route.ts` y `PropertyForm.tsx`,** en vez de repetir la explicación. La explicación completa vive en un solo lugar (`geocodeAddress`); los demás archivos dicen "el barrio no va, ver ahí". Ya se agregó dos veces: el que lo encuentre por cualquiera de las cuatro puertas tiene que llegar a la medición.
-
----
-
-## 8. Restos que encontré y no pude sacar
-
-**Ninguno en el camino de geocodificación.** El `grep` de `neighborhood` sobre `src/lib/geocoding/`, `src/app/api/geocode/` y `AddressSearchButton.tsx` devuelve **0 ocurrencias de código** (solo quedan las menciones en comentarios, que están ahí a propósito).
-
-Tres cosas que quedan anotadas, ninguna es un resto de esta tarea:
-
-1. **El límite de 1/s y la caché siguen siendo por proceso.** Sin cambios. La buena noticia de esta tarea es que **el peor caso mejoró**: al desaparecer la cascada, una búsqueda vuelve a consumir como máximo **un** turno en vez de dos.
-
-2. **El barrio sigue participando del filtro del mapa público** (`useProperties.ts:76-77`, `filters.neighborhood` con un `ilike`). Eso **no** es geocodificación: filtra contra el texto que la propia agencia cargó en su propia base, así que el problema de "OSM lo llama distinto" no aplica. No se tocó y no debería tocarse.
-
-3. **`location_source` no distingue si una sugerencia salió de una consulta con barrio o sin él.** Las propiedades cargadas mientras el barrio participaba pueden tener un `suggested` cuya coordenada vino de una consulta peor. Son datos de prueba y hoy no hay ninguna propiedad real cargada, así que no hay nada que corregir; lo dejo dicho por si al analizar los primeros datos reales aparece algo raro en las cargas viejas.
+- **Todo el código fuente.** Es una tarea de documentación; ninguna de las cosas que
+  encontré exigía tocar código. Verificado con `git status --porcelain`: solo `.md`.
+- **Ningún comando de git.** Los cambios quedan en el working tree, sin `add`, `commit`,
+  `branch` ni `push`.
+- **Ningún SQL de escritura.** La base se leyó por MCP en solo lectura; no hay `ALTER` ni
+  migración pendiente que dejar anotada (la columna `location_source` **ya está aplicada**,
+  con su CHECK).
+- **`supabase/migrations/20240101000000_initial_schema.sql`.** Es la fuente de verdad
+  documentada del schema y `PENDIENTES.md` dice que se mantiene a mano contra la base real,
+  pero **es un archivo `.sql`, no `.md`**, y la restricción de esta tarea es explícita.
+  ⚠ **Queda pendiente y lo señalo acá:** habría que agregarle la columna `location_source`
+  (`text`, nullable, con el CHECK `NULL OR IN ('manual','suggested')`) para que el archivo
+  siga reflejando la base real.
+- **`PLAN-ORIGINAL.md` más allá de una línea.** Está declarado globalmente desactualizado y
+  su reescritura o jubilación ya es un ítem propio de `PENDIENTES.md`; reescribirlo dentro de
+  esta tarea habría sido otro trabajo entero.
+- **`README.md` y `AGENTS.md`.** El primero es el boilerplate de `create-next-app` y no
+  documenta el proyecto; el segundo es una regla sobre Next.js, ajena a esta feature. Nota:
+  que el README siga siendo boilerplate es un hueco real, pero no es de esta tanda.
+- **Las sub-piezas B2b y C del white-label**, y el resto de la hoja de ruta: siguen como
+  estaban, en pausa o pendientes. Lo único que se movió de estado es **D1**.
