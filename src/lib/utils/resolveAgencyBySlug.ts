@@ -6,10 +6,12 @@ import type { Agency, ApprovalStatus, City } from "@/types";
 //
 //   - not_found : no existe ninguna agencia con ese slug → la ruta hace 404 real.
 //   - disabled  : la agencia existe pero NO está disponible al público, por
-//                 cualquiera de dos motivos independientes: su suscripción no
-//                 tiene has_white_label (nunca lo tuvo, o bajó de plan), o la
-//                 agencia todavía no está aprobada → "sitio no disponible".
-//   - active    : aprobada y con white-label habilitado → mapa filtrado a la agencia.
+//                 cualquiera de TRES motivos independientes: la agencia todavía
+//                 no está aprobada, su suscripción no tiene has_white_label
+//                 (nunca lo tuvo, o bajó de plan), o la agencia no está
+//                 públicamente visible (dejó de pagar) → "sitio no disponible".
+//   - active    : aprobada, con white-label habilitado y al día → mapa filtrado
+//                 a la agencia.
 //
 // No colapsar disabled en not_found: son páginas distintas (un 404 vs un estado).
 //
@@ -21,7 +23,13 @@ import type { Agency, ApprovalStatus, City } from "@/types";
 // Para leer el flag hace falta omitir esa RLS → admin client. La lectura es de
 // solo unos pocos campos no sensibles (id, name, city_id, logo_url, el flag, y el
 // centro de la ciudad para el mapa); nunca llega al cliente (función server-only).
-// No se tocó ninguna policy (decisión de la pieza).
+//
+// ⚠ Y ESE SERVICE ROLE ES JUSTAMENTE POR QUÉ EL GATE DE PAGO HAY QUE ESCRIBIRLO
+// ACÁ. Las policies de lectura pública de properties y property_images ya llaman
+// a agency_is_publicly_visible(), así que el mapa y las fotos se apagan solos
+// cuando una agencia deja de pagar. Pero el service role OMITE las policies: esta
+// función no está cubierta por ninguna, y sin el chequeo explícito de abajo el
+// sitio de marca quedaría en pie por su cuenta.
 
 // Fila tal como la devuelve el embed de PostgREST. La relación agency→subscription
 // es 1-a-1 (subscriptions.agency_id es UNIQUE) y agency→city es to-one (FK), pero
@@ -56,6 +64,33 @@ function firstOf<T>(value: T | T[] | null): T | null {
   return value;
 }
 
+// ¿La agencia está al día para mostrarse al público? (aprobada + suscripción
+// activa + plan pago).
+//
+// SE PREGUNTA A LA BASE, NO SE REESCRIBE LA REGLA ACÁ. La condición vive en la
+// función agency_is_publicly_visible() y las tres policies de lectura/escritura
+// pública (properties, property_images, leads) la invocan. Repetir las mismas
+// comparaciones en TypeScript sería tener la regla escrita dos veces: el día que
+// cambie (por ejemplo, si un 'past_due' pasara a tener período de gracia), el
+// mapa y el sitio de marca dirían cosas distintas y nadie se enteraría hasta que
+// un cliente lo reportara. Se paga un viaje extra a la base a cambio de que la
+// regla tenga UN solo lugar donde vive.
+//
+// FALLA CERRADA: si la llamada falla, se responde `false`. Ante la duda es mejor
+// que un sitio que debería estar arriba quede abajo (se ve como una suscripción
+// vencida, y el dueño de la agencia reclama) que al revés.
+async function isAgencyPubliclyVisible(
+  supabase: ReturnType<typeof createAdminClient>,
+  agencyId: string
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc("agency_is_publicly_visible", {
+    target_agency_id: agencyId,
+  });
+
+  if (error) return false;
+  return data === true;
+}
+
 export async function resolveAgencyBySlug(
   slug: string
 ): Promise<AgencyResolution> {
@@ -80,7 +115,7 @@ export async function resolveAgencyBySlug(
   const subscription = firstOf(row.subscription);
   const city = firstOf(row.city);
 
-  // DOS gates independientes, ambos con el mismo desenlace ('disabled'):
+  // TRES gates independientes, los tres con el mismo desenlace ('disabled'):
   //
   // 1. Gate de LEGITIMIDAD: la agencia tiene que estar aprobada. Se evalúa acá
   //    porque este helper es el único control de la vista pública de marca: sin
@@ -88,8 +123,26 @@ export async function resolveAgencyBySlug(
   //    tendría su sitio público andando, mostrándose como inmobiliaria
   //    legítima. La aprobación es un eje independiente del plan, así que se
   //    chequea aparte, no dentro de la condición del flag.
-  // 2. Gate de PLAN: el booleano has_white_label es la fuente de verdad, nunca
-  //    el nombre del plan. Sin ciudad tampoco hay mapa que centrar.
+  // 2. Gate de ENTITLEMENT: el booleano has_white_label es la fuente de verdad
+  //    de "este plan incluye sitio de marca", nunca el nombre del plan. Sin
+  //    ciudad tampoco hay mapa que centrar.
+  // 3. Gate de PAGO: la agencia tiene que estar públicamente visible según la
+  //    MISMA regla que usan las policies del mapa.
+  //
+  // ⚠ POR QUÉ EL GATE 3 NO ES REDUNDANTE CON EL 2, que es la trampa de todo
+  // esto: has_white_label se escribe UNA vez, cuando el dueño activa el plan
+  // desde /admin, y NADIE LO VUELVE A APAGAR NUNCA. No hay flujo que lo ponga en
+  // false al vencer o cancelar una suscripción; el estado de la suscripción
+  // (subscriptions.status) es un eje aparte. Sin el gate 3, una agencia que
+  // dejara de pagar conservaría el flag y su sitio de marca seguiría en pie
+  // —pero MOSTRANDO UN MAPA VACÍO, porque las policies ya le ocultan las
+  // propiedades—. Un sitio que existe y no muestra nada parece un producto roto;
+  // apagado parece una suscripción vencida, que es la verdad.
+  //
+  // Los gates 1 y 2 van primero por ser gratis (los datos ya están en `row`); el
+  // 3 cuesta un viaje a la base, así que solo se paga cuando los otros dos pasan.
+  // El 1 queda además cubierto por dentro del 3 (la función también exige la
+  // aprobación): se lo conserva explícito para poder cortar antes del viaje.
   //
   // Se colapsan en 'disabled' a propósito: al visitante anónimo no se le cuenta
   // POR QUÉ no está disponible (no es asunto suyo si la agencia no pagó o no
@@ -98,6 +151,9 @@ export async function resolveAgencyBySlug(
     return { status: "disabled" };
   }
   if (subscription?.has_white_label !== true || !city) {
+    return { status: "disabled" };
+  }
+  if (!(await isAgencyPubliclyVisible(supabase, row.id))) {
     return { status: "disabled" };
   }
 

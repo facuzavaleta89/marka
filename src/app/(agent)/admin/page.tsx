@@ -183,10 +183,16 @@ export default async function AdminPage() {
           value={agentsCount ?? 0}
           icon={<Users size={20} />}
         />
+        {/* Cuenta con service role, o sea SIN las policies públicas: incluye
+            las propiedades que el mapa oculta porque su agencia no está al día
+            (ver agency_is_publicly_visible). Es deliberado —acá interesa cuánto
+            hay CARGADO, no cuánto se ve—, pero el número no coincide con el del
+            mapa y sin la aclaración parecería un error. */}
         <StatsCard
           title="Propiedades activas"
           value={activePropertiesCount ?? 0}
           icon={<Home size={20} />}
+          description="Cargadas, incluso las ocultas al público"
         />
         <StatsCard
           title="Leads"
