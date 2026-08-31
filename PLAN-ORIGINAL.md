@@ -98,7 +98,7 @@ Marketplace inmobiliario por ciudad, vendido como SaaS a inmobiliarias.
 │   │   ├── properties/
 │   │   │   ├── PropertyCard.tsx            ← Tarjeta en listado
 │   │   │   ├── PropertyForm.tsx            ← CRUD form
-│   │   │   ├── LocationPicker.tsx          ← Pin manual en mini-mapa (NO geocoding)
+│   │   │   ├── LocationPicker.tsx          ← Pin manual en mini-mapa (DESACTUALIZADO: hoy hay sugerencia opcional desde la dirección, ver CLAUDE.md → "Ubicación de la propiedad")
 │   │   │   ├── ImageUploader.tsx           ← Upload a Supabase Storage
 │   │   │   └── WhatsAppButton.tsx          ← Botón con mensaje prellenado
 │   │   │
