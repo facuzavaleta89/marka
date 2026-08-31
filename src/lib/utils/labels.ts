@@ -8,6 +8,7 @@ import type {
   Currency,
   ApprovalStatus,
   GeocodeStatus,
+  SubscriptionStatus,
 } from "@/types";
 
 export const PROPERTY_TYPE_LABELS: Record<PropertyType, string> = {
@@ -64,6 +65,18 @@ export const APPROVAL_STATUS_LABELS: Record<ApprovalStatus, string> = {
   pending: "Por aprobar",
   approved: "Aprobada",
   rejected: "Rechazada",
+};
+
+// Estado de la SUSCRIPCIÓN, también para el panel del dueño. Es el eje
+// COMERCIAL ("¿paga?"), independiente del de aprobación ("¿es legítima?"): las
+// dos etiquetas conviven en la misma fila y no hay que leerlas como lo mismo.
+// ⚠ 'pending' acá significa "pidió un upgrade y espera que se lo activen", NO
+// "sin resolver": esa agencia está al día y publica normalmente.
+export const SUBSCRIPTION_STATUS_LABELS: Record<SubscriptionStatus, string> = {
+  active: "Activa",
+  pending: "Pendiente",
+  past_due: "Vencida",
+  canceled: "Dada de baja",
 };
 
 // Desenlaces de la búsqueda de direcciones, tal como se los cuenta al agente.

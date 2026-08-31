@@ -180,11 +180,30 @@ export interface Agency {
 // no coincide con el titular"— sería pública de hecho. `agency_reviews` tiene
 // RLS habilitada y CERO policies: nadie la lee ni la escribe salvo el server con
 // service role. No agregarle policies ni mover la nota a `agencies`.
+// Decisiones que el dueño puede registrar en el historial. Espeja el CHECK de
+// agency_reviews.decision (medido: admite exactamente estos cinco valores).
+//
+// Las dos primeras son VEREDICTOS del eje de legitimidad ("¿es una inmobiliaria
+// real?"); las tres siguientes son movimientos del eje comercial ("¿paga?").
+// Conviven en la misma tabla porque las dos cosas son decisiones del dueño sobre
+// una agencia y quedan en la misma línea de tiempo, pero NO se derivan una de la
+// otra (ver la nota de ApprovalStatus).
+//
+// ⚠ Volver una agencia rechazada a 'pending' sigue SIN registrar fila: no es un
+// veredicto, es deshacer uno. Y eliminar una agencia tampoco registra: la fila
+// del historial se borraría en cascada junto con la agencia (ver
+// deleteAgencyAction).
+export type ReviewDecision =
+  | "approved"
+  | "rejected"
+  | "plan_canceled"
+  | "subscription_canceled"
+  | "subscription_restored";
+
 export interface AgencyReview {
   id: string;
   agency_id: string;
-  // Solo veredictos: aprobar o rechazar. 'pending' no es una decisión.
-  decision: Extract<ApprovalStatus, "approved" | "rejected">;
+  decision: ReviewDecision;
   // Motivo. Obligatorio al rechazar (lo exige la server action, no la base:
   // la columna es nullable); opcional al aprobar.
   note: string | null;
@@ -458,6 +477,14 @@ export const PLAN_ORDER = ["free", "inicial", "profesional", "premium"] as const
 // Incluye los entitlements efectivos leídos de la suscripción (no del nombre del plan).
 export interface PlanUsage {
   plan: SubscriptionPlan;
+  // Estado de la suscripción que rige. Se incluye acá —y no como parámetro
+  // suelto— porque getPublishBlock lo necesita y los cuatro puntos de entrada al
+  // alta ya reciben un PlanUsage: agregarlo al objeto evita enhebrar un
+  // argumento más por cuatro llamadores. Si no hay fila de suscripción se
+  // reporta 'active': ese caso ya lo cubre el límite 0 (ver getPlanUsage), y
+  // marcarlo como inactivo cambiaría el motivo de bloqueo de una situación que
+  // no cambió.
+  status: SubscriptionStatus;
   used: number;          // propiedades activas/pausadas actuales
   limit: number;         // property_limit del plan
   available: number;     // Math.max(0, limit - used). Saneado: NUNCA negativo (0 si used > limit)
