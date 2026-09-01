@@ -2,9 +2,11 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getPlanUsage } from "@/lib/utils/getPlanUsage";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import {
+  PAID_PLANS,
   PLANS,
   REJECTION_NOTE_MAX,
   type ApprovalStatus,
@@ -797,4 +799,161 @@ async function removeAgencyFiles(
     .remove(paths);
 
   return error ? `${paths.length} archivo(s)` : null;
+}
+
+// ─── Cambiar el plan vigente de una agencia ───────────────────
+//
+// El caso real: una fundadora termina la prueba gratuita y sigue con un plan
+// más chico, o el dueño se equivocó al activar. Hasta ahora las únicas salidas
+// eran dar de baja (que apaga todo) o el editor SQL.
+//
+// ⚠ NO PASA POR pending_plan, y es a propósito. Ese modelo existe para las
+// SOLICITUDES de la agencia, que después el dueño activa. Acá la decisión ya es
+// del dueño: mandarse una solicitud a sí mismo para después activársela no
+// agrega ningún control, agrega un paso.
+//
+// ⚠ Y LA AGENCIA NO PUEDE HACER ESTO POR SU CUENTA. Bajar de plan desde el
+// panel del cliente habilitaría el atajo de pagar un mes de plan grande, cargar
+// muchas propiedades y bajar al más barato conservándolas todas visibles. Que el
+// cambio pase por el dueño es lo que lo hace seguro; por eso vive únicamente
+// acá y requestPlanUpgradeAction (la del cliente) sigue admitiendo solo subidas.
+export async function changePlanAction(input: {
+  agencyId: string;
+  targetPlan: SubscriptionPlan;
+  /**
+   * Vencimiento del plan NUEVO, en formato YYYY-MM-DD. A diferencia de la
+   * activación, acá el valor vacío SÍ escribe null: ver el comentario de abajo.
+   */
+  periodEnd?: string;
+}): Promise<{ error: string } | undefined> {
+  if (!parseAgencyId(input?.agencyId)) {
+    return { error: "Agencia inválida" };
+  }
+
+  const auth = await requireAppAdmin();
+  if ("error" in auth) return { error: auth.error };
+
+  // 1. El destino tiene que ser un plan DE VENTA. 'free' no es un destino
+  //    válido: para sacarle el plan a una agencia está la baja, que además
+  //    conserva el plan para poder volver a él. Degradar a 'free' perdería ese
+  //    dato y dejaría a la agencia en el estado de aterrizaje, que es donde
+  //    nace, no donde se la manda.
+  const targetPlan = input?.targetPlan;
+  if (
+    typeof targetPlan !== "string" ||
+    !(PAID_PLANS as readonly string[]).includes(targetPlan)
+  ) {
+    return { error: "Plan destino inválido" };
+  }
+
+  const planInfo = PLANS[targetPlan];
+
+  // 2. Estado actual, del server.
+  const sub = await readSubscription(input.agencyId);
+  if ("error" in sub) return { error: sub.error };
+
+  // Solo se le cambia el plan a una agencia que TIENE un plan de venta vigente.
+  // Los otros dos casos ya tienen su propia acción y meterse acá solo generaría
+  // ambigüedad:
+  //   - suscripción 'pending' (pidió un plan): activar o cancelar la solicitud.
+  //     Cambiar el plan encima dejaría el pedido colgando sin decir qué pasa con él.
+  //   - suscripción 'canceled' (dada de baja): reactivar primero. La baja
+  //     conserva `plan` justamente para saber a qué volver; pisarlo acá borraría
+  //     esa memoria y la reactivación devolvería a la agencia a un plan que nunca
+  //     tuvo.
+  if (sub.status === "pending") {
+    return {
+      error:
+        "Esa agencia tiene una solicitud de plan sin resolver. Activala o cancelala antes de cambiarle el plan.",
+    };
+  }
+  if (sub.status !== "active") {
+    return {
+      error:
+        "Esa agencia no tiene una suscripción activa. Reactivala antes de cambiarle el plan.",
+    };
+  }
+  if (sub.plan === "free") {
+    return {
+      error:
+        "Esa agencia está en el estado de aterrizaje: activale un plan en vez de cambiárselo.",
+    };
+  }
+
+  // 3. Mismo plan → no se escribe nada. Un UPDATE sin efecto que además dejaría
+  //    una fila en el historial diciendo que hubo un cambio que no hubo.
+  if (sub.plan === targetPlan) {
+    return {
+      error: `Esa agencia ya está en el plan ${planInfo.name}.`,
+    };
+  }
+
+  // 4. ¿Entran sus propiedades en el plan nuevo?
+  //
+  // ⚠ EL CONTEO TIENE QUE SER EL MISMO QUE EL DE LA BASE. check_property_limit()
+  // cuenta `WHERE agency_id = ... AND status IN ('active','paused')`, o sea por
+  // AGENCIA y sin las vendidas/alquiladas (que no ocupan cupo). Se usa
+  // getPlanUsage, que es el helper que ya replica exactamente ese criterio y que
+  // CLAUDE.md marca como obligatorio para esto. Contar distinto acá dejaría
+  // aplicar un cambio que después pone a la agencia por encima de un límite que
+  // la base nunca habría permitido.
+  const admin = createAdminClient();
+  const usage = await getPlanUsage(admin, input.agencyId);
+
+  if (usage.used > planInfo.propertyLimit) {
+    return {
+      error: `No se puede: la agencia tiene ${usage.used} ${
+        usage.used === 1 ? "propiedad activa o pausada" : "propiedades activas o pausadas"
+      } y el plan ${planInfo.name} permite ${planInfo.propertyLimit}. Hay que pausar o dar de baja ${
+        usage.used - planInfo.propertyLimit
+      } antes de cambiar.`,
+    };
+  }
+
+  // 5. Escritura. Límites y entitlements salen del CATÁLOGO (PLANS), nunca
+  //    copiados a mano: es la misma fuente que usan activatePlanAction y
+  //    restoreSubscriptionAction, así que las tres dejan a la agencia idéntica
+  //    para un mismo plan.
+  const parsedPeriodEnd = parsePeriodEnd(input?.periodEnd);
+  if ("error" in parsedPeriodEnd) return { error: parsedPeriodEnd.error };
+
+  const { error: updateError } = await admin
+    .from("subscriptions")
+    .update({
+      plan: targetPlan,
+      property_limit: planInfo.propertyLimit,
+      has_featured: planInfo.featured,
+      has_white_label: planInfo.whiteLabel,
+      has_metrics: planInfo.metrics,
+      // activated_at responde "desde cuándo rige lo que rige". Después de un
+      // cambio, lo que rige es el plan nuevo y rige desde ahora: conservar la
+      // fecha vieja le atribuiría al plan nuevo un comienzo que nunca tuvo, y la
+      // columna "Activación" del panel mostraría una fecha anterior al cambio.
+      activated_at: new Date().toISOString(),
+      // ⚠ ACÁ EL VACÍO SÍ BORRA, al revés que en activatePlanAction. Motivo: la
+      // fecha vieja pertenece al plan VIEJO. Dejarla sería decirle a la agencia
+      // "Plan Inicial activo hasta el 31/12" cuando ese 31/12 se cargó para la
+      // prueba gratuita de su Profesional. El panel muestra el valor actual
+      // precargado y escribe lo que el dueño deje: si lo vacía, el plan nuevo
+      // queda sin vencimiento. En la activación no hay fecha previa que pueda
+      // quedar vieja, por eso allá el vacío no toca nada.
+      current_period_end: parsedPeriodEnd.periodEnd,
+    })
+    .eq("agency_id", input.agencyId);
+
+  if (updateError) {
+    return { error: "No se pudo cambiar el plan. Intentá de nuevo." };
+  }
+
+  // 6. Historial. La nota deja los DOS planes: después de escribir, el anterior
+  //    no se puede reconstruir desde ninguna otra parte.
+  const logError = await logDecision(
+    input.agencyId,
+    "plan_changed",
+    `Cambio de plan: ${PLANS[sub.plan].name} → ${planInfo.name}.`,
+    auth.ownerId
+  );
+  if (logError) return logError;
+
+  revalidatePath("/admin");
 }

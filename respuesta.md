@@ -1,212 +1,234 @@
-# Informe — Tres correcciones sobre la baja de agencias
+# Informe — Cambio de plan desde el panel de administración
 
-> Modo ejecución. **5 archivos modificados**, ninguno creado. No se ejecutó ningún comando de
-> git ni ningún SQL de escritura. Fecha: 31 ago 2026.
+> Modo ejecución. **1 archivo creado y 6 modificados** (más este informe). No se ejecutó
+> ningún comando de git ni ningún SQL de escritura. Fecha: 31 ago 2026.
 
-> ⚠ **Dos cosas se apartan de lo que pediste, y las dos porque medí antes de tocar:**
-> el orden del helper **ya era el correcto** —el bug estaba en otro lado, en un consumidor— y
-> el orden de los triggers en la base **también**, así que no hay SQL para correr. El detalle
-> está en los puntos 1 y 2.
-
----
-
-## 1. El orden del helper: ya era correcto, el bug era otro
-
-### Lo que medí
-
-`src/lib/utils/getPublishBlock.ts` **ya evaluaba los motivos en el orden que pedías**:
-
-```
-1. approvalStatus !== "approved"                     → not_approved
-2. status ∈ ("canceled", "past_due")                 → subscription_inactive
-3. !planUsage.canCreate                              → plan_limit
-```
-
-O sea que `getPublishBlock` devolvía `subscription_inactive` con el mensaje correcto
-(*"Tu suscripción está dada de baja. Escribinos para reactivarla."*). **No hubo nada que
-reordenar.**
-
-### Dónde estaba el bug de verdad
-
-En **`src/components/dashboard/NewPropertyButton.tsx:51-55`**, que no usaba `block.message`
-sino que elegía un componente con un **ternario binario**:
-
-```tsx
-{block.reason === "not_approved" ? (
-  <NotApprovedMessage approvalStatus={approvalStatus} />
-) : (
-  <PlanLimitMessage planUsage={planUsage} />   // ← todo lo que no sea not_approved
-)}
-```
-
-Cuando se agregó el motivo `subscription_inactive`, **cayó en el `else`** y se renderizó
-`PlanLimitMessage`, que además arma su texto por su cuenta: con plan `free` calcula el
-siguiente plan y escribe *"Alcanzaste el límite de tu plan Gratis. Pasá a Inicial para publicar
-más. **Ver planes**"*. Es exactamente el mensaje que viste, con el agravante del enlace a la
-lista de planes.
-
-El bloqueo era **correcto** (la agencia no podía publicar); lo que estaba mal era solo el
-cartel. Y por eso el síntoma aparecía en el botón y no en otros lados: los otros tres puntos de
-entrada (`dashboard/page.tsx:168`, `PropertiesTable.tsx:171`, y el `redirect` de
-`nueva/page.tsx`) usan `publishBlock.message`, o sea el string que arma el helper, así que
-**ya mostraban el mensaje correcto**. Solo el botón se armaba el suyo.
-
-### Cómo quedó
-
-El ternario pasó a ser un **switch exhaustivo** con guarda `never`:
-
-```tsx
-function BlockMessage({ reason, planUsage, approvalStatus }) {
-  switch (reason) {
-    case "not_approved":          return <NotApprovedMessage approvalStatus={approvalStatus} />;
-    case "subscription_inactive": return <SubscriptionInactiveMessage status={planUsage.status} />;
-    case "plan_limit":            return <PlanLimitMessage planUsage={planUsage} />;
-    default: {
-      const exhaustive: never = reason;
-      return exhaustive;
-    }
-  }
-}
-```
-
-**Agregar un motivo nuevo a `PublishBlockReason` sin darle mensaje ya no compila.** Es lo que
-evita que esto se repita: el problema no fue el orden, fue que un consumidor tenía un `else`
-que se tragaba lo que no conocía.
-
-El mensaje nuevo **no ofrece un upgrade**: manda a `/dashboard/suscripcion`, donde ahora está
-el aviso completo (corrección 2), porque lo que destraba a esa agencia es reactivar lo que ya
-tenía.
+> ⚠ **Queda algo pendiente de tu lado:** el CHECK del historial todavía no admite el valor
+> nuevo. El SQL está en el punto 1. Hasta que lo corras, el cambio de plan **se aplica bien**
+> pero el registro en el historial falla y el dueño ve un aviso al respecto (es el contrato
+> best-effort que ya tenían las demás actions).
 
 ---
 
-## 2. El orden de los triggers: medido, ya es correcto. No hay SQL
+## 1. El SQL para el historial
 
-Medido con `pg_get_triggerdef` sobre `properties`, ordenado por nombre:
+Medido primero, con `pg_get_constraintdef`:
 
-| Trigger | Definición |
+```sql
+agency_reviews_decision_check
+  CHECK ((decision = ANY (ARRAY['approved'::text, 'rejected'::text, 'plan_canceled'::text, 'subscription_canceled'::text, 'subscription_restored'::text])))
+```
+
+Cinco valores, y ninguno sirve: `approved`/`rejected` son veredictos del eje de legitimidad;
+`plan_canceled` es descartar una **solicitud de la agencia**; y la dupla
+`subscription_canceled`/`subscription_restored` apaga y enciende la suscripción entera.
+Cambiarle el plan a una agencia que sigue siendo cliente no es ninguno de esos.
+
+**Valor nuevo elegido: `plan_changed`**, con el mismo criterio de nombre que los tres del eje
+comercial (`<objeto>_<qué le pasó>`, en inglés).
+
+Archivo: **`supabase/pending/2026-08-31-historial-cambio-de-plan.sql`**. Listo para copiar y
+pegar:
+
+```sql
+-- Se reemplaza el CHECK entero (Postgres no permite "agregar un valor" a uno
+-- existente). Solo se SUMA un valor, así que la revalidación de las filas que ya
+-- están no puede fallar.
+ALTER TABLE public.agency_reviews
+  DROP CONSTRAINT IF EXISTS agency_reviews_decision_check;
+
+ALTER TABLE public.agency_reviews
+  ADD CONSTRAINT agency_reviews_decision_check
+  CHECK (
+    decision = ANY (ARRAY[
+      'approved'::text,
+      'rejected'::text,
+      'plan_canceled'::text,
+      'subscription_canceled'::text,
+      'subscription_restored'::text,
+      'plan_changed'::text
+    ])
+  );
+```
+
+---
+
+## 2. Archivos
+
+### Creado
+
+| Archivo | Qué es |
 |---|---|
-| `trg_check_agency_approved` | `BEFORE INSERT ... EXECUTE FUNCTION check_agency_approved()` |
-| `trg_check_agency_subscription` | `BEFORE INSERT ... EXECUTE FUNCTION check_agency_subscription()` |
-| `trg_check_property_limit` | `BEFORE INSERT OR UPDATE ... EXECUTE FUNCTION check_property_limit()` |
-| `trg_properties_updated_at` | `BEFORE UPDATE ... EXECUTE FUNCTION update_updated_at()` |
+| `supabase/pending/2026-08-31-historial-cambio-de-plan.sql` | El `ALTER` de arriba, pendiente de correr a mano. |
 
-**El trigger de suscripción está aplicado** (corriste el SQL de la tanda anterior). Y el orden
-alfabético da exactamente la prioridad pedida:
+### Modificados
 
-```
-trg_check_agency_approved  <  trg_check_agency_subscription  <  trg_check_property_limit
-        (1) aprobación             (2) suscripción                   (3) cupo
-```
-
-Prefijo común `trg_check_agency_`, y después `approved` < `subscription` porque `'a' < 's'`;
-y `trg_check_agency_*` < `trg_check_property_*` porque `'a' < 'p'`.
-
-**Conclusión: el orden ya es correcto y no toqué nada.** No hay archivo con SQL para correr en
-esta tanda.
-
-⚠ **Una asimetría real que sí encontré, y que no es de orden sino de alcance:**
-`trg_check_agency_subscription` es **BEFORE INSERT**, mientras que `trg_check_property_limit`
-es **BEFORE INSERT OR UPDATE**. O sea que **re-activar una propiedad pausada** (status
-`paused` → `active`) de una agencia dada de baja **no pasa por el trigger de suscripción**:
-solo por el de cupo. Fue una decisión deliberada de la tanda anterior (*"editar una propiedad
-ya cargada sigue permitido aunque la agencia se dé de baja después"*), y ampliarla es una
-decisión de producto, no una corrección de orden — así que la dejé y la anoto en el punto 7.
+| Archivo | Qué cambió |
+|---|---|
+| `src/types/index.ts` | `ReviewDecision` suma `plan_changed`, y se exporta `PAID_PLANS` (derivado de `PLAN_ORDER`, que queda intacto). |
+| `src/app/(agent)/admin/actions.ts` | Nueva `changePlanAction`: valida destino, estado, plan igual y exceso de cupo; escribe desde el catálogo; registra en el historial. |
+| `src/app/(agent)/admin/AgenciesTable.tsx` | Ítem "Cambiar de plan" en el menú `⋯` + `ChangePlanPanel` (selección de plan, vencimiento precargado, anticipación del bloqueo y resumen de consecuencias). |
+| `src/app/(agent)/admin/page.tsx` | Cuenta las propiedades que ocupan cupo por agencia y trae `current_period_end`, **sin consulta nueva**. |
+| `src/app/(agent)/register/plan/PlanSelector.tsx` | Usa el `PAID_PLANS` compartido en vez de su copia local. |
 
 ---
 
-## 3. La pantalla de suscripción del agente
+## 3. Cómo cuento las propiedades, y cómo verifiqué que coincide
 
-Archivo: `src/components/dashboard/SubscriptionContent.tsx`.
+**El criterio de la base**, medido con `pg_get_functiondef` sobre `check_property_limit()`:
 
-**La causa exacta:** la pantalla calculaba `hasPendingRequest = status === "pending" && ...` y
-**nada más**. `canceled` y `past_due` caían en la misma rama que una suscripción sana.
+```sql
+  -- Solo cuenta propiedades que ocupan cupo (no las vendidas/alquiladas)
+  SELECT COUNT(*) INTO current_count
+  FROM properties
+  WHERE agency_id = NEW.agency_id
+    AND status IN ('active', 'paused');
+```
 
-### Cómo quedó
+O sea: **por `agency_id`** (no por agente) y **`status IN ('active','paused')`** — las vendidas
+y alquiladas no ocupan cupo.
 
-Se agregó un solo predicado —`isInactive = status === "canceled" || status === "past_due"`—
-del que cuelgan tres cambios. **`pending` no entra**, como pediste.
-
-**a. Un `Notice` arriba de todo**, con el componente reutilizable que ya existía
-(`src/components/feedback/Notice.tsx`), **tono `warning`, no `error`**. El propio componente
-documenta los tonos: `error` es *"algo salió mal de verdad"*, y acá no salió mal nada — puede
-ser una baja acordada, una prueba que terminó o un pago pendiente, y el sistema no sabe cuál.
-`warning` es *"requiere atención o acción de quien lo lee"*, que es exactamente el caso.
-
-El texto, con título según el estado (*"Tu suscripción está dada de baja"* / *"...está
-vencida"*):
-
-> Mientras tanto, tus propiedades no se muestran en el mapa público, tu sitio propio está
-> apagado si tenías uno, y no podés publicar nuevas.
->
-> **Tus datos están intactos:** tus propiedades, tus fotos y tu equipo siguen acá y volvés a
-> verlos publicados apenas se reactive. Escribinos a hola@marka.app y lo resolvemos.
-
-Dice las tres consecuencias concretas, dice qué **no** se perdió, y da la salida. No acusa a
-nadie ni usa la palabra "impago".
-
-**b. La fecha de vencimiento se oculta** mientras la suscripción no rige. "Plan activo hasta el
-X" de un plan dado de baja es justo la contradicción que esto viene a sacar.
-
-**c. Los botones de mejora de plan: los saqué.** Dos motivos, y el segundo no es de tono:
-
-1. Es la misma mentira que el mensaje de cupo: lo que destraba a esa agencia es **reactivar lo
-   que ya tenía**, no comprar un plan mayor.
-2. **Era un agujero real, no cosmético.** `requestPlanUpgradeAction`
-   (`suscripcion/actions.ts:37-41`) escribe `status: "pending"` **sin mirar el estado previo**.
-   Una agencia en `canceled` que tocaba "Pasá a Inicial" pasaba a `pending`, que **no está en
-   la lista de estados que bloquean la publicación** → **se sacaba la baja sola y volvía a
-   poder publicar**, sin que el dueño hiciera nada. (Sus propiedades seguían ocultas, porque
-   `agency_is_publicly_visible` exige `active`, así que quedaba en un estado incoherente: podía
-   cargar propiedades que nadie iba a ver.)
-
-Por eso **también agregué el corte en la server action**: si la suscripción está `canceled` o
-`past_due`, el pedido se rechaza con *"Tu suscripción no está activa. Escribinos para
-reactivarla antes de cambiar de plan."* Esconder los botones sin eso habría sido cosmético —
-una server action se invoca sin pasar por el render, que es el criterio que usa todo el repo.
-Lo marco como decisión propia en el punto 6.
-
----
-
-## 4. La comparación del nombre
-
-**La causa exacta:** el `Label` de este preset de shadcn lleva **`uppercase` en su clase base**
-(`src/components/ui/label.tsx`), y el nombre estaba **adentro** del `<Label>`. Así que el cartel
-decía `ESCRIBÍ INMOBILIARIA PRUEBA PARA CONFIRMAR` mientras la comparación exigía
-`Inmobiliaria Prueba` exacto. Escribir lo que la pantalla indicaba no funcionaba.
-
-**En el servidor** (`admin/actions.ts`), helper nuevo, que es la comparación que cuenta —
-contra el nombre **real leído de la base**:
+**En la action** no reimplementé ese conteo: uso **`getPlanUsage`**, que es el helper que ya lo
+replica y que `CLAUDE.md` marca como obligatorio para esto. Su consulta es literalmente la
+misma:
 
 ```ts
-function nameMatches(typed: string, actual: string): boolean {
-  const normalize = (value: string) => value.trim().toLocaleLowerCase("es-AR");
-  return normalize(typed) === normalize(actual) && actual.trim() !== "";
-}
+supabase.from("properties")
+  .select("*", { count: "exact", head: true })
+  .eq("agency_id", agencyId)
+  .in("status", ["active", "paused"]),
 ```
 
-**En el cliente** (`AgenciesTable.tsx`, `DeleteAgencyPanel`), el mismo criterio, solo para
-habilitar el botón:
+**En la interfaz** el conteo se arma en `page.tsx` con el mismo filtro
+(`status !== "active" && status !== "paused" → continue`), a partir de la lectura que **ya se
+hacía** para decidir `can_delete`: solo le sumé la columna `status` al `select`. No hay consulta
+nueva, como pediste.
 
-```ts
-const matches =
-  typed.trim().toLocaleLowerCase("es-AR") ===
-  row.name.trim().toLocaleLowerCase("es-AR");
-```
-
-**Qué se relaja y qué no:** se ignoran mayúsculas y espacios de los bordes. **No** se relajan
-los espacios internos ni los acentos: sigue teniendo que ser el nombre de esa agencia, no algo
-parecido. (El `&& actual.trim() !== ""` del server evita el caso patológico de una agencia con
-nombre vacío, donde un input vacío "coincidiría".)
-
-**El cartel** también cambió: el nombre salió de adentro del `<Label>` —que lo pasaba a
-mayúsculas— y ahora va en un `<p>` aparte, **tal cual está guardado**, con la aclaración
-explícita:
-
-> Escribí **Inmobiliaria Prueba** para confirmar. No importan las mayúsculas.
+Las tres puntas cuentan lo mismo, y está anotado en cada una. Si contaran distinto, el panel
+podría ofrecer un cambio que la action rechaza (frustración) o —peor— aplicar uno que deje a la
+agencia por encima de un límite que la base nunca habría permitido.
 
 ---
 
-## 5. Verificación
+## 4. Las dos fechas
+
+### `current_period_end` (vencimiento): **editable en el mismo movimiento, precargado, y el vacío BORRA**
+
+Descarté conservarla en silencio: **la fecha vieja pertenece al plan viejo**. Dejarla haría que
+la agencia leyera *"Plan Inicial activo hasta el 31/12"* cuando ese 31/12 se cargó para la
+prueba gratuita de su Profesional. Es exactamente la misma clase de mentira que sacamos de la
+pantalla de suscripción en la tanda anterior.
+
+Y descarté limpiarla siempre: tu propio caso dice *"probablemente necesite una fecha distinta,
+**o ninguna**"*, y "una fecha distinta" no es expresable si el cambio la borra a ciegas.
+
+Lo que quedó es **"escribe lo que ves"**: el campo viene precargado con el vencimiento vigente,
+y se guarda lo que el dueño deje. Si lo vacía, el plan nuevo queda sin vencimiento. El texto de
+ayuda lo dice explícitamente, y el resumen de consecuencias remata con *"Vence el X"* o *"Queda
+sin fecha de vencimiento"*.
+
+⚠ **Esto es una asimetría deliberada con `activatePlanAction`**, donde el campo vacío **no
+toca** la columna. El motivo: en una activación no hay fecha previa que pueda quedar vieja (la
+suscripción venía de `pending`), así que no tocar es lo seguro. En un cambio de plan sí la hay,
+así que no tocar sería lo peligroso. Está documentado en las dos actions para que nadie las
+"unifique" sin ver la diferencia.
+
+### `activated_at` (activación): **se actualiza a ahora**
+
+Esa columna responde *"desde cuándo rige lo que rige"*. Después del cambio lo que rige es el
+plan nuevo, y rige desde este momento. Conservar la fecha vieja le atribuiría al plan nuevo un
+comienzo que nunca tuvo, y la columna "Activación" del panel mostraría una fecha **anterior al
+cambio** para un plan que empezó después — el dueño no tendría cómo saber cuándo pasó.
+
+Es además lo que ya hace `activatePlanAction`, así que las dos rutas que ponen un plan a regir
+dejan la misma marca.
+
+---
+
+## 5. Plan pedido sin activar, y agencia dada de baja
+
+**En los dos casos la acción NO se ofrece, y la action los rechaza igual** (la interfaz no es
+una barrera). La condición para ofrecerla es la misma que para dar de baja: **suscripción
+`active` con un plan de venta**.
+
+**Suscripción `pending` (la agencia pidió un plan):** ese caso ya tiene **dos** acciones
+propias —`activatePlanAction` (dársela) y `cancelPendingPlanAction` (descartarla)—, así que no
+hay nada que agregar. Ofrecer además "cambiar de plan" abriría una pregunta que ninguna
+respuesta resuelve bien: ¿qué pasa con la solicitud que quedó colgando? ¿Se descarta en
+silencio? ¿Sobrevive apuntando a un plan que ya no tiene sentido? El mensaje de la action manda
+al camino correcto: *"Esa agencia tiene una solicitud de plan sin resolver. Activala o cancelala
+antes de cambiarle el plan."*
+
+**Suscripción `canceled` (dada de baja):** acá hay un motivo más fuerte que la prolijidad. **La
+baja conserva `plan` justamente para saber a qué reactivar** — es el único registro de qué tenía
+contratado. Si se le pudiera cambiar el plan estando de baja, se pisaría esa memoria y
+`restoreSubscriptionAction` devolvería a la agencia a un plan **que nunca tuvo**. El orden
+correcto es reactivar y después cambiar, y eso dice el mensaje.
+
+**`free` también queda afuera**, como pediste: para una agencia en el estado de aterrizaje el
+camino es que pida un plan y el dueño se lo active. Y `free` tampoco es un **destino** válido:
+para sacarle el plan a alguien está la baja (que además conserva a qué volver); degradar a
+`free` perdería ese dato.
+
+---
+
+## 6. La interfaz
+
+**Panel inline, no diálogo.** El criterio es el mismo que ya aplican los otros tres paneles de
+esta pantalla (rechazo, activación, eliminación): el `AlertDialog` es para un *"¿seguro?"* de
+una sola frase, y **su botón de acción cierra la ventana al hacer click**. Acá hay dos cosas que
+no toleran eso:
+
+1. **Una selección** (qué plan destino), que puede cambiar varias veces antes de decidir.
+2. **Un mensaje de bloqueo por exceso** que tiene que poder mostrarse **sin cerrar**, mientras
+   el dueño prueba otro destino. Con un diálogo, cada intento bloqueado cerraría la ventana y
+   habría que reabrirla.
+
+**El panel es la confirmación** — no le apilé un diálogo encima. La confirmación explícita es el
+botón final, que **nombra el plan destino** (*"Cambiar a Inicial"*), y justo arriba va un bloque
+**"Qué va a pasar"** con las consecuencias concretas: el límite nuevo contra el uso actual, qué
+funciones **gana** (en verde) y cuáles **pierde** (en rojo), y qué pasa con el vencimiento.
+
+**Anticipación del bloqueo.** Cada plan destino que no entra se muestra **deshabilitado**, con
+el motivo en su propia línea y los números concretos: *"No entra: la agencia tiene 25
+propiedades activas o pausadas y este plan permite 20. Habría que pausar o dar de baja 5
+antes."* El dueño ve por qué antes de intentar. La action lo rechaza igual, con el mismo
+mensaje.
+
+**Dónde vive:** en el menú `⋯` de acciones secundarias, junto a las de deshacer, y no como botón
+suelto — no es una acción del flujo diario. Aparece solo para agencias con plan de venta activo.
+El plan que ya rige no está entre las opciones (`PAID_PLANS.filter(id => id !== currentPlan)`), y
+si igual llegara, la action lo rechaza con *"Esa agencia ya está en el plan X"* en vez de
+escribir sin efecto y dejar una fila en el historial diciendo que hubo un cambio que no hubo.
+
+---
+
+## 7. Con los datos de hoy
+
+Medido: agencias con plan de venta activo, y a qué podrían cambiar. El límite de cada plan es
+inicial=20, profesional=60, premium=200.
+
+| Agencia | Plan actual | Ocupan cupo | → Inicial (20) | → Profesional (60) | → Premium (200) |
+|---|---|---|---|---|---|
+| Inmobiliaria Demo | profesional | **11** | ✅ entra | *(actual)* | ✅ entra |
+| Inmobiliaria Gaio | profesional | 1 | ✅ entra | *(actual)* | ✅ entra |
+| Inmobiliaria Juan Lopez2 | profesional | 0 | ✅ entra | *(actual)* | ✅ entra |
+| Inmobiliaria Prueba | inicial | 0 | *(actual)* | ✅ entra | ✅ entra |
+| Inmobiliaria Prueba Gaio | inicial | 0 | *(actual)* | ✅ entra | ✅ entra |
+| Inmobiliaria Zavaleta3 | inicial | 0 | *(actual)* | ✅ entra | ✅ entra |
+
+⚠ **Con los datos de hoy NINGÚN cambio queda bloqueado por exceso, y conviene saberlo antes de
+dar la feature por probada.** El plan de venta más chico permite 20 propiedades y la agencia más
+cargada tiene 11, así que **el camino de bloqueo es inalcanzable**: haría falta una agencia con
+21 o más propiedades activas/pausadas. Para ejercitarlo a mano hay que cargar propiedades de
+más (o bajar `property_limit` a mano, que no representa el caso real).
+
+Dos agencias tienen vencimiento cargado (`Gaio` y `Prueba`, ambas 31/12/2026), así que el
+comportamiento de la fecha precargada sí se puede probar con lo que hay.
+
+---
+
+## 8. Verificación
 
 ### `npx tsc --noEmit`
 ```
@@ -240,7 +262,7 @@ This API returns functions which cannot be memoized without leading to stale UI.
 
 ### `npx next build`
 ```
-✓ Generating static pages using 3 workers (19/19) in 1148ms
+✓ Generating static pages using 3 workers (19/19) in 1288ms
   Finalizing page optimization ...
 
 Route (app)
@@ -268,72 +290,68 @@ Route (app)
 | Warnings de lint | 1 (`react-hooks/incompatible-library`, formulario de propiedad) | 1, el mismo, `PropertyForm.tsx:269` | ✅ |
 | Build | verde, 19 rutas | verde, **19 rutas** | ✅ |
 
-**Idéntico al baseline.**
-
-### Archivos modificados
-
-| Archivo | Qué cambió |
-|---|---|
-| `src/components/dashboard/NewPropertyButton.tsx` | El ternario binario pasó a switch exhaustivo con guarda `never` + mensaje propio para `subscription_inactive`. **Es el arreglo del síntoma reportado.** |
-| `src/components/dashboard/SubscriptionContent.tsx` | Aviso `Notice` (tono warning) cuando la suscripción no rige, sin fecha de vencimiento y sin cards de upgrade. |
-| `src/app/(agent)/dashboard/suscripcion/actions.ts` | `requestPlanUpgradeAction` rechaza pedidos si la suscripción está `canceled`/`past_due`. |
-| `src/app/(agent)/admin/actions.ts` | `nameMatches()`: la confirmación por nombre ignora mayúsculas y espacios de los bordes. |
-| `src/app/(agent)/admin/AgenciesTable.tsx` | Misma comparación en el cliente + el nombre sale del `<Label>` (que lo ponía en mayúsculas) y se aclara que no importan. |
+**Idéntico al baseline.** La acción es una server action, no una ruta.
 
 ---
 
-## 6. Decisiones que se apartan de las instrucciones
+## 9. Decisiones que se apartan de las instrucciones
 
-**1. No reordené el helper, porque el orden ya era el correcto.** Pediste "revisá en qué orden
-evalúa hoy los motivos y corregilo"; al medirlo, ya evaluaba aprobación → suscripción → cupo.
-Cambiar algo ahí habría sido trabajo inventado y no habría arreglado el síntoma. El arreglo fue
-en el consumidor (`NewPropertyButton`), que es donde estaba el `else` que se tragaba el motivo
-nuevo. Lo mismo con el punto 2: los triggers ya disparan en el orden correcto, así que **no hay
-SQL para correr** — dijiste explícitamente que si ya era correcto lo dijera y no tocara nada.
+**1. Exporté `PAID_PLANS` desde `src/types/index.ts` y cambié `PlanSelector` para usarlo.**
+`CLAUDE.md` documenta que esa derivación se hace **dentro del componente**
+(`PLAN_ORDER.filter(id => id !== "free")`). Con esta tanda hacían falta **tres** copias de la
+misma línea (el selector del registro, la action nueva y el panel nuevo), y tres derivaciones a
+mano del catálogo de venta son tres lugares donde se puede desincronizar. Exporté la constante
+—**sin tocar `PLAN_ORDER`**, que sigue siendo el dominio completo de la columna con `free`
+adentro, que es lo que esa nota de `CLAUDE.md` protege— y dejé el porqué escrito ahí. El cambio
+en `PlanSelector` es un swap de import, sin cambio de comportamiento.
 
-**2. Agregué un corte en `requestPlanUpgradeAction`, que no estaba en el pedido.** Pediste
-decidir sobre los botones de upgrade y justificarlo. Al mirarlo encontré que no era una decisión
-de presentación: esa action escribe `status: 'pending'` sin mirar el estado previo, así que una
-agencia dada de baja podía **sacarse la baja sola** pidiendo un upgrade y recuperar la
-posibilidad de publicar. Esconder los botones sin cerrar la action habría dejado el agujero
-abierto, y "la interfaz no es una barrera" es la regla que sigue todo el repo. Es un cambio
-chico (una lectura y un `return`), pero está fuera de las tres correcciones que enumeraste.
+**2. El panel es la confirmación; no agregué un `AlertDialog` encima.** Pediste "confirmación
+explícita antes de aplicarse". Interpreté que el botón final nombrado (*"Cambiar a Inicial"*),
+con el bloque "Qué va a pasar" inmediatamente arriba, **es** esa confirmación explícita. Apilar
+un diálogo sobre un panel que ya exige elegir y leer sería una segunda confirmación del mismo
+acto, y ninguna de las otras tres acciones con panel lo hace.
 
-**3. Usé el mensaje de suscripción inactiva del botón para mandar a `/dashboard/suscripcion`,
-no a la lista de planes.** El `PlanLimitMessage` original enlaza a "Ver planes" porque su
-bloqueo se resuelve pagando más. El de baja no: enlaza a la pantalla de suscripción, que ahora
-es donde está la explicación completa.
+**3. Las etiquetas de los tres entitlements quedaron locales al panel** (`ENTITLEMENTS`) y no en
+`labels.ts`. La regla pide llevar allá los mapas indexados por **literales del dominio**, y
+`featured`/`whiteLabel`/`metrics` son claves de `PlanInfo`, no una unión de literales del
+dominio. Además hay precedente: `featuresFor` en `SubscriptionContent` las escribe inline. Si
+algún día se vuelven un tipo propio, ahí sí corresponde moverlas.
 
 ---
 
-## 7. Encontrado y NO tocado, por estar fuera del alcance
+## 10. Encontrado y NO tocado, por estar fuera del alcance
 
-1. **⚠ Re-activar una propiedad pausada saltea el trigger de suscripción.**
-   `trg_check_agency_subscription` es solo `BEFORE INSERT`; `trg_check_property_limit` es
-   `BEFORE INSERT OR UPDATE`. Una agencia dada de baja **puede pasar una propiedad de `paused` a
-   `active`** (mientras tenga cupo), y si no tiene cupo el error que ve es el de límite, no el de
-   la baja. En la práctica la propiedad no se ve igual (la oculta
-   `agency_is_publicly_visible`), así que el daño es acotado. Ampliar el trigger a UPDATE es una
-   decisión de producto —contradice lo que se decidió a propósito en la tanda anterior ("editar
-   una propiedad ya cargada sigue permitido")— así que la dejo planteada, no resuelta.
+1. **El camino de bloqueo por exceso no se puede probar con los datos de hoy** (punto 7). No es
+   un defecto del código, pero sí significa que la parte más delicada de esta pieza queda
+   **verificada por tipos y build, no por ejecución**. Es lo primero que apuntaría a probar,
+   cargando propiedades de más en una agencia de prueba.
 
-2. **El dashboard (`/dashboard`) tampoco avisa de la baja.** `getPublishBlock` le da el mensaje
-   correcto al estado vacío y al botón, pero no hay un aviso de estado como el que sí tiene la
-   agencia no aprobada (`AgencyApprovalNotice`, montado en `/dashboard` y en Preferencias). El
-   equivalente para la suscripción sería montar el `Notice` nuevo también ahí. Pediste
-   explícitamente la pantalla de suscripción, así que no lo extendí.
+2. **`supabase/pending/2026-08-31-bloqueo-publicacion-por-suscripcion.sql` sigue ahí aunque ya
+   lo corriste.** Medí que `trg_check_agency_subscription` está aplicado en la base, así que ese
+   archivo ya cumplió su función y debería mudarse al schema documentado y borrarse. Volverlo a
+   correr es inofensivo (`CREATE OR REPLACE` + `DROP TRIGGER IF EXISTS`), pero deja la carpeta
+   `pending/` diciendo que hay dos cosas sin aplicar cuando hay una. No lo toqué porque implica
+   editar `migrations/20240101000000_initial_schema.sql`, que está fuera de esta tarea.
 
-3. **`past_due` no lo escribe nadie todavía.** Lo contemplé en las tres correcciones porque
-   comparte el bloqueo con `canceled`, pero ninguna action del panel lo produce: hoy solo se
-   llega ahí por SQL a mano. Cuando exista el cobro automático va a llegar solo.
+3. **`current_period_end` sigue sin tener ningún efecto automático.** Ahora se puede escribir
+   desde dos lugares (activar y cambiar de plan) y la agencia la ve, pero **nada la vigila**: que
+   una fecha pase no cambia el estado de la suscripción ni avisa a nadie. Sigue siendo un
+   recordatorio para el dueño, como estaba anotado en `PENDIENTES.md`.
 
-4. **El schema documentado sigue mintiendo sobre dos FKs** (`properties.agent_id` es NOT NULL +
-   CASCADE, `leads.agent_id` es NOT NULL + NO ACTION, contra lo que dicen el archivo de
-   migración y `CLAUDE.md`). Sin relación con estas tres correcciones; lo repito porque sigue
-   ahí y sigue afectando a `deleteAgentAction`.
+4. **Re-activar una propiedad pausada sigue salteando el trigger de suscripción**
+   (`trg_check_agency_subscription` es solo `BEFORE INSERT`). Lo reporté en la tanda anterior y
+   sigue igual; no es de esta pieza, pero se cruza con ella: una agencia a la que se le baja el
+   plan queda con `property_limit` menor, y el trigger de límite **sí** cubre el UPDATE de
+   `paused → active`, así que ese camino está protegido por el otro lado.
 
-5. **No probé nada contra la base**, como en la tanda anterior: el modo prohíbe SQL de
-   escritura. Lo que conviene reprobar a mano ahora, con la agencia que ya tenés dada de baja:
-   que el botón "Nueva propiedad" diga *"Tu suscripción está dada de baja..."* en vez del
-   mensaje de cupo; que `/dashboard/suscripcion` muestre el aviso, sin fecha y sin cards de
-   upgrade; y que eliminar una agencia acepte el nombre en minúsculas.
+5. **Bajar de plan desde el panel del cliente sigue sin existir, y así debe quedar.** Lo dejé
+   escrito en el comentario de `changePlanAction`: habilitarlo permitiría pagar un mes de plan
+   grande, cargar muchas propiedades y bajar al más barato conservándolas visibles.
+   `requestPlanUpgradeAction` sigue admitiendo solo subidas.
+
+6. **No probé nada contra la base**, como en las tandas anteriores: el modo prohíbe SQL de
+   escritura. El orden de prueba que sugiero: correr el SQL del punto 1; cambiar
+   *Inmobiliaria Demo* de profesional a inicial (11 propiedades, entra) y confirmar que pierde
+   el white-label y que su sitio `/inmobiliaria-demo` se apaga; verificar que a *Gaio* le
+   aparece el 31/12/2026 precargado y que vaciarlo deja la columna en `null`; y comprobar que a
+   una agencia con solicitud pendiente o dada de baja **no** le aparece la opción en el menú.
