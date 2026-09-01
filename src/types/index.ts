@@ -193,12 +193,19 @@ export interface Agency {
 // veredicto, es deshacer uno. Y eliminar una agencia tampoco registra: la fila
 // del historial se borraría en cascada junto con la agencia (ver
 // deleteAgencyAction).
+//
+// ⚠ 'plan_changed' (el dueño cambia el plan vigente de una agencia que sigue
+// siendo cliente) NO es lo mismo que 'plan_canceled' (se descarta una SOLICITUD
+// que hizo la agencia) ni que la dupla canceled/restored, que apagan y
+// encienden la suscripción entera. Son tres cosas distintas y por eso son tres
+// valores distintos.
 export type ReviewDecision =
   | "approved"
   | "rejected"
   | "plan_canceled"
   | "subscription_canceled"
-  | "subscription_restored";
+  | "subscription_restored"
+  | "plan_changed";
 
 export interface AgencyReview {
   id: string;
@@ -472,6 +479,18 @@ export const PLANS: Record<SubscriptionPlan, PlanInfo> = {
 // Para listar planes ofrecibles se filtra 'free' (ver PAID_PLANS en
 // PlanSelector). Sirve además para calcular "el plan siguiente" (upgrades).
 export const PLAN_ORDER = ["free", "inicial", "profesional", "premium"] as const;
+
+// Los planes que SE VENDEN. Derivado de PLAN_ORDER (que sigue siendo el dominio
+// completo de la columna, con 'free' adentro): 'free' no se ofrece nunca, es el
+// estado de aterrizaje.
+//
+// Vive acá y no en cada componente porque ya hacen falta tres copias —la
+// selección de plan del registro, la acción de cambiar de plan del panel y su
+// selector—, y tres derivaciones iguales escritas a mano son tres lugares donde
+// se puede desincronizar el catálogo de venta.
+export const PAID_PLANS = PLAN_ORDER.filter(
+  (id): id is Exclude<SubscriptionPlan, "free"> => id !== "free"
+);
 
 // Estado de uso del plan, para mostrar en el dashboard y bloquear el alta.
 // Incluye los entitlements efectivos leídos de la suscripción (no del nombre del plan).

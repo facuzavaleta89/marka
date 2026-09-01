@@ -38,6 +38,7 @@ type AgencySubscriptionEmbed = {
   pending_plan: string | null;
   status: string;
   activated_at: string | null;
+  current_period_end: string | null;
 };
 
 // Normaliza un embed to-one que PostgREST puede devolver como objeto o array.
@@ -82,7 +83,7 @@ export default async function AdminPage() {
     admin
       .from("agencies")
       .select(
-        "id, name, slug, license_number, approval_status, subscription:subscriptions(plan, pending_plan, status, activated_at), city:cities(name)"
+        "id, name, slug, license_number, approval_status, subscription:subscriptions(plan, pending_plan, status, activated_at, current_period_end), city:cities(name)"
       )
       .order("created_at", { ascending: false }),
 
@@ -125,7 +126,7 @@ export default async function AdminPage() {
     // ⚠ ESTO NO ES LA BARRERA: deleteAgencyAction vuelve a contar contra la
     // base antes de borrar. Acá solo se decide si el botón aparece, y por eso
     // se puede resolver con una lectura barata y potencialmente desactualizada.
-    admin.from("properties").select("agency_id"),
+    admin.from("properties").select("agency_id, status"),
     admin.from("leads").select("agency_id"),
   ]);
 
@@ -139,6 +140,23 @@ export default async function AdminPage() {
   const agenciesWithLeads = new Set(
     (leadOwners ?? []).map((l) => l.agency_id as string)
   );
+
+  // Propiedades que OCUPAN CUPO por agencia, para que el panel pueda anticipar
+  // si un cambio de plan entraría o no.
+  //
+  // ⚠ EL CRITERIO ES EL DE LA BASE, no uno propio: check_property_limit() cuenta
+  // `status IN ('active','paused')` por agency_id (las vendidas/alquiladas no
+  // ocupan cupo). Contar distinto acá haría que la interfaz ofreciera un cambio
+  // que la action rechaza, o al revés. Sale de la MISMA lectura que ya se hacía
+  // para `can_delete` —solo se le sumó la columna `status`—, así que no hay
+  // consulta nueva.
+  const occupiedByAgency = new Map<string, number>();
+  for (const row of propertyOwners ?? []) {
+    const status = row.status as string;
+    if (status !== "active" && status !== "paused") continue;
+    const agencyId = row.agency_id as string;
+    occupiedByAgency.set(agencyId, (occupiedByAgency.get(agencyId) ?? 0) + 1);
+  }
 
   // Mapeo a la forma que consume la tabla. La suscripción puede faltar: en ese
   // caso `subscription` queda en null y la tabla lo muestra como "sin plan", no
@@ -159,6 +177,7 @@ export default async function AdminPage() {
         can_delete:
           !agenciesWithProperties.has(agency.id) &&
           !agenciesWithLeads.has(agency.id),
+        occupied_properties: occupiedByAgency.get(agency.id) ?? 0,
         subscription: subscription
           ? {
               plan: subscription.plan as SubscriptionPlan,
@@ -166,6 +185,7 @@ export default async function AdminPage() {
                 (subscription.pending_plan as SubscriptionPlan | null) ?? null,
               status: subscription.status as SubscriptionStatus,
               activated_at: subscription.activated_at,
+              current_period_end: subscription.current_period_end,
             }
           : null,
       };

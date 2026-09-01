@@ -6,7 +6,7 @@ import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AuthLayout } from "@/components/auth/AuthLayout";
 import { cn } from "@/lib/utils";
-import { PLANS, PLAN_ORDER, type PlanInfo, type SubscriptionPlan } from "@/types";
+import { PAID_PLANS, PLANS, type PlanInfo, type SubscriptionPlan } from "@/types";
 import { selectPlanAction } from "./actions";
 
 // Claim del panel de identidad (voz DESIGN §10: directo, sin marketing).
@@ -18,7 +18,8 @@ const SUBCLAIM =
 // excluyendo 'free', que no es un producto sino el estado de aterrizaje de la
 // suscripción (ver PLANS en types). PLAN_ORDER queda intacto: es el dominio de
 // la columna `plan`, no el catálogo de venta.
-const PAID_PLANS = PLAN_ORDER.filter((id) => id !== "free");
+// (Ahora se importa de @/types: la misma derivación hacía falta en tres
+// lugares y tres copias a mano se desincronizan.)
 
 // Features visibles de un plan, derivadas del catálogo PLANS. Selector propio:
 // no se reusa el PlanCard del dashboard (queda intacto).

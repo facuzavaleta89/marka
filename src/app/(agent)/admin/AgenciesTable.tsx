@@ -13,6 +13,7 @@ import {
   RotateCcw,
   Trash2,
   CircleSlash,
+  ArrowLeftRight,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
@@ -36,6 +37,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  PAID_PLANS,
   PLANS,
   REJECTION_NOTE_MAX,
   type ApprovalStatus,
@@ -51,6 +53,7 @@ import {
   approveAgencyAction,
   cancelPendingPlanAction,
   cancelSubscriptionAction,
+  changePlanAction,
   deleteAgencyAction,
   rejectAgencyAction,
   reopenAgencyAction,
@@ -79,6 +82,10 @@ export interface AgencySubscription {
   pending_plan: SubscriptionPlan | null; // plan pago pedido, esperando activación
   status: SubscriptionStatus;
   activated_at: string | null;
+  // Vencimiento del plan vigente. Lo usa el panel de cambio de plan para
+  // PRECARGAR el campo: ahí el vacío borra, así que el dueño tiene que ver qué
+  // hay antes de decidir si lo conserva.
+  current_period_end: string | null;
 }
 
 // Fila del listado de agencias. La agencia es la entidad principal (la query
@@ -96,6 +103,10 @@ export interface AgencyRow {
   // verificar deleteAgencyAction contra la base, porque un booleano que viaja al
   // cliente no es una barrera.
   can_delete: boolean;
+  // Propiedades que OCUPAN CUPO (status active/paused), con el mismo criterio
+  // que check_property_limit() en la base. Sirve para anticipar si un cambio de
+  // plan entraría; la barrera real vuelve a contar en changePlanAction.
+  occupied_properties: number;
 }
 
 interface AgenciesTableProps {
@@ -268,6 +279,7 @@ interface RowActionAvailability {
   reopen: boolean;
   activate: boolean;
   cancelPlan: boolean;
+  changePlan: boolean;
   suspend: boolean;
   restore: boolean;
   remove: boolean;
@@ -288,6 +300,12 @@ function availableActions(row: AgencyRow): RowActionAvailability {
     // Solo tiene sentido dar de baja un plan PAGO y vigente: 'free' es el estado
     // de aterrizaje, no algo contratado.
     suspend: sub != null && sub.status === "active" && sub.plan !== "free",
+    // Misma condición que dar de baja, y por el mismo motivo: se le cambia el
+    // plan a quien TIENE un plan de venta vigente. Con una solicitud sin
+    // resolver está activar/cancelar, y con la suscripción de baja está
+    // reactivar (que necesita el `plan` guardado intacto). Lo repite
+    // changePlanAction del lado del server.
+    changePlan: sub != null && sub.status === "active" && sub.plan !== "free",
     restore: sub?.status === "canceled",
     remove: row.can_delete,
   };
@@ -321,6 +339,7 @@ function RowActions({
   onReopen,
   onActivate,
   onCancelPlan,
+  onChangePlan,
   onSuspend,
   onRestore,
   onDelete,
@@ -333,6 +352,7 @@ function RowActions({
   onReopen: () => void;
   onActivate: () => void;
   onCancelPlan: () => void;
+  onChangePlan: () => void;
   onSuspend: () => void;
   onRestore: () => void;
   onDelete: () => void;
@@ -343,7 +363,12 @@ function RowActions({
       ? "flex flex-col items-end gap-2"
       : "flex flex-wrap justify-end items-center gap-2";
 
-  const hasMenu = can.cancelPlan || can.suspend || can.restore || can.remove;
+  const hasMenu =
+    can.cancelPlan ||
+    can.changePlan ||
+    can.suspend ||
+    can.restore ||
+    can.remove;
 
   return (
     <div className={wrapper}>
@@ -412,6 +437,15 @@ function RowActions({
                 Cancelar la solicitud
               </DropdownMenuItem>
             )}
+            {can.changePlan && (
+              <DropdownMenuItem
+                onSelect={onChangePlan}
+                className="flex items-center gap-2"
+              >
+                <ArrowLeftRight size={14} />
+                Cambiar de plan
+              </DropdownMenuItem>
+            )}
             {can.suspend && (
               <DropdownMenuItem
                 onSelect={onSuspend}
@@ -432,9 +466,10 @@ function RowActions({
             )}
             {can.remove && (
               <>
-                {(can.cancelPlan || can.suspend || can.restore) && (
-                  <DropdownMenuSeparator />
-                )}
+                {(can.cancelPlan ||
+                  can.changePlan ||
+                  can.suspend ||
+                  can.restore) && <DropdownMenuSeparator />}
                 {/* Irreversible: separada del resto y en color de error. */}
                 <DropdownMenuItem
                   onSelect={onDelete}
@@ -468,6 +503,7 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
   const [toReject, setToReject] = useState<AgencyRow | null>(null);
   const [toActivate, setToActivate] = useState<AgencyRow | null>(null);
   const [toDelete, setToDelete] = useState<AgencyRow | null>(null);
+  const [toChangePlan, setToChangePlan] = useState<AgencyRow | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -615,6 +651,27 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
         />
       )}
 
+      {/* Cambio de plan (panel inline: hay una selección y un posible bloqueo
+          por exceso que hay que mostrar sin cerrar) */}
+      {toChangePlan && (
+        <ChangePlanPanel
+          row={toChangePlan}
+          loading={pendingId === toChangePlan.agency_id}
+          onCancel={() => setToChangePlan(null)}
+          onConfirm={(targetPlan, periodEnd) => {
+            const target = toChangePlan;
+            setToChangePlan(null);
+            run(target.agency_id, () =>
+              changePlanAction({
+                agencyId: target.agency_id,
+                targetPlan,
+                periodEnd,
+              })
+            );
+          }}
+        />
+      )}
+
       {/* Eliminación (panel inline: hay que tipear el nombre) */}
       {toDelete && (
         <DeleteAgencyPanel
@@ -751,6 +808,7 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
                           onReopen={() => setToReopen(row)}
                           onActivate={() => setToActivate(row)}
                           onCancelPlan={() => setToCancelPlan(row)}
+                          onChangePlan={() => setToChangePlan(row)}
                           onSuspend={() => setToSuspend(row)}
                           onRestore={() => setToRestore(row)}
                           onDelete={() => setToDelete(row)}
@@ -816,6 +874,7 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
                         onReopen={() => setToReopen(row)}
                         onActivate={() => setToActivate(row)}
                         onCancelPlan={() => setToCancelPlan(row)}
+                        onChangePlan={() => setToChangePlan(row)}
                         onSuspend={() => setToSuspend(row)}
                         onRestore={() => setToRestore(row)}
                         onDelete={() => setToDelete(row)}
@@ -1299,6 +1358,221 @@ function DeleteAgencyPanel({
           className="h-11 px-4 rounded-md font-sans text-sm font-medium bg-transparent border border-error text-error hover:bg-terracota-subtle transition-colors duration-[120ms] disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {loading ? "Eliminando..." : "Eliminar definitivamente"}
+        </button>
+        <button
+          onClick={onCancel}
+          className="h-11 px-4 rounded-md font-sans text-sm font-medium text-graphite hover:text-black transition-colors duration-[120ms]"
+        >
+          Cancelar
+        </button>
+      </div>
+    </section>
+  );
+}
+
+// ─── Panel de cambio de plan ──────────────────────────────────
+// PANEL INLINE y no AlertDialog, por el mismo criterio que los otros tres de
+// esta pantalla: el diálogo es para un "¿seguro?" de una sola frase, y su botón
+// de acción CIERRA al hacer click. Acá hay una SELECCIÓN (qué plan) y, sobre
+// todo, un mensaje de bloqueo por exceso de propiedades que tiene que poder
+// mostrarse SIN cerrar, mientras el dueño prueba otro destino. Con un diálogo,
+// cada intento bloqueado cerraría la ventana.
+//
+// El panel ES la confirmación: no se apila un diálogo encima. La confirmación
+// explícita es el botón final, que nombra el plan destino, y arriba de él se
+// listan las consecuencias concretas (límite nuevo, funciones que gana y que
+// pierde) para que nadie lo toque sin saber qué cambia.
+const ENTITLEMENTS = [
+  { key: "featured", label: "Propiedades destacadas" },
+  { key: "whiteLabel", label: "Sitio propio (white-label)" },
+  { key: "metrics", label: "Métricas" },
+] as const;
+
+function ChangePlanPanel({
+  row,
+  loading,
+  onCancel,
+  onConfirm,
+}: {
+  row: AgencyRow;
+  loading: boolean;
+  onCancel: () => void;
+  onConfirm: (targetPlan: SubscriptionPlan, periodEnd: string) => void;
+}) {
+  const currentPlan = row.subscription?.plan ?? "free";
+  const used = row.occupied_properties;
+
+  const [target, setTarget] = useState<SubscriptionPlan | null>(null);
+  // Precargado con el vencimiento vigente: acá el vacío BORRA, así que el dueño
+  // tiene que ver qué hay antes de decidir si lo conserva, lo cambia o lo saca.
+  const [periodEnd, setPeriodEnd] = useState(
+    row.subscription?.current_period_end?.slice(0, 10) ?? ""
+  );
+
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const minDate = tomorrow.toISOString().slice(0, 10);
+  const isPastDate = periodEnd !== "" && periodEnd < minDate;
+
+  // Destinos posibles: los planes de venta menos el que ya rige.
+  const options = PAID_PLANS.filter((id) => id !== currentPlan);
+
+  // ¿Entran las propiedades que ocupan cupo en ese plan? Mismo criterio que la
+  // base y que changePlanAction; acá solo para ANTICIPAR el rechazo.
+  const fits = (plan: SubscriptionPlan) => used <= PLANS[plan].propertyLimit;
+
+  const targetInfo = target ? PLANS[target] : null;
+  // Se deriva del info ya resuelto en vez de volver a llamar a fits(target),
+  // para no necesitar una aserción de no-nulo más abajo.
+  const targetFits = targetInfo != null && used <= targetInfo.propertyLimit;
+  const canSubmit = targetFits && !isPastDate && !loading;
+
+  return (
+    <section className="mb-4 bg-paper border border-stone rounded-lg p-6">
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <h2 className="font-serif text-2xl font-semibold text-black">
+            Cambiar el plan de &quot;{row.name}&quot;
+          </h2>
+          <p className="mt-1 font-sans text-xs text-graphite">
+            Hoy tiene el plan{" "}
+            <strong className="text-black">{PLANS[currentPlan].name}</strong> y
+            usa {used} de {PLANS[currentPlan].propertyLimit} propiedades. El
+            cambio se aplica en el momento, sin pasar por una solicitud.
+          </p>
+        </div>
+        <button
+          onClick={onCancel}
+          className="p-1 text-graphite hover:text-black transition-colors shrink-0"
+          aria-label="Cerrar"
+        >
+          <X size={18} />
+        </button>
+      </div>
+
+      {/* Selección del plan destino */}
+      <fieldset className="space-y-2">
+        <legend className="font-sans text-sm font-medium text-black mb-2">
+          Plan nuevo
+        </legend>
+        {options.map((id) => {
+          const info = PLANS[id];
+          const blocked = !fits(id);
+          return (
+            <label
+              key={id}
+              className={`flex items-start gap-3 rounded-md border p-3 transition-colors ${
+                blocked
+                  ? "border-stone bg-mist/40 cursor-not-allowed"
+                  : target === id
+                    ? "border-terracota bg-terracota-subtle cursor-pointer"
+                    : "border-stone hover:bg-mist cursor-pointer"
+              }`}
+            >
+              <input
+                type="radio"
+                name="target-plan"
+                value={id}
+                checked={target === id}
+                disabled={blocked}
+                onChange={() => setTarget(id)}
+                className="mt-1 accent-[#A0522D]"
+              />
+              <span className="min-w-0">
+                <span className="block font-sans text-sm font-medium text-black">
+                  {info.name} · {info.propertyLimit} propiedades
+                </span>
+                {blocked ? (
+                  // Anticipación del rechazo: se explica ANTES de intentar, no
+                  // después de un error. La action lo rechaza igual.
+                  <span className="block font-sans text-xs text-error mt-0.5">
+                    No entra: la agencia tiene {used} propiedades activas o
+                    pausadas y este plan permite {info.propertyLimit}. Habría que
+                    pausar o dar de baja {used - info.propertyLimit} antes.
+                  </span>
+                ) : (
+                  <span className="block font-sans text-xs text-graphite mt-0.5">
+                    {info.priceLabel}
+                  </span>
+                )}
+              </span>
+            </label>
+          );
+        })}
+      </fieldset>
+
+      {/* Vencimiento del plan nuevo */}
+      <div className="mt-4 space-y-1.5 max-w-xs">
+        <Label
+          htmlFor="change-plan-period-end"
+          className="font-sans text-sm font-medium text-black"
+        >
+          Vencimiento del plan nuevo{" "}
+          <span className="font-normal text-graphite">(opcional)</span>
+        </Label>
+        <Input
+          id="change-plan-period-end"
+          type="date"
+          value={periodEnd}
+          min={minDate}
+          onChange={(e) => setPeriodEnd(e.target.value)}
+          className={`${FIELD} ${isPastDate ? "border-error border-b-error" : ""}`}
+        />
+        <p
+          className={`font-sans text-xs ${isPastDate ? "text-error" : "text-graphite"}`}
+        >
+          {isPastDate
+            ? "La fecha tiene que ser posterior a hoy."
+            : "Viene con el vencimiento actual cargado. Si lo dejás vacío, el plan nuevo queda sin vencimiento: la fecha de antes era del plan viejo."}
+        </p>
+      </div>
+
+      {/* Consecuencias del cambio elegido: la confirmación explícita es el
+          botón de abajo, y esto es lo que hay que leer antes de tocarlo. */}
+      {targetInfo && targetFits && (
+        <div className="mt-4 rounded-md border border-stone bg-mist/50 p-4">
+          <p className="font-sans text-sm font-medium text-black">
+            Qué va a pasar
+          </p>
+          <ul className="mt-1.5 space-y-1 font-sans text-xs text-graphite">
+            <li>
+              Pasa a <strong className="text-black">{targetInfo.name}</strong>,
+              con un límite de{" "}
+              <strong className="text-black">
+                {targetInfo.propertyLimit} propiedades
+              </strong>{" "}
+              (hoy usa {used}).
+            </li>
+            {ENTITLEMENTS.map(({ key, label }) => {
+              const before = PLANS[currentPlan][key];
+              const after = targetInfo[key];
+              if (before === after) return null;
+              return (
+                <li key={key} className={after ? "text-success" : "text-error"}>
+                  {after ? "Gana" : "Pierde"}: {label}
+                </li>
+              );
+            })}
+            <li>
+              {periodEnd
+                ? `Vence el ${periodEnd}.`
+                : "Queda sin fecha de vencimiento."}
+            </li>
+          </ul>
+        </div>
+      )}
+
+      <div className="mt-5 flex items-center gap-3">
+        <button
+          onClick={() => target && onConfirm(target, periodEnd)}
+          disabled={!canSubmit}
+          className="h-11 px-4 rounded-md font-sans text-sm font-medium bg-terracota hover:bg-terracota-hover text-paper transition-colors duration-[120ms] disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {loading
+            ? "Cambiando..."
+            : targetInfo
+              ? `Cambiar a ${targetInfo.name}`
+              : "Elegí un plan"}
         </button>
         <button
           onClick={onCancel}
