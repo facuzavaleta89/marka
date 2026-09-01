@@ -1,357 +1,263 @@
-# Informe — Cambio de plan desde el panel de administración
+# Informe — Sincronización de schema y documentación
 
-> Modo ejecución. **1 archivo creado y 6 modificados** (más este informe). No se ejecutó
-> ningún comando de git ni ningún SQL de escritura. Fecha: 31 ago 2026.
-
-> ⚠ **Queda algo pendiente de tu lado:** el CHECK del historial todavía no admite el valor
-> nuevo. El SQL está en el punto 1. Hasta que lo corras, el cambio de plan **se aplica bien**
-> pero el registro en el historial falla y el dueño ve un aviso al respecto (es el contrato
-> best-effort que ya tenían las demás actions).
+> Tarea de documentación en modo ejecución. Se tocaron **solo archivos `.md` y el `.sql` del
+> schema**. Cero cambios en código fuente, cero comandos de git, cero SQL de escritura (el MCP
+> es de solo lectura y todo lo de abajo se **midió**, no se asumió).
 
 ---
 
-## 1. El SQL para el historial
+## 1. Lo relevado
 
-Medido primero, con `pg_get_constraintdef`:
+### a. Estado real de la base (medido por MCP, 1 sep 2026)
 
-```sql
-agency_reviews_decision_check
-  CHECK ((decision = ANY (ARRAY['approved'::text, 'rejected'::text, 'plan_canceled'::text, 'subscription_canceled'::text, 'subscription_restored'::text])))
-```
-
-Cinco valores, y ninguno sirve: `approved`/`rejected` son veredictos del eje de legitimidad;
-`plan_canceled` es descartar una **solicitud de la agencia**; y la dupla
-`subscription_canceled`/`subscription_restored` apaga y enciende la suscripción entera.
-Cambiarle el plan a una agencia que sigue siendo cliente no es ninguno de esos.
-
-**Valor nuevo elegido: `plan_changed`**, con el mismo criterio de nombre que los tres del eje
-comercial (`<objeto>_<qué le pasó>`, en inglés).
-
-Archivo: **`supabase/pending/2026-08-31-historial-cambio-de-plan.sql`**. Listo para copiar y
-pegar:
+**Función de visibilidad pública — existe y es como se describía:**
 
 ```sql
--- Se reemplaza el CHECK entero (Postgres no permite "agregar un valor" a uno
--- existente). Solo se SUMA un valor, así que la revalidación de las filas que ya
--- están no puede fallar.
-ALTER TABLE public.agency_reviews
-  DROP CONSTRAINT IF EXISTS agency_reviews_decision_check;
-
-ALTER TABLE public.agency_reviews
-  ADD CONSTRAINT agency_reviews_decision_check
-  CHECK (
-    decision = ANY (ARRAY[
-      'approved'::text,
-      'rejected'::text,
-      'plan_canceled'::text,
-      'subscription_canceled'::text,
-      'subscription_restored'::text,
-      'plan_changed'::text
-    ])
-  );
+CREATE FUNCTION public.agency_is_publicly_visible(target_agency_id uuid)
+ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
+AS $$ SELECT EXISTS (SELECT 1 FROM agencies a JOIN subscriptions s ON s.agency_id = a.id
+     WHERE a.id = target_agency_id AND a.approval_status = 'approved'
+       AND s.status = 'active' AND s.plan <> 'free'); $$
 ```
 
----
+`prosecdef = true` (SECURITY DEFINER) confirmado.
 
-## 2. Archivos
+**Las tres policies que la usan** (medidas en `pg_policies`):
 
-### Creado
+| Tabla | Policy | Condición real |
+|---|---|---|
+| `properties` | `Public read active properties` (SELECT) | `status = 'active' AND agency_is_publicly_visible(agency_id)` |
+| `property_images` | `Public read property images` (SELECT) | `EXISTS (… p.status='active' AND agency_is_publicly_visible(p.agency_id))` |
+| `leads` | `Public insert lead` (INSERT, WITH CHECK) | lo de antes (property+agent+agency) **+** `agency_is_publicly_visible(p.agency_id)` |
 
-| Archivo | Qué es |
+`agency_reviews` sigue con **RLS habilitada y cero policies** (no aparece en `pg_policies`).
+
+**Triggers de `properties` — son TRES + el de `updated_at`,** y el orden alfabético es el que
+manda:
+
+| # | Trigger | Cuándo | Función |
+|---|---|---|---|
+| 1 | `trg_check_agency_approved` | BEFORE INSERT | `check_agency_approved()` — `approval_status <> 'approved'` o sin fila |
+| 2 | `trg_check_agency_subscription` | BEFORE INSERT | `check_agency_subscription()` — `status IN ('canceled','past_due')` |
+| 3 | `trg_check_property_limit` | BEFORE INSERT **OR UPDATE** | `check_property_limit()` — cupo; sin fila de suscripción → límite 0 |
+| — | `trg_properties_updated_at` | BEFORE UPDATE | `update_updated_at()` |
+
+Los tres gates lanzan `ERRCODE = check_violation` (**23514**), así que el orden decide el mensaje.
+Confirmado también que `check_agency_subscription()` usa **lista negra** (`canceled`/`past_due`),
+no `<> 'active'`.
+
+**CHECK de `agency_reviews.decision` — seis valores, ya aplicado:**
+
+```
+CHECK (decision = ANY (ARRAY['approved','rejected','plan_canceled',
+       'subscription_canceled','subscription_restored','plan_changed']))
+```
+
+Y los seis **ya se usaron de verdad** (`approved` 2, `rejected` 1, `plan_canceled` 2,
+`subscription_canceled` 3, `subscription_restored` 3, `plan_changed` 3 = 14 filas).
+
+**Datos de la base (para calibrar la documentación):** 9 agencias (todas `approved`),
+13 propiedades, 9 agentes, 7 consultas, 6 suscripciones pagas activas, **0 bajas vigentes**,
+**1 sola fila con `current_period_end` cargado**.
+
+### b. Archivos de los cuatro trabajos
+
+Relevados por fecha de modificación (no por git, que no se tocó):
+
+| Trabajo | Archivos |
 |---|---|
-| `supabase/pending/2026-08-31-historial-cambio-de-plan.sql` | El `ALTER` de arriba, pendiente de correr a mano. |
+| **1 · Visibilidad pública** (31 ago) | `lib/utils/resolveAgencyBySlug.ts` (gate 3 + `isAgencyPubliclyVisible` por RPC) + los cambios de base (función y 3 policies) |
+| **2 · Panel de ida y vuelta** (31 ago) | `(agent)/admin/actions.ts`, `(agent)/admin/AgenciesTable.tsx`, `(agent)/admin/page.tsx` |
+| **3 · Tres correcciones** (31 ago) | `lib/utils/getPublishBlock.ts`, `lib/utils/getPlanUsage.ts`, `lib/utils/labels.ts`, `components/dashboard/NewPropertyButton.tsx`, `components/dashboard/SubscriptionContent.tsx`, `(agent)/dashboard/suscripcion/actions.ts`, `(agent)/dashboard/propiedades/actions.ts` |
+| **4 · Cambio de plan** (1 sep, sin commitear) | `(agent)/admin/actions.ts`, `(agent)/admin/AgenciesTable.tsx`, `(agent)/admin/page.tsx`, `(agent)/register/plan/PlanSelector.tsx`, `src/types/index.ts` |
 
-### Modificados
+### c. Baseline (paso 1)
+
+| Comando | Salida | Exit |
+|---|---|---|
+| `npx tsc --noEmit` | sin salida | **0** |
+| `npm run lint` | `✖ 1 problem (0 errors, 1 warning)` — `PropertyForm.tsx:269`, `react-hooks/incompatible-library` | **0** |
+| `npx next build` | `✓ Compiled successfully` — **19 rutas** | **0** |
+
+### d. `supabase/pending/`
+
+Había dos archivos, y **los dos ya estaban aplicados en la base**:
+
+| Archivo | ¿Aplicado? | Cómo se confirmó |
+|---|---|---|
+| `2026-08-31-bloqueo-publicacion-por-suscripcion.sql` | **Sí** | `check_agency_subscription()` existe en `pg_proc` con el cuerpo exacto del archivo, y `trg_check_agency_subscription` existe en `pg_trigger` como `BEFORE INSERT` |
+| `2026-08-31-historial-cambio-de-plan.sql` | **Sí** | `pg_get_constraintdef` de `agency_reviews_decision_check` devuelve los **seis** valores, incluido `plan_changed` |
+
+Los dos decían de sí mismos "⚠ ESTE ARCHIVO TODAVÍA NO ESTÁ APLICADO": **esa afirmación era
+falsa**. Nadie los borró después de correrlos.
+
+---
+
+## 2. Qué se agregó al schema y qué se borró de `supabase/pending/`
+
+Archivo: `supabase/migrations/20240101000000_initial_schema.sql` (616 → 942 líneas).
+
+**Agregado (todo medido contra la base, con comentarios de porqué en español):**
+
+1. **`agency_is_publicly_visible()`** con el cuerpo exacto de la base, y el porqué de las tres
+   cosas que se piden: por qué **policy y no filtro por consulta** (dos caminos públicos leen
+   propiedades con la anon key —el hook del mapa y el modal por id—, y el que se olvide filtra
+   mal en silencio; el plan de ejecución se midió antes de decidir), por qué **SECURITY
+   DEFINER** (el visitante es anónimo y la RLS de `subscriptions` le oculta la fila: sin eso la
+   función daría `false` para todos y el mapa quedaría vacío para todo el mundo) y por qué
+   `STABLE`.
+2. **Las tres policies reescritas** con la llamada a la función, cada una con su nota: la de
+   `properties` explica que ese segundo término **es lo que hace cobrable el producto**; la de
+   `property_images` que espeja la condición para que las fotos no queden legibles; la de
+   `leads` que es coherencia, no defensa en profundidad.
+3. **`check_agency_subscription()` + `trg_check_agency_subscription`**, con los tres porqués
+   pedidos: **trigger y no policy** (`createPropertyAction` usa service role cuando un admin
+   publica a nombre de otro agente, y el service role saltea las policies: ese camino existe y
+   se usa); **el nombre no es cosmético** (Postgres dispara en orden alfabético, los tres gates
+   comparten SQLSTATE 23514, y ese orden decide qué mensaje ve el agente — decirle "alcanzaste
+   el límite de tu plan" a alguien dado de baja es falso); y **lista negra, no `<> 'active'`**
+   (un `'pending'` es una agencia al día: bloquearla sería cortarle el alta por haber querido
+   pagar más). Más el efecto lateral conocido: es solo INSERT, así que reactivar una propiedad
+   pausada no pasa por acá.
+4. **CHECK de `agency_reviews.decision` con los seis valores**, con el reparto explicado
+   (dos del eje de legitimidad, cuatro del comercial) y por qué **la eliminación no se
+   registra** (la FK cascadea: la fila se borraría con lo registrado).
+5. **Encabezado "Estado actual"** actualizado con las tres migraciones y con la discrepancia
+   de FK marcada.
+
+**Borrado de `supabase/pending/`:** los **dos** archivos, cada uno después de confirmar contra
+la base que su contenido ya estaba aplicado (tabla del punto 1.d). La carpeta quedó **vacía**,
+que es el estado sano; la convención quedó escrita en `CLAUDE.md` y en `PENDIENTES.md`.
+
+**El schema sigue siendo ejecutable en una base limpia**: la función se define en la sección de
+funciones (línea 600), muy antes de las policies que la invocan (772, 793, 842), y
+`check_agency_subscription()` referencia `subscriptions`, que se crea antes que `properties`.
+
+---
+
+## 3. Documentación modificada
 
 | Archivo | Qué cambió |
 |---|---|
-| `src/types/index.ts` | `ReviewDecision` suma `plan_changed`, y se exporta `PAID_PLANS` (derivado de `PLAN_ORDER`, que queda intacto). |
-| `src/app/(agent)/admin/actions.ts` | Nueva `changePlanAction`: valida destino, estado, plan igual y exceso de cupo; escribe desde el catálogo; registra en el historial. |
-| `src/app/(agent)/admin/AgenciesTable.tsx` | Ítem "Cambiar de plan" en el menú `⋯` + `ChangePlanPanel` (selección de plan, vencimiento precargado, anticipación del bloqueo y resumen de consecuencias). |
-| `src/app/(agent)/admin/page.tsx` | Cuenta las propiedades que ocupan cupo por agencia y trae `current_period_end`, **sin consulta nueva**. |
-| `src/app/(agent)/register/plan/PlanSelector.tsx` | Usa el `PAID_PLANS` compartido en vez de su copia local. |
+| `CLAUDE.md` | **Sección nueva "Visibilidad pública de las propiedades — LA REGLA DE COBRO"** (la regla, dónde vive, las tres policies, por qué policy y no filtro, por qué SECURITY DEFINER, y por qué el gate de pago del white-label no es redundante con `has_white_label`). **Sección nueva "Panel de plataforma (`/admin`)"** con la tabla de las seis acciones comerciales, qué conserva y qué apaga la baja, las reglas del cambio de plan, la tabla del **vencimiento por acción**, el circuito de eliminación con su orden, y el porqué de los paneles inline. **"Bloqueo de publicación" reescrito de dos a TRES triggers**, con el orden alfabético como pieza load-bearing y el bug del ternario. Actualizados: estado del proyecto, hoja de ruta, baseline, bullets de suscripción, aviso de baja en Suscripción, tabla de tablas (`subscriptions`, `agency_reviews`), policies clave, triggers/RPC, árbol de carpetas, gates del white-label, convención de `supabase/pending/`, y **10 filas nuevas** en "Decisiones de arquitectura". |
+| `DESIGN.md` | §12 "Bloqueo de alta al alcanzar el límite" → **"Bloqueo de alta — TRES motivos, tres mensajes distintos"**, con el mensaje de cada motivo y la nota del `switch` exhaustivo. **Sección nueva "Aviso de suscripción que no rige"** (tono `warning` y no `error`, qué dice y en qué orden, sin fecha ni upgrades). **Sección nueva "Panel de plataforma (`/admin`) — acciones por fila"**: reparto botones/menú por naturaleza, fuente única de condiciones, dos badges distintos por ser dos ejes, y la restricción técnica de los paneles inline. |
+| `PENDIENTES.md` | **BLOQUE A-bis cerrado** (era el bloqueante para cobrar). **"Panel admin de ida y vuelta" reescrito entero como CERRADO**, con las cinco piezas y sus reglas. Deuda técnica: `current_period_end` resuelto, y **cuatro ítems nuevos** (sin efecto automático de la fecha, `past_due` sin escritor, reactivación de pausada que saltea el gate, dashboard que no avisa la baja) + **la discrepancia de las dos FK como próxima tanda**, con su consecuencia viva. Bug `available` negativo marcado resuelto con la evidencia. Decisión de producto nueva: **el downgrade autoservicio no existe y debe seguir así**. **B3** (venta y alquiler a la vez, con la pregunta del precio del pin) y **C3** (el botón de ingresar como puerta de captación). **Bloque nuevo "Pulido estético"**. Cuatro entradas nuevas en "Cerrados recientemente". Fechas y conteos remedidos. |
+| `respuesta.md` | Este informe (sobrescrito entero). |
 
 ---
 
-## 3. Cómo cuento las propiedades, y cómo verifiqué que coincide
+## 4. Diferencias entre el contexto que me diste y lo medido
 
-**El criterio de la base**, medido con `pg_get_functiondef` sobre `check_property_limit()`:
+Casi todo coincidió. Las diferencias:
 
-```sql
-  -- Solo cuenta propiedades que ocupan cupo (no las vendidas/alquiladas)
-  SELECT COUNT(*) INTO current_count
-  FROM properties
-  WHERE agency_id = NEW.agency_id
-    AND status IN ('active', 'paused');
+1. **Los dos archivos de `supabase/pending/` YA estaban aplicados**, no solo el del cambio de
+   plan. El de bloqueo por suscripción se corrió el 31 de agosto y quedó ahí con su cartel de
+   "todavía no está aplicado" puesto. Los dos se borraron.
+2. **El panel tiene seis acciones comerciales, no cinco** (activar, cancelar solicitud, cambiar
+   de plan, dar de baja, reactivar, eliminar) más las tres del eje de aprobación: **nueve
+   acciones por fila** en total. Dijiste "cuatro acciones nuevas" para el trabajo 2 y eso es
+   exacto (contando baja y reactivación como una); el total del panel es el de arriba.
+3. **La baja apaga los tres `has_*` pero eso NO alcanza para apagar el sitio de marca**, y por
+   eso el gate de pago existe: `has_white_label` no lo apaga *ningún* otro camino (un
+   `past_due` no lo toca, y no hay proceso automático). Tu descripción decía "nadie lo apaga
+   nunca"; con la baja nueva, hay exactamente un camino que sí lo apaga. El razonamiento de
+   fondo sigue en pie y lo dejé documentado con esa precisión.
+4. **El cambio de plan sí se probó en la práctica**: hay **3 filas `plan_changed`** en el
+   historial. Lo que no se pudo probar es **solo el bloqueo por exceso de propiedades**, tal
+   como decías.
+5. **`plan_canceled` no es solo del trabajo 2**: ya tenía 2 filas, o sea que la cancelación de
+   solicitudes también se ejercitó.
+6. **Los conteos de la base cambiaron** respecto de lo que decía `PENDIENTES.md`: son **9
+   agencias y 13 propiedades** (decía 11 y 12). Bajaron dos agencias, coherente con que la
+   eliminación ya existe. Lo actualicé.
+7. **La afirmación "el schema miente sobre dos FK" es correcta, y es peor de lo que decías en
+   un punto**: además de las cláusulas `ON DELETE`, **las dos columnas son `NOT NULL`** en la
+   base (el schema las declaraba nullable). Eso hace que el caso "agente desvinculado"
+   (`agent_id IS NULL`) que varias notas dan por futuro **no pueda existir hoy**.
+8. **`check_property_limit()` tampoco frena la reactivación de una pausada**, por un motivo
+   distinto del que anotaste: sí corre en UPDATE, pero solo cuando la propiedad **entra** a
+   ocupar cupo, y `paused` ya lo ocupa. O sea que en esa transición no hay **ningún** gate.
+
+---
+
+## 5. Afirmaciones falsas encontradas en la documentación
+
+| Dónde | Qué decía | Qué hice |
+|---|---|---|
+| `initial_schema.sql`, `properties.agent_id` | "NULLABLE y ON DELETE SET NULL" | **Corregido a lo medido** (`NOT NULL … ON DELETE CASCADE`) con una nota que explica la discrepancia con el modelo escrito, la consecuencia (la reasignación previa del Modelo B es lo único que evita perder propiedades) y que resolverla es la próxima tanda |
+| `initial_schema.sql`, `leads.agent_id` | "NULL si la propiedad quedó sin agente", `ON DELETE SET NULL` | **Corregido** (`NOT NULL REFERENCES agents(id)`, sin ON DELETE) con la consecuencia viva: **hoy no se puede borrar un agente con consultas a su nombre** |
+| `initial_schema.sql`, nota de fidelidad de `Public insert lead` | "ese caso aún no puede ocurrir (ninguna propiedad tiene `agent_id` NULL)" — verdadero por accidente | Reescrita: no puede ocurrir **porque la columna es NOT NULL**, y primero hay que resolver la discrepancia de FK |
+| `CLAUDE.md`, gestión de equipo | "`deleteUser` … pone los leads viejos en `agent_id NULL` (historial …); el orden importa por la FK `ON DELETE SET NULL`" | **Marcado como falso y corregido en el lugar**, con lo medido y el efecto real |
+| `CLAUDE.md`, suscripciones | "Cancelar el pedido aún no está (el cliente escribe)" | Actualizado: lo cancela el dueño desde el panel; y agregado el agujero cerrado de `requestPlanUpgradeAction` |
+| `CLAUDE.md`, suscripciones | "Bajar de plan no es expresable en el modelo actual" | Matizado: **se puede desde el panel**; lo que no es expresable es la **solicitud** del cliente, y eso es deliberado |
+| `CLAUDE.md`, "dos triggers" y "Vistas RPC" | Dos gates de publicación; RPC solo `increment_views` | Reescritos a tres gates (con orden) y a "Funciones y RPC" incluyendo `agency_is_publicly_visible` |
+| `CLAUDE.md`, white-label | `disabled` = "su suscripción NO tiene `has_white_label`" (un solo gate) | Corregido a los **tres** gates reales (legitimidad, entitlement, pago) |
+| `CLAUDE.md` / `PENDIENTES.md`, hoja de ruta | "el mapa público **hoy NO filtra** por agencia habilitada, bloqueante para cobrar" | Marcado como resuelto en los dos archivos |
+| `PENDIENTES.md`, deuda | "`current_period_end` es código muerto de facto, nadie la escribe" | Marcado resuelto (ya tiene productor) y reemplazado por el pendiente real: **nadie la vigila** |
+| `PENDIENTES.md`, bugs | "Cálculo `available` negativo" | Marcado resuelto con la evidencia (`Math.max` en `getPlanUsage`, único consumidor) |
+| `supabase/pending/*.sql` (los dos) | "⚠ ESTE ARCHIVO TODAVÍA NO ESTÁ APLICADO" | Los dos **estaban** aplicados → contenido trasladado al schema y archivos borrados |
+
+---
+
+## 6. Los tres comandos, después de los cambios
+
+Idénticos al paso 1 (era lo esperable: no se tocó código).
+
 ```
-
-O sea: **por `agency_id`** (no por agente) y **`status IN ('active','paused')`** — las vendidas
-y alquiladas no ocupan cupo.
-
-**En la action** no reimplementé ese conteo: uso **`getPlanUsage`**, que es el helper que ya lo
-replica y que `CLAUDE.md` marca como obligatorio para esto. Su consulta es literalmente la
-misma:
-
-```ts
-supabase.from("properties")
-  .select("*", { count: "exact", head: true })
-  .eq("agency_id", agencyId)
-  .in("status", ["active", "paused"]),
-```
-
-**En la interfaz** el conteo se arma en `page.tsx` con el mismo filtro
-(`status !== "active" && status !== "paused" → continue`), a partir de la lectura que **ya se
-hacía** para decidir `can_delete`: solo le sumé la columna `status` al `select`. No hay consulta
-nueva, como pediste.
-
-Las tres puntas cuentan lo mismo, y está anotado en cada una. Si contaran distinto, el panel
-podría ofrecer un cambio que la action rechaza (frustración) o —peor— aplicar uno que deje a la
-agencia por encima de un límite que la base nunca habría permitido.
-
----
-
-## 4. Las dos fechas
-
-### `current_period_end` (vencimiento): **editable en el mismo movimiento, precargado, y el vacío BORRA**
-
-Descarté conservarla en silencio: **la fecha vieja pertenece al plan viejo**. Dejarla haría que
-la agencia leyera *"Plan Inicial activo hasta el 31/12"* cuando ese 31/12 se cargó para la
-prueba gratuita de su Profesional. Es exactamente la misma clase de mentira que sacamos de la
-pantalla de suscripción en la tanda anterior.
-
-Y descarté limpiarla siempre: tu propio caso dice *"probablemente necesite una fecha distinta,
-**o ninguna**"*, y "una fecha distinta" no es expresable si el cambio la borra a ciegas.
-
-Lo que quedó es **"escribe lo que ves"**: el campo viene precargado con el vencimiento vigente,
-y se guarda lo que el dueño deje. Si lo vacía, el plan nuevo queda sin vencimiento. El texto de
-ayuda lo dice explícitamente, y el resumen de consecuencias remata con *"Vence el X"* o *"Queda
-sin fecha de vencimiento"*.
-
-⚠ **Esto es una asimetría deliberada con `activatePlanAction`**, donde el campo vacío **no
-toca** la columna. El motivo: en una activación no hay fecha previa que pueda quedar vieja (la
-suscripción venía de `pending`), así que no tocar es lo seguro. En un cambio de plan sí la hay,
-así que no tocar sería lo peligroso. Está documentado en las dos actions para que nadie las
-"unifique" sin ver la diferencia.
-
-### `activated_at` (activación): **se actualiza a ahora**
-
-Esa columna responde *"desde cuándo rige lo que rige"*. Después del cambio lo que rige es el
-plan nuevo, y rige desde este momento. Conservar la fecha vieja le atribuiría al plan nuevo un
-comienzo que nunca tuvo, y la columna "Activación" del panel mostraría una fecha **anterior al
-cambio** para un plan que empezó después — el dueño no tendría cómo saber cuándo pasó.
-
-Es además lo que ya hace `activatePlanAction`, así que las dos rutas que ponen un plan a regir
-dejan la misma marca.
-
----
-
-## 5. Plan pedido sin activar, y agencia dada de baja
-
-**En los dos casos la acción NO se ofrece, y la action los rechaza igual** (la interfaz no es
-una barrera). La condición para ofrecerla es la misma que para dar de baja: **suscripción
-`active` con un plan de venta**.
-
-**Suscripción `pending` (la agencia pidió un plan):** ese caso ya tiene **dos** acciones
-propias —`activatePlanAction` (dársela) y `cancelPendingPlanAction` (descartarla)—, así que no
-hay nada que agregar. Ofrecer además "cambiar de plan" abriría una pregunta que ninguna
-respuesta resuelve bien: ¿qué pasa con la solicitud que quedó colgando? ¿Se descarta en
-silencio? ¿Sobrevive apuntando a un plan que ya no tiene sentido? El mensaje de la action manda
-al camino correcto: *"Esa agencia tiene una solicitud de plan sin resolver. Activala o cancelala
-antes de cambiarle el plan."*
-
-**Suscripción `canceled` (dada de baja):** acá hay un motivo más fuerte que la prolijidad. **La
-baja conserva `plan` justamente para saber a qué reactivar** — es el único registro de qué tenía
-contratado. Si se le pudiera cambiar el plan estando de baja, se pisaría esa memoria y
-`restoreSubscriptionAction` devolvería a la agencia a un plan **que nunca tuvo**. El orden
-correcto es reactivar y después cambiar, y eso dice el mensaje.
-
-**`free` también queda afuera**, como pediste: para una agencia en el estado de aterrizaje el
-camino es que pida un plan y el dueño se lo active. Y `free` tampoco es un **destino** válido:
-para sacarle el plan a alguien está la baja (que además conserva a qué volver); degradar a
-`free` perdería ese dato.
-
----
-
-## 6. La interfaz
-
-**Panel inline, no diálogo.** El criterio es el mismo que ya aplican los otros tres paneles de
-esta pantalla (rechazo, activación, eliminación): el `AlertDialog` es para un *"¿seguro?"* de
-una sola frase, y **su botón de acción cierra la ventana al hacer click**. Acá hay dos cosas que
-no toleran eso:
-
-1. **Una selección** (qué plan destino), que puede cambiar varias veces antes de decidir.
-2. **Un mensaje de bloqueo por exceso** que tiene que poder mostrarse **sin cerrar**, mientras
-   el dueño prueba otro destino. Con un diálogo, cada intento bloqueado cerraría la ventana y
-   habría que reabrirla.
-
-**El panel es la confirmación** — no le apilé un diálogo encima. La confirmación explícita es el
-botón final, que **nombra el plan destino** (*"Cambiar a Inicial"*), y justo arriba va un bloque
-**"Qué va a pasar"** con las consecuencias concretas: el límite nuevo contra el uso actual, qué
-funciones **gana** (en verde) y cuáles **pierde** (en rojo), y qué pasa con el vencimiento.
-
-**Anticipación del bloqueo.** Cada plan destino que no entra se muestra **deshabilitado**, con
-el motivo en su propia línea y los números concretos: *"No entra: la agencia tiene 25
-propiedades activas o pausadas y este plan permite 20. Habría que pausar o dar de baja 5
-antes."* El dueño ve por qué antes de intentar. La action lo rechaza igual, con el mismo
-mensaje.
-
-**Dónde vive:** en el menú `⋯` de acciones secundarias, junto a las de deshacer, y no como botón
-suelto — no es una acción del flujo diario. Aparece solo para agencias con plan de venta activo.
-El plan que ya rige no está entre las opciones (`PAID_PLANS.filter(id => id !== currentPlan)`), y
-si igual llegara, la action lo rechaza con *"Esa agencia ya está en el plan X"* en vez de
-escribir sin efecto y dejar una fila en el historial diciendo que hubo un cambio que no hubo.
-
----
-
-## 7. Con los datos de hoy
-
-Medido: agencias con plan de venta activo, y a qué podrían cambiar. El límite de cada plan es
-inicial=20, profesional=60, premium=200.
-
-| Agencia | Plan actual | Ocupan cupo | → Inicial (20) | → Profesional (60) | → Premium (200) |
-|---|---|---|---|---|---|
-| Inmobiliaria Demo | profesional | **11** | ✅ entra | *(actual)* | ✅ entra |
-| Inmobiliaria Gaio | profesional | 1 | ✅ entra | *(actual)* | ✅ entra |
-| Inmobiliaria Juan Lopez2 | profesional | 0 | ✅ entra | *(actual)* | ✅ entra |
-| Inmobiliaria Prueba | inicial | 0 | *(actual)* | ✅ entra | ✅ entra |
-| Inmobiliaria Prueba Gaio | inicial | 0 | *(actual)* | ✅ entra | ✅ entra |
-| Inmobiliaria Zavaleta3 | inicial | 0 | *(actual)* | ✅ entra | ✅ entra |
-
-⚠ **Con los datos de hoy NINGÚN cambio queda bloqueado por exceso, y conviene saberlo antes de
-dar la feature por probada.** El plan de venta más chico permite 20 propiedades y la agencia más
-cargada tiene 11, así que **el camino de bloqueo es inalcanzable**: haría falta una agencia con
-21 o más propiedades activas/pausadas. Para ejercitarlo a mano hay que cargar propiedades de
-más (o bajar `property_limit` a mano, que no representa el caso real).
-
-Dos agencias tienen vencimiento cargado (`Gaio` y `Prueba`, ambas 31/12/2026), así que el
-comportamiento de la fecha precargada sí se puede probar con lo que hay.
-
----
-
-## 8. Verificación
-
-### `npx tsc --noEmit`
-```
+$ npx tsc --noEmit
 (sin salida)
-```
-**exit code: 0**
+exit=0
 
-### `npm run lint`
-```
+$ npm run lint
 > marka@0.1.0 lint
 > eslint
 
-
 /home/facuzavaleta89/dev/marka/src/components/properties/PropertyForm.tsx
   269:20  warning  Compilation Skipped: Use of incompatible library
-
-This API returns functions which cannot be memoized without leading to stale UI. To prevent this, by default React Compiler will skip memoizing this component/hook. However, you may see issues if values from this API are passed to other components/hooks that are memoized.
-
-/home/facuzavaleta89/dev/marka/src/components/properties/PropertyForm.tsx:269:20
-  267 |   });
-  268 |
-> 269 |   const currency = watch("currency");
-      |                    ^^^^^ React Hook Form's `useForm()` API returns a `watch()` function which cannot be memoized safely.
-  270 |   const selectedAmenities = (watch("amenities") ?? []) as string[];
-  271 |   const lat = watch("lat");
-  272 |   const lng = watch("lng");  react-hooks/incompatible-library
+  … react-hooks/incompatible-library
 
 ✖ 1 problem (0 errors, 1 warning)
-```
-**exit code: 0**
+exit=0
 
-### `npx next build`
-```
-✓ Generating static pages using 3 workers (19/19) in 1288ms
-  Finalizing page optimization ...
+$ npx next build
+▲ Next.js 16.2.6 (Turbopack)
+✓ Compiled successfully in 17.8s
+✓ Generating static pages (19/19)
 
 Route (app)
-┌ ○ /                                    ├ ƒ /dashboard/perfil
-├ ○ /_not-found                          ├ ƒ /dashboard/preferencias
-├ ƒ /[slug]                              ├ ƒ /dashboard/propiedades
-├ ƒ /admin                               ├ ƒ /dashboard/propiedades/[id]/editar
-├ ƒ /api/geocode                         ├ ƒ /dashboard/propiedades/nueva
-├ ○ /apple-icon.png                      ├ ƒ /dashboard/suscripcion
-├ ƒ /dashboard                           ├ ƒ /login
-├ ƒ /dashboard/equipo                    ├ ƒ /logout
-├ ƒ /dashboard/leads                     ├ ƒ /register
-                                         └ ƒ /register/plan
-
-ƒ Proxy (Middleware)
+┌ ○ /                                    ├ ƒ /dashboard/preferencias
+├ ○ /_not-found                          ├ ƒ /dashboard/propiedades
+├ ƒ /[slug]                              ├ ƒ /dashboard/propiedades/[id]/editar
+├ ƒ /admin                               ├ ƒ /dashboard/propiedades/nueva
+├ ƒ /api/geocode                         ├ ƒ /dashboard/suscripcion
+├ ○ /apple-icon.png                      ├ ƒ /login
+├ ƒ /dashboard                           ├ ƒ /logout
+├ ƒ /dashboard/equipo                    ├ ƒ /register
+├ ƒ /dashboard/leads                     └ ƒ /register/plan
+├ ƒ /dashboard/perfil
+                                         (19 rutas)
+exit=0
 ```
-**exit code: 0**
 
-### Comparación contra el baseline
-
-| Métrica | Baseline | Medido | ¿Igual? |
-|---|---|---|---|
-| Errores de TypeScript | 0 | 0 | ✅ |
-| Errores de lint | 0 | 0 | ✅ |
-| Warnings de lint | 1 (`react-hooks/incompatible-library`, formulario de propiedad) | 1, el mismo, `PropertyForm.tsx:269` | ✅ |
-| Build | verde, 19 rutas | verde, **19 rutas** | ✅ |
-
-**Idéntico al baseline.** La acción es una server action, no una ruta.
+**Baseline intacto: 0 errores de TS, 0 errores de lint, el único warning conocido en la misma
+línea, build verde con las mismas 19 rutas.**
 
 ---
 
-## 9. Decisiones que se apartan de las instrucciones
+## 7. Lo que dejé sin tocar, y por qué
 
-**1. Exporté `PAID_PLANS` desde `src/types/index.ts` y cambié `PlanSelector` para usarlo.**
-`CLAUDE.md` documenta que esa derivación se hace **dentro del componente**
-(`PLAN_ORDER.filter(id => id !== "free")`). Con esta tanda hacían falta **tres** copias de la
-misma línea (el selector del registro, la action nueva y el panel nuevo), y tres derivaciones a
-mano del catálogo de venta son tres lugares donde se puede desincronizar. Exporté la constante
-—**sin tocar `PLAN_ORDER`**, que sigue siendo el dominio completo de la columna con `free`
-adentro, que es lo que esa nota de `CLAUDE.md` protege— y dejé el porqué escrito ahí. El cambio
-en `PlanSelector` es un swap de import, sin cambio de comportamiento.
-
-**2. El panel es la confirmación; no agregué un `AlertDialog` encima.** Pediste "confirmación
-explícita antes de aplicarse". Interpreté que el botón final nombrado (*"Cambiar a Inicial"*),
-con el bloque "Qué va a pasar" inmediatamente arriba, **es** esa confirmación explícita. Apilar
-un diálogo sobre un panel que ya exige elegir y leer sería una segunda confirmación del mismo
-acto, y ninguna de las otras tres acciones con panel lo hace.
-
-**3. Las etiquetas de los tres entitlements quedaron locales al panel** (`ENTITLEMENTS`) y no en
-`labels.ts`. La regla pide llevar allá los mapas indexados por **literales del dominio**, y
-`featured`/`whiteLabel`/`metrics` son claves de `PlanInfo`, no una unión de literales del
-dominio. Además hay precedente: `featuresFor` en `SubscriptionContent` las escribe inline. Si
-algún día se vuelven un tipo propio, ahí sí corresponde moverlas.
-
----
-
-## 10. Encontrado y NO tocado, por estar fuera del alcance
-
-1. **El camino de bloqueo por exceso no se puede probar con los datos de hoy** (punto 7). No es
-   un defecto del código, pero sí significa que la parte más delicada de esta pieza queda
-   **verificada por tipos y build, no por ejecución**. Es lo primero que apuntaría a probar,
-   cargando propiedades de más en una agencia de prueba.
-
-2. **`supabase/pending/2026-08-31-bloqueo-publicacion-por-suscripcion.sql` sigue ahí aunque ya
-   lo corriste.** Medí que `trg_check_agency_subscription` está aplicado en la base, así que ese
-   archivo ya cumplió su función y debería mudarse al schema documentado y borrarse. Volverlo a
-   correr es inofensivo (`CREATE OR REPLACE` + `DROP TRIGGER IF EXISTS`), pero deja la carpeta
-   `pending/` diciendo que hay dos cosas sin aplicar cuando hay una. No lo toqué porque implica
-   editar `migrations/20240101000000_initial_schema.sql`, que está fuera de esta tarea.
-
-3. **`current_period_end` sigue sin tener ningún efecto automático.** Ahora se puede escribir
-   desde dos lugares (activar y cambiar de plan) y la agencia la ve, pero **nada la vigila**: que
-   una fecha pase no cambia el estado de la suscripción ni avisa a nadie. Sigue siendo un
-   recordatorio para el dueño, como estaba anotado en `PENDIENTES.md`.
-
-4. **Re-activar una propiedad pausada sigue salteando el trigger de suscripción**
-   (`trg_check_agency_subscription` es solo `BEFORE INSERT`). Lo reporté en la tanda anterior y
-   sigue igual; no es de esta pieza, pero se cruza con ella: una agencia a la que se le baja el
-   plan queda con `property_limit` menor, y el trigger de límite **sí** cubre el UPDATE de
-   `paused → active`, así que ese camino está protegido por el otro lado.
-
-5. **Bajar de plan desde el panel del cliente sigue sin existir, y así debe quedar.** Lo dejé
-   escrito en el comentario de `changePlanAction`: habilitarlo permitiría pagar un mes de plan
-   grande, cargar muchas propiedades y bajar al más barato conservándolas visibles.
-   `requestPlanUpgradeAction` sigue admitiendo solo subidas.
-
-6. **No probé nada contra la base**, como en las tandas anteriores: el modo prohíbe SQL de
-   escritura. El orden de prueba que sugiero: correr el SQL del punto 1; cambiar
-   *Inmobiliaria Demo* de profesional a inicial (11 propiedades, entra) y confirmar que pierde
-   el white-label y que su sitio `/inmobiliaria-demo` se apaga; verificar que a *Gaio* le
-   aparece el 31/12/2026 precargado y que vaciarlo deja la columna en `null`; y comprobar que a
-   una agencia con solicitud pendiente o dada de baja **no** le aparece la opción en el menú.
+- **Todo el código fuente.** El modo era documentación. Encontré cosas anotables (la asimetría
+  de la reactivación, el dashboard sin aviso de baja, las dos FK) y **las escribí en
+  `PENDIENTES.md` en vez de arreglarlas**.
+- **Las dos FK de `agent_id` en la BASE.** El schema documentado ahora dice lo que la base
+  tiene, pero **no corrí ni propuse correr ningún `ALTER`**: decidir si el modelo correcto es
+  el escrito o el real es una decisión de diseño entrelazada con "desactivar agente" y con el
+  fallback de WhatsApp, y vos mismo la marcaste como la próxima tanda. Queda anotada con la
+  consecuencia viva.
+- **`PLAN-ORIGINAL.md`.** Sigue globalmente desactualizado (lo dice su propio ítem de deuda) y
+  no estaba en el alcance; tocarlo a medias lo dejaría peor.
+- **La carpeta `supabase/pending/` como tal**: borré los dos archivos pero **dejé el directorio**
+  (vacío), porque es una convención de trabajo viva y ahora está documentada en los dos lugares.
+- **El texto de los mensajes de los triggers.** Están enganchados por *string match* con
+  `translatePropertyWriteError`; cambiarlos es un cambio de código, no de documentación.
+- **`respuesta.md` anterior**: sobrescrito entero, como pediste.

@@ -606,16 +606,22 @@ Visible en el sidebar del dashboard y en la cabecera del listado de propiedades.
 - DM Sans 12px Medium, `rounded-sm`, padding `4px 10px`
 - Todos los planes tienen límite finito (free=1, inicial=20, profesional=60, premium=200): el badge muestra siempre el contador `usadas/límite` en SemiBold + micro-barra de proporción con fill terracota. Ya no existe "Ilimitado"
 
-### Bloqueo de alta al alcanzar el límite
+### Bloqueo de alta — TRES motivos, tres mensajes distintos
 
-Cuando la agencia llegó a su límite, el botón "Nueva propiedad" cambia de estado:
+El botón "Nueva propiedad" se deshabilita por **tres** motivos, y cada uno tiene su propio mensaje. **Confundirlos es mentirle a la persona y mandarla a resolver algo que no la destraba** (el criterio vive en `getPublishBlock`; ver `CLAUDE.md` → "Bloqueo de publicación").
 
 - Botón deshabilitado: fondo `stone`, texto `graphite`, cursor `not-allowed`
-- Debajo del botón, un mensaje constructivo dinámico según el plan actual:
-  > Si hay plan superior: "Alcanzaste el límite de tu plan {Actual}. Pasá a {Siguiente} para publicar más." + link "Ver planes" en `terracota`
-  > Si es premium (tope): "Alcanzaste el máximo de propiedades. Escribinos si necesitás más." + link "Escribinos" (mailto) en `terracota`
+- Debajo del botón, el mensaje del motivo (DM Sans 12px `graphite`, link en `terracota`):
+  > **Agencia no aprobada** — no se menciona ningún plan, porque el bloqueo no se resuelve con plata: "Vas a poder publicar cuando aprobemos tu inmobiliaria. Mientras tanto podés completar tus datos." (o, si fue rechazada, cómo corregir y reenviar).
+  > **Suscripción dada de baja o vencida** — tampoco se invita a pagar MÁS: lo que la destraba es reactivar lo que ya tenía. "Tu suscripción está dada de baja, así que no podés publicar." + link "Ver mi suscripción" (a `/dashboard/suscripcion`, donde el aviso explica el estado completo), **nunca** a la lista de planes.
+  > **Cupo del plan lleno** — acá sí se invita al upgrade. Si hay plan superior: "Alcanzaste el límite de tu plan {Actual}. Pasá a {Siguiente} para publicar más." + link "Ver planes". Si es premium (tope): "Alcanzaste el máximo de propiedades. Escribinos si necesitás más." + link "Escribinos" (mailto).
 
 - **Nunca** ocultar el botón — mostrarlo deshabilitado comunica que existe la posibilidad de crecer
+- ⚠ **El despacho por motivo es un `switch` exhaustivo con guarda `never`, no un ternario.** Cuando era un ternario binario, el motivo de suscripción cayó en el `else` y una agencia dada de baja leía *"alcanzaste el límite de tu plan Gratis, pasá a Inicial"*. Un motivo nuevo sin mensaje ahora **no compila**.
+
+### Aviso de suscripción que no rige (`/dashboard/suscripcion`)
+
+Cuando la suscripción está `canceled` o `past_due`, la pantalla abre con un `Notice` en tono **`warning`, no `error`**: puede ser una baja acordada, una prueba que terminó o un pago pendiente — el sistema no sabe cuál, así que **no acusa a nadie**. Dice tres cosas, en ese orden: qué pasa (las propiedades no se ven, el sitio propio está apagado, no se puede publicar), **qué NO se perdió** ("tus datos están intactos"), y cómo se resuelve (un mailto). Mientras el aviso está, **no se muestra la fecha de vencimiento** ("plan activo hasta el X" de un plan dado de baja es una contradicción) y **no se ofrece ningún upgrade**.
 
 ### Vista de suscripción (`/dashboard/suscripcion`)
 
@@ -637,6 +643,19 @@ Barra de uso del plan actual + cards de planes en `flex flex-wrap justify-center
 - Primer upgrade: badge "Recomendado ★" en `terracota`, fondo `terracota-subtle`, borde 2px, shadow-lg
 - Lista de features derivada de `PLANS`: límite + destacados/white-label/métricas según el plan. DM Sans 14px, ícono `check` 16px en `success`
 - El CTA "Pasar a {plan}" abre un `AlertDialog` de confirmación y registra el pedido (`pending_plan` + `status: 'pending'`), sin tocar el plan que rige. La activación la hace el dueño desde `/admin`. La card del plan pedido pasa a "Pendiente" y los demás upgrades quedan deshabilitados mientras haya un pedido abierto
+- Con la suscripción `canceled`/`past_due` **no se renderiza ninguna card de upgrade** ni la fecha de vencimiento: ver "Aviso de suscripción que no rige"
+
+### Panel de plataforma (`/admin`) — acciones por fila
+
+La fila de una agencia puede tener hasta **nueve** acciones aplicables (tres del eje de aprobación, seis del comercial). Nueve botones apilados son ~250px de alto de fila: ilegible, y contra §1 ("jerarquía antes que decoración").
+
+- **El corte no es por cantidad sino por NATURALEZA.** Quedan como botones las acciones que **hacen avanzar el flujo** —aprobar, rechazar, activar plan: la bandeja de entrada diaria del dueño—; se van al menú `⋯` las de **deshacer** y las **destructivas**, que son excepcionales y conviene que cuesten un click más. Precedente: `PropertiesTable` usa el mismo menú para lo mismo. Peor caso visible: 3 botones + el disparador del menú
+- **Variantes de `RowButton`** (§6): `primary` terracota para la acción principal, `secondary` borde `stone`, `destructive` borde y texto en `error`
+- **Las condiciones de qué acción aplica viven en UN solo lugar** (`availableActions`), reusado por la tabla desktop y por las cards mobile. Antes estaban escritas dos veces y se desincronizaron: la copia de mobile solo miraba el eje de aprobación, así que una agencia aprobada con plan activo —justo el caso de "dar de baja"— **no mostraba ningún botón en el celular**
+- **Dos badges con tratamiento visual DISTINTO a propósito** (aprobación y suscripción): son dos ejes independientes y no deben leerse como lo mismo. Los filtros también van en dos grupos separados
+- ⚠ **Los formularios van en PANELES INLINE, no en `AlertDialog`, y es una restricción técnica**: el botón de acción del diálogo **cierra al hacer click**, así que un error de validación (fecha pasada, nombre que no coincide, plan al que no entran las propiedades) no tendría dónde mostrarse. Los cuatro que piden escribir o elegir algo —rechazo, activación, cambio de plan y eliminación— son paneles inline sobre `paper` con borde `stone` y `rounded-lg`; los sí/no puros (dar de baja, reactivar) sí van en `AlertDialog`
+- **El panel de cambio de plan ES la confirmación**: no se apila un diálogo encima. Arriba del botón final —que nombra el plan destino— se listan las consecuencias concretas (límite nuevo, funciones que gana y que pierde), para que nadie lo toque sin saber qué cambia
+- **La confirmación por nombre al eliminar ignora mayúsculas y espacios de los bordes.** Exigir la coincidencia exacta chocaba con el propio cartel, que muestra el nombre en **mayúsculas** por el `uppercase` del `Label` del preset: escribir literalmente lo que la pantalla mostraba no funcionaba
 
 ---
 
