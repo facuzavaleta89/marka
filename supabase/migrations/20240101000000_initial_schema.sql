@@ -47,6 +47,21 @@
 --     comportamiento (todos los INSERT son por nombre, y los únicos select('*')
 --     del código van con head:true, o sea que cuentan filas sin traer columnas),
 --     pero conviene saberlo si algún día se comparan las dos definiciones.
+--   * agency_is_publicly_visible() + las TRES policies públicas reescritas para
+--     usarla (lectura de properties, lectura de property_images, inserción de
+--     leads): YA MIGRADAS (31 ago 2026). Es la regla de VISIBILIDAD PÚBLICA
+--     —agencia aprobada + suscripción activa + plan pago—, incluida abajo con el
+--     porqué de que viva en una función y no en cada consulta.
+--   * check_agency_subscription() + trg_check_agency_subscription sobre
+--     properties: YA MIGRADOS (31 ago 2026). Es el TERCER gate de publicación
+--     (suscripción dada de baja o vencida). Incluido abajo.
+--   * CHECK de agency_reviews.decision ampliado a SEIS valores (se sumaron
+--     'plan_canceled', 'subscription_canceled', 'subscription_restored' y
+--     'plan_changed'): YA MIGRADO (1 sep 2026). Incluido abajo.
+--   * ⚠ DISCREPANCIA CONOCIDA Y NO RESUELTA en dos claves foráneas
+--     (properties.agent_id y leads.agent_id): ver la nota en cada tabla. Este
+--     archivo ahora dice lo que la base TIENE, que NO es lo que el modelo
+--     pretendía. Resolverlo es la próxima tanda de trabajo (ver PENDIENTES.md).
 -- ============================================================
 
 -- Extensiones necesarias (PostGIS ya viene activado en Supabase)
@@ -210,12 +225,23 @@ CREATE TABLE agents (
 -- ─── TABLA: properties ───────────────────────────────────────
 CREATE TABLE properties (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  -- agent_id es el agente que la cargó/gestiona. NULLABLE y ON DELETE SET NULL:
-  -- la propiedad pertenece a la AGENCIA, no al agente. Si el agente se elimina/
-  -- desvincula, la propiedad NO se borra; queda con agent_id NULL hasta que el
-  -- admin la reasigne. El WhatsApp del lead usa el phone del agente asignado, y
-  -- si es NULL, cae al phone_wa de la agencia (fallback).
-  agent_id         UUID REFERENCES agents(id) ON DELETE SET NULL,
+  -- agent_id es el agente que la cargó/gestiona.
+  --
+  -- ⚠ ESTO NO ES LO QUE EL MODELO PRETENDÍA, es lo que la base TIENE (medido el
+  -- 1 sep 2026). El diseño escrito era "NULLABLE + ON DELETE SET NULL", con el
+  -- argumento de que la propiedad pertenece a la AGENCIA y no al agente: si el
+  -- agente desaparece, la propiedad queda sin asignar hasta que el admin la
+  -- reasigne. La base nunca fue así: la columna es NOT NULL y la FK es CASCADE,
+  -- o sea que borrar un agente BORRARÍA SUS PROPIEDADES.
+  --
+  -- Consecuencia viva: deleteAgentAction (equipo/actions.ts) reasigna las
+  -- propiedades al admin ANTES de borrar al agente ("Modelo B"). Ese orden se
+  -- justificaba como una prolijidad; con la FK real es lo ÚNICO que impide una
+  -- pérdida de datos. No invertirlo.
+  --
+  -- Qué se decide después: si el modelo correcto es el escrito (y hay que
+  -- ALTERar la base) o el real (y hay que corregir el modelo). Ver PENDIENTES.md.
+  agent_id         UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
   agency_id        UUID NOT NULL REFERENCES agencies(id) ON DELETE CASCADE,
   -- city_id denormalizado: permite filtrar el mapa por ciudad sin JOIN.
   city_id          UUID NOT NULL REFERENCES cities(id) ON DELETE RESTRICT,
@@ -320,7 +346,14 @@ CREATE TABLE property_images (
 CREATE TABLE leads (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   property_id    UUID NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
-  agent_id       UUID REFERENCES agents(id) ON DELETE SET NULL, -- NULL si la propiedad quedó sin agente
+  -- ⚠ MISMA DISCREPANCIA que properties.agent_id, y peor: acá la FK real NO
+  -- TIENE cláusula ON DELETE, o sea NO ACTION. Medido el 1 sep 2026.
+  -- Consecuencia viva, hoy, en producción: NO SE PUEDE BORRAR UN AGENTE QUE
+  -- TENGA CONSULTAS A SU NOMBRE — el DELETE de auth.users cascadea a `agents` y
+  -- ahí choca contra esta FK. deleteAgentAction reasigna las propiedades, pero
+  -- NO los leads (el comentario de CLAUDE.md que decía que los leads viejos
+  -- quedaban en agent_id NULL describía el modelo escrito, no la base).
+  agent_id       UUID NOT NULL REFERENCES agents(id),
   agency_id      UUID NOT NULL REFERENCES agencies(id) ON DELETE CASCADE,
   contact_name   TEXT NOT NULL,
   contact_phone  TEXT,
@@ -331,10 +364,12 @@ CREATE TABLE leads (
 );
 
 -- ─── TABLA: agency_reviews ───────────────────────────────────
--- Historial de las decisiones de aprobación que el dueño de la plataforma toma
--- sobre una agencia. Una fila por veredicto: las decisiones NO se pisan entre
--- sí. El estado que RIGE hoy es agencies.approval_status; esta tabla es el
--- registro de cómo se llegó ahí.
+-- Historial de las decisiones que el dueño de la plataforma toma sobre una
+-- agencia: las de APROBACIÓN (aprobar/rechazar) y las COMERCIALES (cancelar una
+-- solicitud de plan, dar de baja, reactivar, cambiar de plan). Una fila por
+-- decisión: no se pisan entre sí. El estado que RIGE hoy vive en
+-- agencies.approval_status y en subscriptions; esta tabla registra cómo se llegó
+-- ahí. Ver el CHECK de `decision` más abajo para el reparto exacto.
 --
 -- ⚠ POR QUÉ LA NOTA VIVE ACÁ Y NO EN agencies (la razón de que exista esta tabla):
 -- `agencies` tiene la policy `Public read agencies` con USING (true), o sea que
@@ -347,15 +382,40 @@ CREATE TABLE leads (
 -- corrige y vuelve a 'pending'), una sola columna se pisaría en cada vuelta y se
 -- perdería el rastro. Acá cada decisión queda.
 --
--- Solo se registran VEREDICTOS: aprobar y rechazar. Volver una agencia rechazada
--- a 'pending' no es un veredicto y no deja fila (por eso el CHECK de decision no
--- admite 'pending').
+-- Volver una agencia rechazada a 'pending' NO es un veredicto y no deja fila
+-- (por eso el CHECK no admite 'pending').
+--
+-- ⚠ LA TABLA YA NO ES SOLO DEL EJE DE LEGITIMIDAD. El CHECK creció a SEIS
+-- valores porque el panel /admin dejó de ser de una sola vía: las decisiones
+-- COMERCIALES del dueño se registran en la misma línea de tiempo que las de
+-- aprobación, para que al mirar una agencia se lea una sola historia.
+--   'approved' / 'rejected'   → eje de LEGITIMIDAD (¿es una inmobiliaria real?).
+--   'plan_canceled'           → se descartó una SOLICITUD de plan de la agencia.
+--   'subscription_canceled'   → baja de la suscripción entera (reversible).
+--   'subscription_restored'   → vuelta de esa baja.
+--   'plan_changed'            → el dueño cambió el plan VIGENTE de una agencia
+--                               que sigue siendo cliente. No es ninguno de los
+--                               tres anteriores: no se descarta un pedido ni se
+--                               apaga/enciende la suscripción.
+--
+-- ⚠ LA ELIMINACIÓN DE UNA AGENCIA NO SE REGISTRA ACÁ, y no es un olvido: la FK
+-- de abajo es ON DELETE CASCADE, así que la fila "eliminé la agencia X" se
+-- borraría junto con la agencia X. Un historial de eliminaciones no puede vivir
+-- en una tabla que cascadea con lo eliminado; requeriría otra tabla sin FK, que
+-- hoy no existe.
 CREATE TABLE agency_reviews (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   agency_id   UUID NOT NULL REFERENCES agencies(id) ON DELETE CASCADE,
   -- CASCADE: si se borra la agencia, su historial de revisiones se va con ella.
   decision    TEXT NOT NULL
-              CHECK (decision IN ('approved', 'rejected')),
+              CHECK (decision IN (
+                'approved',
+                'rejected',
+                'plan_canceled',
+                'subscription_canceled',
+                'subscription_restored',
+                'plan_changed'
+              )),
   -- Motivo de la decisión. NULLABLE en la base, pero la server action lo EXIGE
   -- al rechazar (un rechazo sin motivo no le sirve a nadie) y lo deja opcional
   -- al aprobar. La regla vive en el código, no en la base, para no bloquear un
@@ -453,6 +513,107 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER trg_check_agency_approved
   BEFORE INSERT ON properties
   FOR EACH ROW EXECUTE FUNCTION check_agency_approved();
+
+-- ─── FUNCIÓN: suscripción activa para publicar ───────────────
+-- TERCER gate de publicación. Impide cargar propiedades si la suscripción de la
+-- agencia está dada de baja o vencida.
+--
+-- ⚠ POR QUÉ ES UN TRIGGER Y NO UNA POLICY RLS: exactamente el mismo motivo que
+-- check_agency_approved(). createPropertyAction usa SERVICE ROLE cuando un admin
+-- de agencia publica a nombre de otro agente, y el service role SALTEA las
+-- policies. Ese camino existe y se usa: una policy dejaría el agujero abierto
+-- justo por ahí. El trigger corre siempre, sin importar el rol.
+--
+-- ⚠ LISTA NEGRA EXPLÍCITA, NUNCA "distinto de 'active'". El dominio de
+-- subscriptions.status tiene CUATRO valores, y 'pending' significa "la agencia
+-- pidió un upgrade y espera que el dueño se lo active". Esa agencia está al día
+-- y publica normalmente: bloquear por "<> 'active'" le cortaría el alta JUSTO
+-- POR HABER QUERIDO PAGAR MÁS. Se bloquea solo por 'canceled' y 'past_due'.
+--
+-- Sin fila de suscripción NO se bloquea acá a propósito: ese caso ya lo cubre
+-- check_property_limit(), que trata "sin fila" como límite 0. Duplicarlo solo
+-- cambiaría el mensaje de error por uno menos preciso.
+CREATE OR REPLACE FUNCTION check_agency_subscription()
+RETURNS TRIGGER AS $$
+DECLARE
+  sub_status TEXT;
+BEGIN
+  SELECT status INTO sub_status
+  FROM subscriptions
+  WHERE agency_id = NEW.agency_id;
+
+  IF sub_status IN ('canceled', 'past_due') THEN
+    RAISE EXCEPTION 'La suscripción de la agencia no está activa: no se pueden publicar propiedades'
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ⚠ EL NOMBRE NO ES COSMÉTICO. Postgres dispara los triggers de una tabla en
+-- ORDEN ALFABÉTICO de nombre, y los TRES gates comparten SQLSTATE (23514), así
+-- que la aplicación los distingue por el TEXTO del mensaje: el primero que falla
+-- es el mensaje que ve el agente. Este nombre ordena así:
+--   trg_check_agency_approved < trg_check_agency_subscription < trg_check_property_limit
+-- o sea aprobación → suscripción → cupo, que es la prioridad correcta y la misma
+-- que replica getPublishBlock() en la interfaz. Decirle "alcanzaste el límite de
+-- tu plan" a una agencia dada de baja es falso y la manda a pagar un upgrade que
+-- no le destraba nada. Renombrarlo cambia el mensaje que se muestra.
+--
+-- ⚠ SOLO BEFORE INSERT, igual que el de aprobación: editar una propiedad ya
+-- cargada sigue permitido aunque la agencia se dé de baja después. (Efecto
+-- lateral conocido: reactivar una propiedad pausada es un UPDATE y no pasa por
+-- acá. Ver PENDIENTES.md.)
+--
+-- ⚠ Si se cambia el TEXTO del mensaje de arriba, hay que tocar
+-- translatePropertyWriteError en dashboard/propiedades/actions.ts, que matchea
+-- la palabra "suscripción".
+CREATE TRIGGER trg_check_agency_subscription
+  BEFORE INSERT ON properties
+  FOR EACH ROW EXECUTE FUNCTION check_agency_subscription();
+
+-- ─── FUNCIÓN: visibilidad pública de una agencia ─────────────
+-- LA REGLA DE COBRO, y el único lugar donde vive: una agencia se muestra al
+-- público solo si está APROBADA, su suscripción está ACTIVA y su plan NO es el
+-- de aterrizaje ('free'). Tres condiciones, un solo lugar.
+--
+-- ⚠ POR QUÉ UNA POLICY (que llama a esto) Y NO UN FILTRO EN CADA CONSULTA:
+-- hay DOS caminos públicos que leen propiedades con la anon key —el hook del
+-- mapa (useProperties) y el modal, que consulta una propiedad por id—. Un filtro
+-- por consulta habría que ponerlo en los dos, y el que se olvide filtra mal EN
+-- SILENCIO: sigue devolviendo propiedades, solo que de agencias que no pagan.
+-- En la policy la regla se aplica sola en todo camino, presente y futuro.
+-- Se midió el plan de ejecución antes de decidir: el acceso a la tabla caliente
+-- (properties) no se degradó, y las dos tablas del join tienen UNA fila por
+-- agencia (agencies por PK, subscriptions por su UNIQUE de agency_id).
+--
+-- ⚠ POR QUÉ SECURITY DEFINER: el visitante es ANÓNIMO, y la policy
+-- `Agency members read own subscription` solo deja leer `subscriptions` a los
+-- agentes de esa agencia. Sin SECURITY DEFINER, el EXISTS de adentro no vería
+-- ninguna fila de suscripción para nadie, daría false SIEMPRE y el mapa quedaría
+-- vacío para todo el mundo. Es seguro: no recibe más que un id, no devuelve
+-- datos (solo un booleano) y tiene search_path fijo.
+--
+-- STABLE: dentro de una misma consulta el resultado no cambia, así que el
+-- planificador puede cachearla por agencia en vez de evaluarla fila por fila.
+CREATE OR REPLACE FUNCTION agency_is_publicly_visible(target_agency_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM agencies a
+    JOIN subscriptions s ON s.agency_id = a.id
+    WHERE a.id = target_agency_id
+      AND a.approval_status = 'approved'
+      AND s.status = 'active'
+      AND s.plan <> 'free'
+  );
+$$;
 
 -- ─── ÍNDICES ─────────────────────────────────────────────────
 
@@ -596,9 +757,22 @@ CREATE POLICY "Agent creates own profile"
   ON agents FOR INSERT
   WITH CHECK (id = auth.uid());
 
--- PROPERTIES: lectura pública solo 'active'; CRUD solo del agente dueño
+-- PROPERTIES: lectura pública solo 'active' Y de agencia visible; CRUD solo del
+-- agente dueño.
+--
+-- ⚠ EL SEGUNDO TÉRMINO ES LO QUE HACE COBRABLE EL PRODUCTO. Antes esta policy
+-- era solo `status = 'active'`: una agencia que dejaba de pagar conservaba TODAS
+-- sus propiedades en el mapa para siempre, y no había forma de sostener el
+-- cobro. La regla completa vive en agency_is_publicly_visible() (aprobada +
+-- suscripción activa + plan pago), no acá: ver el porqué en esa función.
+--
+-- Efecto de borde deseado: la baja y la reactivación desde /admin no tocan una
+-- sola propiedad. Cambian el status de la suscripción y el mapa se apaga o se
+-- enciende solo.
 CREATE POLICY "Public read active properties"
-  ON properties FOR SELECT USING (status = 'active');
+  ON properties FOR SELECT USING (
+    status = 'active' AND agency_is_publicly_visible(agency_id)
+  );
 
 CREATE POLICY "Agent manages own properties"
   ON properties FOR ALL USING (agent_id = auth.uid());
@@ -612,12 +786,17 @@ CREATE POLICY "Agency members read agency properties"
     agency_id IN (SELECT agency_id FROM agents WHERE id = auth.uid())
   );
 
--- PROPERTY_IMAGES: lectura pública; escritura solo del agente dueño
+-- PROPERTY_IMAGES: lectura pública; escritura solo del agente dueño.
+-- Espeja la condición de `Public read active properties`, incluida la
+-- visibilidad de la agencia: sin esto, las fotos de una agencia dada de baja
+-- seguirían siendo legibles con la anon key aunque su propiedad ya no se listara.
 CREATE POLICY "Public read property images"
   ON property_images FOR SELECT USING (
     EXISTS (
       SELECT 1 FROM properties p
-      WHERE p.id = property_images.property_id AND p.status = 'active'
+      WHERE p.id = property_images.property_id
+        AND p.status = 'active'
+        AND agency_is_publicly_visible(p.agency_id)
     )
   );
 
@@ -652,12 +831,14 @@ CREATE POLICY "Admin reads agency leads"
 -- Lead válido solo si property_id y agency_id corresponden a una propiedad
 -- activa real, y el agent_id del lead coincide con el de la propiedad. Previene
 -- spam e inconsistencias.
--- NOTA DE FIDELIDAD: esta es la policy REAL en producción hoy. NO contempla
--- todavía el caso agent_id IS NULL (agente desvinculado), porque ese caso aún
--- no puede ocurrir (ninguna propiedad tiene agent_id NULL). Cuando se implemente
--- la pieza "agente desvinculado" de Fase 3, esta policy se actualizará para
--- aceptar (p.agent_id IS NULL AND leads.agent_id IS NULL) y rutear el contacto
--- al phone_wa de la agencia. Recién entonces, no antes.
+-- NOTA DE FIDELIDAD: esta es la policy REAL en producción hoy. NO contempla el
+-- caso agent_id IS NULL (agente desvinculado), y hoy ese caso NO PUEDE EXISTIR:
+-- properties.agent_id es NOT NULL en la base (ver la nota de esa columna, que es
+-- justamente la discrepancia abierta con el modelo escrito). Si algún día se
+-- implementa "agente desvinculado", primero hay que resolver esa discrepancia y
+-- después actualizar esta policy para aceptar
+-- (p.agent_id IS NULL AND leads.agent_id IS NULL) y rutear el contacto al
+-- phone_wa de la agencia. Recién entonces, no antes.
 CREATE POLICY "Public insert lead"
   ON leads FOR INSERT
   WITH CHECK (
@@ -667,6 +848,11 @@ CREATE POLICY "Public insert lead"
         AND p.status = 'active'
         AND p.agency_id = leads.agency_id
         AND p.agent_id = leads.agent_id
+        -- Misma regla de visibilidad que la lectura: si la agencia no se muestra
+        -- al público, tampoco se le pueden registrar consultas. Es coherencia,
+        -- no defensa en profundidad — sin propiedades visibles no hay de dónde
+        -- salga el click de WhatsApp.
+        AND agency_is_publicly_visible(p.agency_id)
     )
   );
 
