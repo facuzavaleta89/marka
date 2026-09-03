@@ -115,6 +115,36 @@ export type Amenity =
   | "apto_credito"
   | "apto_profesional";
 
+// Requisitos que la inmobiliaria le pide al inquilino para alquilar.
+//
+// LISTA CERRADA, y a diferencia de Amenity esa condición SÍ se hace valer: el
+// zod del formulario valida contra estos literales y la server action filtra el
+// array recibido antes de escribir (ver createPropertyAction). Amenity hoy no
+// tiene ninguna barrera de dominio en ninguna capa — su zod es
+// z.array(z.string()) y la columna no tiene CHECK —, así que un cliente
+// manipulado puede escribirle cualquier cosa. Ese agujero está anotado como
+// deuda aparte; estos requisitos NO lo heredan.
+//
+// Los requisitos libres NO viven acá: van en su propia columna
+// (rent_requirements_other), porque este array es dato controlado y aquel es
+// dato del usuario. No mezclarlos en una sola estructura.
+export type RentRequirement =
+  | "recibo_de_sueldo"
+  | "garantia_propietaria"
+  | "seguro_de_caucion"
+  | "dni"
+  | "comprobante_ingresos_monotributo"
+  | "deposito"
+  | "mes_adelantado";
+
+// Topes de los requisitos LIBRES (rent_requirements_other). Viven acá y no en
+// cada archivo porque los aplican tres capas distintas: el formulario (al
+// agregar), la server action (al normalizar) y la base (CHECKs
+// properties_rent_requirements_other_max y _items). Si se cambian sin tocar los
+// CHECK, la base rechaza lo que la interfaz dejó pasar.
+export const RENT_REQUIREMENTS_OTHER_MAX = 5;
+export const RENT_REQUIREMENT_OTHER_MAX_LEN = 300;
+
 // ─── Entidades principales ────────────────────────────────────
 
 // Ciudad / mercado. El visitante navega un marketplace filtrado por ciudad.
@@ -345,6 +375,29 @@ export interface Property {
   // las arrastradas a mano. Nullable: las propiedades cargadas antes de que
   // existiera el buscador de direcciones no lo tienen.
   location_source: LocationSource | null;
+
+  // ─── Requisitos para alquilar ───
+  // Qué le pide la inmobiliaria al inquilino. Solo tienen sentido si la
+  // propiedad se ofrece en alquiler (for_rent o for_temp_rent): si es solo
+  // venta, el array va vacío y el texto en null, y la sección no se renderiza
+  // en ninguna pantalla.
+  //
+  // Son DOS campos y no uno a propósito: `rent_requirements` es la lista
+  // cerrada (dato controlado, validado y filtrado server-side contra
+  // RentRequirement) y `rent_requirements_other` son requisitos escritos por el
+  // agente (dato del usuario). Meter los libres dentro del array cerrado
+  // volvería imposible confiar en su contenido.
+  //
+  // ⚠ `rent_requirements_other` es una LISTA, no un texto. Empezó siendo una
+  // columna TEXT con UN requisito, y al probarlo quedó claro que estaba mal
+  // modelado: una inmobiliaria no pide un requisito extra, pide varios
+  // ("garante con propiedad en la ciudad", "seis meses de antigüedad laboral",
+  // "no se aceptan mascotas"). Con un campo único había que amontonarlos
+  // separados por comas y quedaban apretados en una línea, al lado de siete
+  // chips prolijos. La base lo acompaña: jsonb NOT NULL DEFAULT '[]', con
+  // CHECKs de forma, de tope (5) y de largo por elemento (300).
+  rent_requirements: RentRequirement[];
+  rent_requirements_other: string[];
 
   // Extras
   amenities: Amenity[];

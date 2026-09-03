@@ -6,7 +6,12 @@ import { revalidatePath } from "next/cache";
 import { generateSlug } from "@/lib/utils/generateSlug";
 import { getPlanUsage } from "@/lib/utils/getPlanUsage";
 import { resolveAgentSession } from "@/lib/utils/resolveAgentSession";
-import type { PropertyInsert } from "@/types";
+import { RENT_REQUIREMENT_LABELS } from "@/lib/utils/labels";
+import {
+  RENT_REQUIREMENTS_OTHER_MAX,
+  RENT_REQUIREMENT_OTHER_MAX_LEN,
+} from "@/types";
+import type { PropertyInsert, RentRequirement } from "@/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 type ActionResult = { error: string } | undefined;
@@ -265,6 +270,78 @@ function translatePropertyWriteError(
 //
 // ⚠ Este campo es solo para medir después la calidad de las ubicaciones
 // sugeridas contra las arrastradas. No debe condicionar ninguna decisión.
+// ─── Requisitos para alquilar: normalización SERVER-SIDE ──────
+//
+// ⚠ ESTO NO ES UN CAST NI UNA PROLIJIDAD: es la única barrera real. El tipado
+// de TypeScript se borra al compilar, así que un cliente manipulado puede
+// mandar cualquier cosa en el array. El precedente a NO repetir está al lado:
+// `amenities` no valida en ninguna capa (su zod es z.array(z.string()), la
+// action escribe sin filtrar y la columna no tiene CHECK), y lo que se cuele
+// ahí se renderiza en el modal público. Los requisitos se filtran acá.
+//
+// Los valores que no pertenecen a la lista cerrada se DESCARTAN EN SILENCIO: no
+// son un error que el agente pueda corregir (la interfaz solo ofrece casillas
+// de la lista), así que un mensaje de error no le serviría de nada. Si llegan,
+// o es un cliente manipulado o es un bug nuestro.
+const RENT_REQUIREMENT_VALUES = new Set<string>(
+  Object.keys(RENT_REQUIREMENT_LABELS)
+);
+
+function normalizeRentRequirements(value: unknown): RentRequirement[] {
+  if (!Array.isArray(value)) return [];
+  const out: RentRequirement[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") continue;
+    if (!RENT_REQUIREMENT_VALUES.has(item)) continue;
+    if (out.includes(item as RentRequirement)) continue; // sin duplicados
+    out.push(item as RentRequirement);
+  }
+  return out;
+}
+
+// Requisitos libres escritos por el agente. Es una LISTA (antes era un texto
+// único), así que se normaliza elemento por elemento con el mismo criterio que
+// la lista cerrada de arriba: descartar lo que no sea string, trim, recorte a
+// RENT_REQUIREMENT_OTHER_MAX_LEN, descartar los vacíos, deduplicar exacto y
+// cortar en RENT_REQUIREMENTS_OTHER_MAX.
+//
+// Los tres topes replican los CHECK de la base
+// (properties_rent_requirements_other_is_array / _max / _items): acá se recorta
+// en vez de rechazar, para que un payload raro no le explote en la cara al
+// agente por algo que la interfaz ya impide.
+function normalizeRentRequirementsOther(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") continue;
+    const trimmed = item.trim().slice(0, RENT_REQUIREMENT_OTHER_MAX_LEN);
+    if (trimmed === "") continue;
+    if (out.includes(trimmed)) continue; // sin duplicados exactos
+    out.push(trimmed);
+    if (out.length === RENT_REQUIREMENTS_OTHER_MAX) break;
+  }
+  return out;
+}
+
+// Los requisitos solo tienen sentido si la propiedad se ofrece en alquiler. Si
+// no, se guardan vacíos aunque hayan viajado en el payload.
+function resolveRentRequirements(data: {
+  for_rent: boolean;
+  for_temp_rent: boolean;
+  rent_requirements: unknown;
+  rent_requirements_other: unknown;
+}): { rent_requirements: RentRequirement[]; rent_requirements_other: string[] } {
+  if (!data.for_rent && !data.for_temp_rent) {
+    return { rent_requirements: [], rent_requirements_other: [] };
+  }
+  return {
+    rent_requirements: normalizeRentRequirements(data.rent_requirements),
+    rent_requirements_other: normalizeRentRequirementsOther(
+      data.rent_requirements_other
+    ),
+  };
+}
+
 function normalizeLocationSource(
   value: PropertyInsert["location_source"]
 ): "manual" | "suggested" {
@@ -347,6 +424,9 @@ export async function createPropertyAction(
     for_temp_rent: data.for_temp_rent,
     temp_rent_price: data.temp_rent_price,
     temp_rent_currency: data.temp_rent_currency,
+    // Requisitos filtrados contra la lista cerrada EN EL SERVER (ver
+    // resolveRentRequirements). Nunca escribir data.rent_requirements directo.
+    ...resolveRentRequirements(data),
     area_total_m2: data.area_total_m2 ?? null,
     area_covered_m2: data.area_covered_m2 ?? null,
     bedrooms: data.bedrooms,
@@ -460,6 +540,8 @@ export async function updatePropertyAction(
       for_temp_rent: data.for_temp_rent,
       temp_rent_price: data.temp_rent_price,
       temp_rent_currency: data.temp_rent_currency,
+      // Mismo filtrado server-side que en el alta.
+      ...resolveRentRequirements(data),
       area_total_m2: data.area_total_m2 ?? null,
       area_covered_m2: data.area_covered_m2 ?? null,
       bedrooms: data.bedrooms,

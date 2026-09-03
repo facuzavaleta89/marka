@@ -257,28 +257,13 @@ CREATE TABLE properties (
   property_type    TEXT NOT NULL
                    CHECK (property_type IN ('casa','departamento','terreno','local','oficina','campo','cochera')),
 
-  -- ── COLUMNAS OBSOLETAS (3 sep 2026) ────────────────────────────────────
-  -- Una propiedad tenía UNA operación y UN precio. Eso no permitía representar
-  -- un caso real y frecuente del rubro: la misma casa ofrecida EN VENTA Y EN
-  -- ALQUILER a la vez. La agencia tenía que elegir una operación o cargar la
-  -- propiedad dos veces, lo que duplicaba el conteo del plan y ensuciaba el
-  -- mapa. Las reemplazan las nueve columnas de abajo.
-  --
-  -- ⚠ SIGUEN EXISTIENDO EN LA BASE (medido), pero pasaron a ser NULLABLE y
-  -- NINGÚN código las lee ni las escribe. Se borran en una migración posterior.
-  -- Los datos ya se migraron: cada propiedad tiene activada la operación que
-  -- tenía acá, con su precio y su moneda copiados.
-  operation_type   TEXT
-                   CHECK (operation_type IN ('venta','alquiler','alquiler_temporal')),
-  price            NUMERIC(15,2),
-  currency         TEXT DEFAULT 'USD' CHECK (currency IN ('USD','ARS')),
-  -- price_negotiable: OBSOLETA Y PENDIENTE DE ELIMINACIÓN. Ya se eliminó del
-  -- modelo, del formulario y de la interfaz (producía un sufijo "· Negociable"
-  -- en el modal). Se solapaba con el precio a convenir, que es una señal más
-  -- fuerte y más clara. La columna sobrevive solo hasta la migración de borrado.
-  price_negotiable BOOLEAN DEFAULT false,
-
   -- ── OPERACIONES Y PRECIOS (3 sep 2026, YA MIGRADO por ALTER) ───────────
+  -- Reemplazaron a operation_type / price / currency / price_negotiable, que
+  -- YA FUERON ELIMINADAS DE LA BASE (verificado: no figuran en
+  -- information_schema.columns). Con una sola operación y un solo precio no se
+  -- podía representar un caso real y frecuente del rubro —la misma casa en
+  -- venta Y en alquiler—: había que elegir una o cargar la propiedad dos veces,
+  -- lo que duplicaba el conteo del plan y ensuciaba el mapa.
   -- Una propiedad puede ofrecerse en VARIAS operaciones a la vez, cada una con
   -- su propio precio: el dueño acepta lo que aparezca primero.
   --
@@ -359,6 +344,65 @@ CREATE TABLE properties (
             OR ((temp_rent_price IS NOT NULL) AND (temp_rent_price > (0)::numeric)
                 AND (temp_rent_currency IS NOT NULL)
                 AND (temp_rent_currency = ANY (ARRAY['USD'::text, 'ARS'::text]))))),
+
+  -- ── REQUISITOS PARA ALQUILAR (3 sep 2026, YA MIGRADO por ALTER) ────────
+  -- Qué le pide la inmobiliaria al inquilino (recibo de sueldo, garantía
+  -- propietaria, seguro de caución…). Sin esto el visitante contacta por
+  -- WhatsApp sin saber si califica, y la agencia contesta lo mismo una y otra
+  -- vez.
+  --
+  -- SON DOS COLUMNAS Y NO UNA, A PROPÓSITO:
+  --   rent_requirements       → LISTA CERRADA (dato controlado). El dominio no
+  --                             vive en la base sino en el tipo RentRequirement
+  --                             de TypeScript, y la barrera real es el filtrado
+  --                             SERVER-SIDE de createPropertyAction /
+  --                             updatePropertyAction, que descarta en silencio
+  --                             todo lo que no pertenezca a la lista.
+  --   rent_requirements_other → requisitos LIBRES escritos por el agente (dato
+  --                             del usuario): hasta 5, de hasta 300 caracteres
+  --                             cada uno.
+  -- Mezclar los libres dentro del array cerrado volvería imposible confiar en
+  -- el contenido de aquel.
+  --
+  -- ⚠ rent_requirements_other EMPEZÓ SIENDO UN TEXT con UN requisito, y al
+  -- probarlo quedó claro que estaba mal modelado: una inmobiliaria no pide un
+  -- requisito extra, pide varios ("garante con propiedad en la ciudad", "seis
+  -- meses de antigüedad laboral", "no se aceptan mascotas"). Con un campo único
+  -- el agente los amontonaba separados por comas y en el modal quedaban
+  -- apretados en una línea, al lado de siete chips prolijos. Al convertir la
+  -- columna se descartó su contenido anterior (eran datos de prueba).
+  --
+  -- ⚠ CONTRASTE DELIBERADO CON `amenities` (abajo): amenities NO tiene barrera
+  -- de dominio en ninguna capa —su zod es z.array(z.string()), la action escribe
+  -- sin filtrar y la columna no tiene CHECK—, así que un cliente manipulado
+  -- puede escribirle cualquier string y se renderiza en el modal público. Es
+  -- deuda anotada aparte. Los requisitos NO heredan ese agujero.
+  --
+  -- Para rent_requirements el CHECK solo garantiza la FORMA (que sea un array),
+  -- no el dominio: validar siete literales dentro de un jsonb desde un CHECK
+  -- sería caro de mantener y quedaría desincronizado del tipo de TypeScript.
+  -- Para rent_requirements_other, en cambio, la base SÍ valida todo lo que se
+  -- puede validar sin conocer el dominio: forma, cantidad y largo por elemento.
+  rent_requirements       JSONB NOT NULL DEFAULT '[]',
+  rent_requirements_other JSONB NOT NULL DEFAULT '[]',
+
+  CONSTRAINT properties_rent_requirements_is_array
+    CHECK ((jsonb_typeof(rent_requirements) = 'array'::text)),
+
+  -- ⚠ POR QUÉ EL TERCERO LLAMA A UNA FUNCIÓN Y NO TIENE LA CONSULTA ADENTRO:
+  -- recorrer los elementos de un array JSONB exige jsonb_array_elements(), que
+  -- es una función que devuelve filas y solo se puede usar dentro de un SELECT
+  -- — o sea, una SUBCONSULTA. Y PostgreSQL RECHAZA las subconsultas dentro de
+  -- un CHECK constraint ("cannot use subquery in check constraint"). Meterla
+  -- acá no es una simplificación pendiente: no compila. La salida es encapsular
+  -- el SELECT en una función IMMUTABLE (jsonb_is_short_string_array, más abajo)
+  -- e invocarla, que es lo que el CHECK sí admite.
+  CONSTRAINT properties_rent_requirements_other_is_array
+    CHECK ((jsonb_typeof(rent_requirements_other) = 'array'::text)),
+  CONSTRAINT properties_rent_requirements_other_max
+    CHECK ((jsonb_array_length(rent_requirements_other) <= 5)),
+  CONSTRAINT properties_rent_requirements_other_items
+    CHECK (jsonb_is_short_string_array(rent_requirements_other, 300)),
 
   -- Superficie
   area_total_m2    NUMERIC(10,2),
@@ -711,6 +755,43 @@ AS $$
   );
 $$;
 
+-- ─── FUNCIÓN: array de strings cortos (validación de CHECK) ──
+-- La usa el CHECK properties_rent_requirements_other_items: devuelve true si
+-- TODOS los elementos del array son strings de entre 1 y max_len caracteres.
+--
+-- ⚠ EXISTE PORQUE UN CHECK NO PUEDE TENER UNA SUBCONSULTA. Recorrer los
+-- elementos de un array JSONB exige jsonb_array_elements(), que devuelve filas
+-- y por lo tanto solo se usa dentro de un SELECT; y PostgreSQL rechaza las
+-- subconsultas en un CHECK constraint ("cannot use subquery in check
+-- constraint"). Quien intente "simplificar" esto metiendo el SELECT adentro del
+-- CHECK se va a topar con ese error: no es deuda, es la única forma que el
+-- motor admite.
+--
+-- IMMUTABLE, y tiene que serlo: un CHECK solo acepta funciones inmutables. Lo
+-- es de verdad — depende únicamente de sus argumentos, no lee tablas ni el
+-- reloj —, así que la marca no está mintiendo (marcar IMMUTABLE algo que no lo
+-- es corrompe índices y CHECKs en silencio).
+--
+-- ⚠ MEDIDO: con un jsonb que NO es array (un escalar, p. ej. '"texto"') esta
+-- función LANZA "cannot extract elements from a scalar" en vez de devolver
+-- false. No es un problema —la fila se rechaza igual, y el constraint
+-- _other_is_array cubre ese caso—, pero el error que se ve es ese y no una
+-- violación de constraint limpia. Desde la aplicación no es alcanzable: la
+-- action siempre manda un array.
+CREATE OR REPLACE FUNCTION jsonb_is_short_string_array(arr jsonb, max_len integer)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT NOT EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements(arr) AS elem
+    WHERE jsonb_typeof(elem) <> 'string'
+       OR length(elem #>> '{}') = 0
+       OR length(elem #>> '{}') > max_len
+  );
+$$;
+
 -- ─── ÍNDICES ─────────────────────────────────────────────────
 
 -- Búsqueda geográfica (PostGIS)
@@ -722,15 +803,9 @@ CREATE INDEX idx_properties_city_status
   ON properties(city_id, status);
 
 -- Filtros del mapa
--- ⚠ Estos dos son de las columnas OBSOLETAS (operation_type / price) y se van
--- con ellas en la migración de borrado. Los reemplazan los tres parciales de
--- abajo.
-CREATE INDEX idx_properties_type_op
-  ON properties(property_type, operation_type);
-
-CREATE INDEX idx_properties_price
-  ON properties(price);
-
+-- (idx_properties_type_op e idx_properties_price ya no existen: se fueron con
+-- las columnas operation_type / price al eliminarlas de la base.)
+--
 -- Un índice PARCIAL por operación (3 sep 2026, YA MIGRADO por ALTER): indexa
 -- solo las filas que ofrecen esa operación, que es exactamente lo que el mapa
 -- consulta (ciudad + la operación filtrada, con rango de precio opcional).
@@ -752,6 +827,12 @@ CREATE INDEX idx_properties_agency
 -- Búsqueda de amenities dentro del JSONB
 CREATE INDEX idx_properties_amenities
   ON properties USING GIN(amenities);
+
+-- Requisitos para alquilar, mismo criterio que amenities (contención JSONB).
+-- Hoy no lo consulta nadie: los requisitos se muestran en la ficha, no se
+-- filtran. Está para el día que se filtre por ellos.
+CREATE INDEX idx_properties_rent_requirements
+  ON properties USING GIN(rent_requirements);
 
 -- Imágenes por propiedad
 CREATE INDEX idx_property_images_property
@@ -1043,6 +1124,7 @@ INSERT INTO properties (agent_id, agency_id, city_id, title, slug,
   property_type,
   for_sale, sale_price, sale_currency,
   for_rent, rent_price, rent_currency,
+  rent_requirements, rent_requirements_other,
   area_covered_m2,
   bedrooms, bathrooms, address, neighborhood, city, lat, lng)
 VALUES (
@@ -1054,6 +1136,8 @@ VALUES (
   'casa',
   true, 85000, 'USD',
   true, 350000, 'ARS',
+  '["recibo_de_sueldo","garantia_propietaria","deposito"]',
+  '["Garante con propiedad en la ciudad","No se aceptan mascotas"]',
   120, 3, 2,
   'Av. Belgrano 1234', 'Centro', 'Santiago del Estero',
   -27.7951, -64.2615

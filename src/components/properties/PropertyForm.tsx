@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { Check } from "lucide-react";
+import { Check, Plus, X } from "lucide-react";
 import { useForm, Controller, type Control, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -25,13 +25,18 @@ import {
   updatePropertyAction,
 } from "@/app/(agent)/dashboard/propiedades/actions";
 import { cn } from "@/lib/utils";
-import { AMENITY_LABELS } from "@/lib/utils/labels";
+import { AMENITY_LABELS, RENT_REQUIREMENT_LABELS } from "@/lib/utils/labels";
 import { roundCoords, type Coords } from "@/lib/utils/coords";
 import type { LocationChangeCause } from "./LocationPicker";
+import {
+  RENT_REQUIREMENTS_OTHER_MAX,
+  RENT_REQUIREMENT_OTHER_MAX_LEN,
+} from "@/types";
 import type {
   Property,
   PropertyImage,
   Amenity,
+  RentRequirement,
   LocationSource,
 } from "@/types";
 
@@ -41,6 +46,11 @@ const LocationPicker = dynamic(() => import("./LocationPicker"), { ssr: false })
 // ─── Constantes ───────────────────────────────────────────────
 
 const ALL_AMENITIES = Object.keys(AMENITY_LABELS) as Amenity[];
+
+// Lista cerrada de requisitos, en el orden en que se le muestran al agente.
+const ALL_RENT_REQUIREMENTS = Object.keys(
+  RENT_REQUIREMENT_LABELS
+) as RentRequirement[];
 
 // Clases de override para los shadcn inputs (este proyecto usa estilo "línea")
 const FIELD =
@@ -94,6 +104,20 @@ const baseSchema = z.object({
   lat: z.number(),
   lng: z.number(),
   amenities: z.array(z.string()).default([]),
+  // Requisitos para alquilar. A diferencia de `amenities` (que es
+  // z.array(z.string()) y no valida nada), acá se valida contra la LISTA
+  // CERRADA. Igual la barrera que cuenta es el filtrado server-side de la
+  // action: este zod corre en el cliente y no protege de un cliente manipulado.
+  rent_requirements: z
+    .array(z.enum(ALL_RENT_REQUIREMENTS as [RentRequirement, ...RentRequirement[]]))
+    .default([]),
+  // Requisitos libres: lista, no texto. Lo que valida el zod es la FORMA (hasta
+  // 5 strings de hasta 300 caracteres); el contenido lo controla la interfaz al
+  // agregar, y la barrera real es el filtrado server-side de la action.
+  rent_requirements_other: z
+    .array(z.string().max(RENT_REQUIREMENT_OTHER_MAX_LEN))
+    .max(RENT_REQUIREMENTS_OTHER_MAX)
+    .default([]),
   year_built: optNum(),
   is_featured: z.boolean().default(false),
   // Agente al que se asigna la propiedad (solo lo usa el admin de agencia). El
@@ -168,6 +192,15 @@ const schema = baseSchema
   //      precio y precio sin moneda). Esto normaliza ANTES de enviar para que el
   //      agente no se coma un error de la base por algo que la interfaz resuelve
   //      sola: es conveniencia, y por eso se conserva.
+  //
+  //   c. SIN ninguna operación de alquiler → los requisitos para alquilar se
+  //      vacían. Mismo caso que (a) y por el mismo motivo: el agente puede
+  //      marcar alquiler, cargar requisitos y después desmarcarlo, y esos
+  //      requisitos no pueden viajar en el payload de una propiedad que ahora es
+  //      solo venta. La sección desaparece de la pantalla pero los valores
+  //      siguen en el formulario, así que sin esto se enviarían igual.
+  //      La action repite el corte server-side (resolveRentRequirements): esto
+  //      es conveniencia, igual que (b).
   .transform((data) => {
     const pair = (on: boolean, price: number | null, currency: "USD" | "ARS" | null) =>
       on && price != null
@@ -182,6 +215,8 @@ const schema = baseSchema
       data.temp_rent_currency
     );
 
+    const rents = data.for_rent || data.for_temp_rent;
+
     return {
       ...data,
       sale_price: sale.price,
@@ -190,6 +225,8 @@ const schema = baseSchema
       rent_currency: rent.currency,
       temp_rent_price: temp.price,
       temp_rent_currency: temp.currency,
+      rent_requirements: rents ? data.rent_requirements : [],
+      rent_requirements_other: rents ? data.rent_requirements_other : [],
     };
   });
 
@@ -209,6 +246,23 @@ interface PropertyFormProps {
   // muestra (un agente normal no reasigna). La validación de pertenencia a la
   // agencia es server-side en las actions; esto es solo la UI.
   agencyAgents?: { id: string; full_name: string }[];
+  // Requisitos de alquiler con los que ABRIR un alta, tomados de la última
+  // propiedad con alquiler de la agencia (la resuelve la página, en el server).
+  // Evita que el agente marque las mismas casillas treinta veces mientras sube
+  // su cartera.
+  //
+  // ⚠ Es aditiva y SOLO aplica a mode "create": en edición mandan los valores
+  // guardados de la propiedad. Se agregó una prop en vez de mover los defaults
+  // del alta al servidor a propósito — eso cambiaría el contrato del componente
+  // para los dos modos.
+  //
+  // Los valores llegan MARCADOS y VISIBLES, y el agente los puede desmarcar
+  // antes de guardar: un default invisible que se guarda solo sería peor que no
+  // tener precarga.
+  initialRentRequirements?: {
+    rent_requirements: RentRequirement[];
+    rent_requirements_other: string[];
+  };
 }
 
 // ─── Sub-componentes ──────────────────────────────────────────
@@ -393,6 +447,227 @@ function OperationField({
   );
 }
 
+// ─── Requisitos libres: agregar y quitar ──────────────────────
+//
+// El agente escribe un requisito, lo agrega, el input se vacía y queda listo
+// para el siguiente. Antes era un textarea único: una inmobiliaria no pide UN
+// requisito extra, pide varios, y con un solo campo terminaban amontonados
+// separados por comas.
+//
+// El borrador vive en useState LOCAL y no en el formulario: lo que no se agrega
+// no se guarda (ver el aviso permanente debajo del input). Por eso este es un
+// componente propio y no un render prop del Controller — los render props se
+// ejecutan durante el render del padre y no pueden tener hooks.
+function RentRequirementsOtherField({
+  control,
+}: {
+  control: Control<FormValues>;
+}) {
+  const [draft, setDraft] = useState("");
+
+  return (
+    <Controller
+      name="rent_requirements_other"
+      control={control}
+      render={({ field }) => {
+        const items = field.value ?? [];
+        const trimmed = draft.trim();
+        const full = items.length >= RENT_REQUIREMENTS_OTHER_MAX;
+        const tooLong = trimmed.length > RENT_REQUIREMENT_OTHER_MAX_LEN;
+        const duplicate = trimmed !== "" && items.includes(trimmed);
+
+        const add = () => {
+          // Vacío: no se agrega y no pasa nada. No es un error que haya que
+          // gritarle a nadie — el agente todavía no escribió.
+          if (trimmed === "" || full || tooLong || duplicate) return;
+          field.onChange([...items, trimmed]);
+          setDraft("");
+        };
+
+        const remove = (index: number) =>
+          field.onChange(items.filter((_, i) => i !== index));
+
+        return (
+          <Field label="Otros requisitos">
+            {/* Lista de lo ya agregado. Va ARRIBA del input: es el resultado
+                de la acción, y verlo crecer es la confirmación de que se
+                agregó. */}
+            {items.length > 0 && (
+              <ul className="space-y-1.5">
+                {items.map((item, i) => (
+                  <li
+                    key={`${item}-${i}`}
+                    className="flex items-start gap-2 rounded-md border border-stone bg-white px-3 py-2"
+                  >
+                    <span className="flex-1 font-sans text-sm text-black break-words">
+                      {item}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => remove(i)}
+                      aria-label={`Quitar "${item}"`}
+                      className="shrink-0 rounded-sm p-0.5 text-graphite transition-colors hover:bg-mist hover:text-black"
+                    >
+                      <X size={16} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div className="flex items-start gap-2">
+              <div className="flex-1">
+                <Input
+                  type="text"
+                  value={draft}
+                  disabled={full}
+                  onChange={(e) => setDraft(e.target.value)}
+                  // ⚠ Enter agrega, y NO envía el formulario. El input vive
+                  // dentro de un <form> y en HTML un Enter en un campo de texto
+                  // dispara el submit por defecto: sin este preventDefault, el
+                  // agente que escribe un requisito y aprieta Enter publicaría
+                  // la propiedad.
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    e.preventDefault();
+                    add();
+                  }}
+                  placeholder={
+                    full
+                      ? "Llegaste al máximo"
+                      : "Ej: garante con propiedad en la ciudad"
+                  }
+                  className={cn(FIELD, tooLong && FIELD_ERR)}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={add}
+                disabled={full || trimmed === "" || tooLong || duplicate}
+                className={cn(
+                  "inline-flex h-10 shrink-0 items-center gap-1.5 rounded-md border px-3 font-sans text-sm font-medium transition-colors",
+                  full || trimmed === "" || tooLong || duplicate
+                    ? "border-stone bg-mist text-stone cursor-not-allowed"
+                    : "border-stone bg-white text-graphite hover:border-graphite hover:text-black"
+                )}
+              >
+                <Plus size={16} />
+                Agregar
+              </button>
+            </div>
+
+            {/* Motivo por el que no se puede agregar, uno por vez y en el orden
+                en que el agente se los va a encontrar. */}
+            {full ? (
+              <p className="font-sans text-xs text-graphite">
+                Llegaste al máximo de {RENT_REQUIREMENTS_OTHER_MAX} requisitos
+                libres. Quitá uno para agregar otro.
+              </p>
+            ) : tooLong ? (
+              <p className="font-sans text-xs text-error">
+                Máximo {RENT_REQUIREMENT_OTHER_MAX_LEN} caracteres por requisito
+                (llevás {trimmed.length}).
+              </p>
+            ) : duplicate ? (
+              <p className="font-sans text-xs text-graphite">
+                Ese requisito ya está en la lista.
+              </p>
+            ) : (
+              // Aviso permanente: lo que queda escrito sin agregar NO se
+              // guarda. Va siempre visible y no solo cuando hay texto pendiente
+              // — si apareciera recién al escribir, el agente ya estaría por
+              // apretar guardar cuando lo lee.
+              <p className="font-sans text-xs text-graphite">
+                Escribí uno y tocá Agregar (o Enter). Lo que quede en el casillero
+                sin agregar no se guarda.
+              </p>
+            )}
+          </Field>
+        );
+      }}
+    />
+  );
+}
+
+// ─── Requisitos para alquilar (sección condicional) ───────────
+//
+// Solo se renderiza si la propiedad tiene alguna operación de ALQUILER, y en
+// vivo: si el agente marca o desmarca las casillas de alquiler, la sección
+// aparece y desaparece sin recargar nada.
+//
+// ⚠ Los dos flags se leen con Controller anidado, NO con watch(). El único
+// warning de lint del repo es un watch() de este archivo
+// (react-hooks/incompatible-library: el React Compiler no puede memoizar el
+// watch() de react-hook-form y renuncia a memoizar el componente); sumar
+// llamadas nuevas lo multiplicaría. Es el mismo patrón que usa OperationField.
+//
+// Desaparecer de la pantalla NO limpia los valores: siguen cargados en el
+// formulario. El vaciado lo hace el transform del schema (regla c), y la action
+// lo repite del lado del servidor.
+function RentRequirementsSection({ control }: { control: Control<FormValues> }) {
+  return (
+    <Controller
+      name="for_rent"
+      control={control}
+      render={({ field: rentField }) => (
+        <Controller
+          name="for_temp_rent"
+          control={control}
+          render={({ field: tempField }) => {
+            if (!rentField.value && !tempField.value) return <></>;
+
+            return (
+              <Section title="Requisitos para alquilar">
+                <p className="font-sans text-xs text-graphite">
+                  Lo que le pedís al inquilino. Se muestran en la ficha pública,
+                  así que quien consulta ya sabe si califica.
+                </p>
+
+                <Controller
+                  name="rent_requirements"
+                  control={control}
+                  render={({ field }) => {
+                    const selected = field.value ?? [];
+                    const toggle = (req: RentRequirement) =>
+                      field.onChange(
+                        selected.includes(req)
+                          ? selected.filter((r) => r !== req)
+                          : [...selected, req]
+                      );
+
+                    return (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {ALL_RENT_REQUIREMENTS.map((req) => (
+                          <div key={req} className="flex items-center gap-2">
+                            <Checkbox
+                              id={`rent-req-${req}`}
+                              checked={selected.includes(req)}
+                              onCheckedChange={() => toggle(req)}
+                              className="data-[state=checked]:bg-terracota data-[state=checked]:border-terracota"
+                            />
+                            <Label
+                              htmlFor={`rent-req-${req}`}
+                              className="font-sans text-sm text-black cursor-pointer"
+                            >
+                              {RENT_REQUIREMENT_LABELS[req]}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  }}
+                />
+
+                <RentRequirementsOtherField control={control} />
+              </Section>
+            );
+          }}
+        />
+      )}
+    />
+  );
+}
+
 // ─── Componente principal ─────────────────────────────────────
 
 export function PropertyForm({
@@ -401,6 +676,7 @@ export function PropertyForm({
   agentId,
   cityCenter,
   agencyAgents,
+  initialRentRequirements,
 }: PropertyFormProps) {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
@@ -478,6 +754,8 @@ export function PropertyForm({
           lat: initialData.lat,
           lng: initialData.lng,
           amenities: initialData.amenities,
+          rent_requirements: initialData.rent_requirements,
+          rent_requirements_other: initialData.rent_requirements_other ?? [],
           year_built: initialData.year_built,
           is_featured: initialData.is_featured,
           // En edición, el agente actual de la propiedad.
@@ -500,6 +778,12 @@ export function PropertyForm({
           bathrooms: 0,
           parking_spots: 0,
           amenities: [],
+          // Precarga desde la última propiedad con alquiler de la agencia. Si
+          // no hay ninguna, la página no manda la prop y el alta abre vacía,
+          // sin ningún aviso.
+          rent_requirements: initialRentRequirements?.rent_requirements ?? [],
+          rent_requirements_other:
+            initialRentRequirements?.rent_requirements_other ?? [],
           lat: cityCenter.lat,
           lng: cityCenter.lng,
           is_featured: false,
@@ -612,6 +896,8 @@ export function PropertyForm({
         lng: data.lng,
         location_source: locationSource,
         amenities: data.amenities as Amenity[],
+        rent_requirements: data.rent_requirements,
+        rent_requirements_other: data.rent_requirements_other,
         year_built: data.year_built ?? null,
         is_featured: data.is_featured,
         assigned_agent_id: data.assigned_agent_id,
@@ -650,6 +936,8 @@ export function PropertyForm({
         lng: data.lng,
         location_source: locationSource,
         amenities: data.amenities as Amenity[],
+        rent_requirements: data.rent_requirements,
+        rent_requirements_other: data.rent_requirements_other,
         year_built: data.year_built ?? null,
         is_featured: data.is_featured,
         assigned_agent_id: data.assigned_agent_id,
@@ -799,6 +1087,9 @@ export function PropertyForm({
           </p>
         )}
       </Section>
+
+      {/* ── Requisitos para alquilar ── (solo si hay alguna operación de alquiler) */}
+      <RentRequirementsSection control={control} />
 
       {/* ── Superficie y ambientes ── */}
       <Section title="Superficie y ambientes">

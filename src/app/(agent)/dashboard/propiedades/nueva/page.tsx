@@ -6,6 +6,7 @@ import { requireAgentSession } from "@/lib/utils/resolveAgentSession";
 import { PropertyForm } from "@/components/properties/PropertyForm";
 import { getPlanUsage } from "@/lib/utils/getPlanUsage";
 import { getPublishBlock } from "@/lib/utils/getPublishBlock";
+import type { RentRequirement } from "@/types";
 
 export default async function NuevaPropiedadPage() {
   const supabase = await createClient();
@@ -59,6 +60,36 @@ export default async function NuevaPropiedadPage() {
     ? { lat: city.center_lat, lng: city.center_lng }
     : { lat: -27.7951, lng: -64.2615 }; // fallback Santiago del Estero
 
+  // PRECARGA DE REQUISITOS DE ALQUILER. Las primeras inmobiliarias suben su
+  // cartera completa de una sentada: marcar las mismas siete casillas en cada
+  // propiedad es fricción real, no una comodidad.
+  //
+  // Es por AGENCIA (agency_id) y no por agente: los requisitos son política de
+  // la inmobiliaria, no del vendedor que carga. Se toma la última cargada
+  // (created_at desc) que ofrezca alguna operación de alquiler — una propiedad
+  // solo en venta no tiene requisitos que copiar.
+  //
+  // Si no hay ninguna previa con alquiler, `initialRentRequirements` queda
+  // undefined y el formulario abre vacío, sin ningún aviso: no hay nada que
+  // explicarle al agente que carga su primera propiedad.
+  const { data: lastRental } = await supabase
+    .from("properties")
+    .select("rent_requirements, rent_requirements_other")
+    .eq("agency_id", agent.agency_id)
+    .or("for_rent.eq.true,for_temp_rent.eq.true")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const initialRentRequirements = lastRental
+    ? {
+        rent_requirements: (lastRental.rent_requirements ??
+          []) as RentRequirement[],
+        rent_requirements_other: (lastRental.rent_requirements_other ??
+          []) as string[],
+      }
+    : undefined;
+
   return (
     <div className="p-8 max-w-3xl mx-auto">
       <Link
@@ -80,6 +111,7 @@ export default async function NuevaPropiedadPage() {
         cityId={agencyCity.city_id}
         cityCenter={cityCenter}
         agencyAgents={agencyAgents}
+        initialRentRequirements={initialRentRequirements}
       />
     </div>
   );
