@@ -28,7 +28,7 @@ export const useMapFilters = create<MapFiltersState>()((set) => ({
 export const selectActiveFiltersCount = (state: MapFiltersState): number => {
   const f = state.filters;
   return [
-    f.operation_type !== null,
+    f.operation_types.length > 0,
     f.property_types.length > 0,
     f.price_min != null || f.price_max != null,
     f.area_min != null || f.area_max != null,

@@ -5,8 +5,12 @@ import { X } from "lucide-react";
 import { useMapFilters, selectActiveFiltersCount } from "@/store/mapFiltersStore";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
-import type { PropertyType, Amenity } from "@/types";
-import { PROPERTY_TYPE_LABELS, AMENITY_LABELS } from "@/lib/utils/labels";
+import type { PropertyType, Amenity, OperationType } from "@/types";
+import {
+  PROPERTY_TYPE_LABELS,
+  AMENITY_LABELS,
+  OPERATION_TYPE_LABELS,
+} from "@/lib/utils/labels";
 
 // Override para que el Checkbox de shadcn use terracota en estado marcado
 // (mismo patrón que PropertyForm, para consistencia en todo el form).
@@ -17,6 +21,16 @@ const CHECKBOX_TERRACOTA =
 
 // Todos los tipos de propiedad, para los botones del filtro
 const PROPERTY_TYPE_VALUES = Object.keys(PROPERTY_TYPE_LABELS) as PropertyType[];
+
+// Operaciones del filtro. La etiqueta de "alquiler_temporal" se acorta a
+// "Temporal" solo acá: los tres botones comparten una fila de 320px y
+// "Alquiler temporal" no entra. OPERATION_TYPE_LABELS sigue siendo la fuente
+// para todo el resto de la UI (kicker de la card, modal, tabla del dashboard).
+const OPERATION_FILTERS: { value: OperationType; label: string }[] = [
+  { value: "venta", label: OPERATION_TYPE_LABELS.venta },
+  { value: "alquiler", label: OPERATION_TYPE_LABELS.alquiler },
+  { value: "alquiler_temporal", label: "Temporal" },
+];
 
 // Subconjunto curado de amenities que se ofrece en el filtro
 const FILTER_AMENITIES: Amenity[] = [
@@ -80,12 +94,14 @@ function NumInput({
   onChange,
   onCommit,
   placeholder,
+  disabled,
 }: {
   value: string;
   onChange: (v: string) => void;
   /** Se aplica el filtro al perder el foco o con Enter (sin botón "Aplicar") */
   onCommit: () => void;
   placeholder: string;
+  disabled?: boolean;
 }) {
   return (
     <input
@@ -98,7 +114,11 @@ function NumInput({
         if (e.key === "Enter") e.currentTarget.blur();
       }}
       placeholder={placeholder}
-      className="w-full h-9 px-3 font-sans text-sm text-black placeholder:text-stone bg-white border border-stone rounded-md outline-none focus:border-graphite focus:ring-2 focus:ring-terracota/20"
+      disabled={disabled}
+      className={cn(
+        "w-full h-9 px-3 font-sans text-sm text-black placeholder:text-stone bg-white border border-stone rounded-md outline-none focus:border-graphite focus:ring-2 focus:ring-terracota/20",
+        disabled && "bg-mist text-stone cursor-not-allowed"
+      )}
     />
   );
 }
@@ -161,6 +181,31 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
     setFilter(field, isNaN(n ?? NaN) ? null : n);
   };
 
+  // El rango de precio solo se puede aplicar contra UNA columna de precio, y
+  // cada operación tiene la suya (sale_price / rent_price / temp_rent_price).
+  // Con cero o con varias operaciones marcadas no hay una columna que elegir, y
+  // un rango de venta no significa nada sobre un alquiler: el rango se
+  // deshabilita en vez de devolver un resultado que parece filtrado y no lo está.
+  const priceEnabled = filters.operation_types.length === 1;
+
+  // Operación: selección múltiple, igual que el tipo de propiedad.
+  const toggleOperation = (op: OperationType) => {
+    const current = filters.operation_types;
+    const next = current.includes(op)
+      ? current.filter((o) => o !== op)
+      : [...current, op];
+    setFilter("operation_types", next);
+
+    // Si el cambio deja el rango de precio deshabilitado, se LIMPIA. Dejarlo
+    // cargado lo haría seguir aplicándose de forma invisible (el usuario ve los
+    // inputs grises y no sabe que hay un rango puesto). El resync de los inputs
+    // locales contra el store lo hace el bloque de arriba, sin efectos.
+    if (next.length !== 1) {
+      setFilter("price_min", null);
+      setFilter("price_max", null);
+    }
+  };
+
   const togglePropertyType = (type: PropertyType) => {
     const current = filters.property_types;
     setFilter(
@@ -192,36 +237,20 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
       )}
 
       <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6 md:space-y-8">
-        {/* Operación */}
+        {/* Operación — selección múltiple: una propiedad puede estar en venta y
+            en alquiler a la vez, así que marcar las dos muestra las que tengan
+            cualquiera de las dos (no la intersección). */}
         <Section title="Operación">
           <div className="flex gap-2">
-            <ToggleBtn
-              active={filters.operation_type === "venta"}
-              onClick={() =>
-                setFilter("operation_type", filters.operation_type === "venta" ? null : "venta")
-              }
-            >
-              Venta
-            </ToggleBtn>
-            <ToggleBtn
-              active={filters.operation_type === "alquiler"}
-              onClick={() =>
-                setFilter("operation_type", filters.operation_type === "alquiler" ? null : "alquiler")
-              }
-            >
-              Alquiler
-            </ToggleBtn>
-            <ToggleBtn
-              active={filters.operation_type === "alquiler_temporal"}
-              onClick={() =>
-                setFilter(
-                  "operation_type",
-                  filters.operation_type === "alquiler_temporal" ? null : "alquiler_temporal"
-                )
-              }
-            >
-              Temporal
-            </ToggleBtn>
+            {OPERATION_FILTERS.map(({ value, label }) => (
+              <ToggleBtn
+                key={value}
+                active={filters.operation_types.includes(value)}
+                onClick={() => toggleOperation(value)}
+              >
+                {label}
+              </ToggleBtn>
+            ))}
           </div>
         </Section>
 
@@ -249,19 +278,22 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
           </div>
         </Section>
 
-        {/* Precio */}
+        {/* Precio — solo con UNA operación marcada (ver priceEnabled) */}
         <Section title="Precio">
           <div className="flex gap-2 mb-2">
             {(["USD", "ARS"] as const).map((c) => (
               <button
                 key={c}
                 type="button"
+                disabled={!priceEnabled}
                 onClick={() => setFilter("currency", c)}
                 className={cn(
                   "flex-1 py-1.5 font-sans text-sm font-medium rounded-md transition-colors",
-                  filters.currency === c
-                    ? "bg-terracota text-paper"
-                    : "bg-mist text-graphite hover:bg-stone/60"
+                  !priceEnabled
+                    ? "bg-mist text-stone cursor-not-allowed"
+                    : filters.currency === c
+                      ? "bg-terracota text-paper"
+                      : "bg-mist text-graphite hover:bg-stone/60"
                 )}
               >
                 {c}
@@ -274,15 +306,24 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
               onChange={setPriceMin}
               onCommit={() => commitPrice("price_min", priceMin)}
               placeholder="Desde"
+              disabled={!priceEnabled}
             />
-            <span className="text-stone">–</span>
+            <span className={priceEnabled ? "text-stone" : "text-stone/60"}>–</span>
             <NumInput
               value={priceMax}
               onChange={setPriceMax}
               onCommit={() => commitPrice("price_max", priceMax)}
               placeholder="Hasta"
+              disabled={!priceEnabled}
             />
           </div>
+          {/* La leyenda es visible, no una letra chica: sin ella los inputs
+              grises parecen un error de la app. */}
+          {!priceEnabled && (
+            <p className="font-sans text-xs text-graphite">
+              Elegí una sola operación para filtrar por precio.
+            </p>
+          )}
         </Section>
 
         {/* Superficie */}

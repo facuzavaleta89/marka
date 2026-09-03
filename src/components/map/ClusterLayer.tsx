@@ -9,12 +9,14 @@ import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 import {
   createPropertyIcon,
   createPropertyMarker,
+  propertyPinPrice,
+  setMarkerPrice,
   setMarkerState,
 } from "./PropertyMarker";
 import { useMapFilters } from "@/store/mapFiltersStore";
 import { useVisitedProperties } from "@/lib/hooks/useVisitedProperties";
 import { useFavorites } from "@/lib/hooks/useFavorites";
-import type { Property } from "@/types";
+import type { OperationType, Property } from "@/types";
 
 // ─── Ícono de los grupos de clusters ──────────────────────────
 // El estilo (.marka-cluster) vive en globals.css e incluye DM Sans y el
@@ -42,7 +44,7 @@ interface ClusterLayerProps {
 
 export function ClusterLayer({ properties }: ClusterLayerProps) {
   const map = useMap();
-  const { selectedPropertyId, setSelectedProperty } = useMapFilters();
+  const { filters, selectedPropertyId, setSelectedProperty } = useMapFilters();
   const { isVisited, markVisited } = useVisitedProperties();
   const { favorites, isFavorite } = useFavorites();
 
@@ -58,6 +60,12 @@ export function ClusterLayer({ properties }: ClusterLayerProps) {
   const selectedIdRef = useRef<string | null>(selectedPropertyId);
   const isVisitedRef = useRef(isVisited);
   const isFavoriteRef = useRef(isFavorite);
+  // Operaciones filtradas: deciden QUÉ precio muestra cada pin. Va en una ref
+  // por el mismo motivo que las de arriba — se aplica como estado live, sin
+  // recrear markers.
+  const filteredOpsRef = useRef<OperationType[]>(filters.operation_types);
+  // Clave estable del filtro de operación para las deps del efecto de precio.
+  const operationsKey = filters.operation_types.join(",");
 
   // Mantener las refs "latest" sin escribirlas en render (eso es inseguro bajo
   // render concurrente). useLayoutEffect corre sincrónico tras el commit y ANTES
@@ -67,6 +75,7 @@ export function ClusterLayer({ properties }: ClusterLayerProps) {
   useLayoutEffect(() => {
     isVisitedRef.current = isVisited;
     isFavoriteRef.current = isFavorite;
+    filteredOpsRef.current = filters.operation_types;
   });
 
   // Inicializar el cluster group una sola vez
@@ -114,6 +123,7 @@ export function ClusterLayer({ properties }: ClusterLayerProps) {
       const marker = createPropertyMarker(
         property,
         { selected, visited, favorite },
+        filteredOpsRef.current,
         () => {
           setSelectedProperty(property.id);
           markVisited(property.id);
@@ -141,11 +151,15 @@ export function ClusterLayer({ properties }: ClusterLayerProps) {
         const property = propertiesRef.current.find((p) => p.id === id);
         if (property) {
           marker.setIcon(
-            createPropertyIcon(property, {
-              selected,
-              visited: isVisitedRef.current(id),
-              favorite: isFavoriteRef.current(id),
-            })
+            createPropertyIcon(
+              property,
+              {
+                selected,
+                visited: isVisitedRef.current(id),
+                favorite: isFavoriteRef.current(id),
+              },
+              filteredOpsRef.current
+            )
           );
         }
         return;
@@ -165,11 +179,15 @@ export function ClusterLayer({ properties }: ClusterLayerProps) {
         const property = propertiesRef.current.find((p) => p.id === id);
         if (property) {
           marker.setIcon(
-            createPropertyIcon(property, {
-              selected: id === selectedIdRef.current,
-              visited: isVisitedRef.current(id),
-              favorite,
-            })
+            createPropertyIcon(
+              property,
+              {
+                selected: id === selectedIdRef.current,
+                visited: isVisitedRef.current(id),
+                favorite,
+              },
+              filteredOpsRef.current
+            )
           );
         }
         return;
@@ -177,6 +195,48 @@ export function ClusterLayer({ properties }: ClusterLayerProps) {
       setMarkerState(marker, { favorite });
     });
   }, [favorites]);
+
+  // Refrescar el PRECIO de los pines cuando cambia el filtro de operación.
+  //
+  // ⚠ ESTE EFECTO CUBRE UN AGUJERO REAL DEL DIFF DE ARRIBA, no es una
+  // optimización. El efecto de propiedades decide si recrear los markers
+  // comparando una firma que es solo la lista de ids: si no cambió, corta y no
+  // toca nada. Eso era seguro mientras una propiedad tenía UNA sola operación,
+  // porque cambiar el filtro de operación siempre cambiaba el conjunto de ids.
+  // Con el modelo nuevo, una propiedad en venta Y en alquiler aparece en los dos
+  // resultados: la firma NO cambia, el diff corta, y el pin se queda mostrando
+  // el precio de la operación anterior. No rompe nada y no da síntoma — solo
+  // muestra un número equivocado.
+  //
+  // Se resuelve con el mismo patrón que la selección y los favoritos (tocar lo
+  // que cambió en vez de recrear markers), y no ensanchando la firma del diff:
+  // el precio no es parte de la identidad del conjunto renderizado, y meterlo
+  // ahí obligaría a recrear TODOS los markers en cada cambio de filtro para
+  // actualizar un texto.
+  useEffect(() => {
+    const operations = filteredOpsRef.current;
+    markersRef.current.forEach((marker, id) => {
+      const property = propertiesRef.current.find((p) => p.id === id);
+      if (!property) return;
+      // Marker clusterizado (sin elemento en el DOM): se rehace el ícono base,
+      // así sale con el precio correcto cuando el cluster se expande.
+      if (!marker.getElement()) {
+        marker.setIcon(
+          createPropertyIcon(
+            property,
+            {
+              selected: id === selectedIdRef.current,
+              visited: isVisitedRef.current(id),
+              favorite: isFavoriteRef.current(id),
+            },
+            operations
+          )
+        );
+        return;
+      }
+      setMarkerPrice(marker, propertyPinPrice(property, operations));
+    });
+  }, [operationsKey]);
 
   return null;
 }

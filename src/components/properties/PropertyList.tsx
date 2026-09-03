@@ -63,6 +63,9 @@ export function PropertyList({ city, agencyId }: PropertyListProps) {
   // Mismos datos y filtros que el mapa, pero sin bounds (toda la ciudad).
   const { properties, isLoading } = useProperties(city.id, null, agencyId);
   const setSelectedProperty = useMapFilters((s) => s.setSelectedProperty);
+  // Las operaciones filtradas deciden qué precio muestra cada card (mismo
+  // criterio que el pin del mapa).
+  const operationTypes = useMapFilters((s) => s.filters.operation_types);
   const resetFilters = useMapFilters((s) => s.resetFilters);
   const activeCount = useMapFilters(selectActiveFiltersCount);
 
@@ -122,6 +125,7 @@ export function PropertyList({ city, agencyId }: PropertyListProps) {
           <PropertyCard
             key={p.id}
             property={p}
+            filteredOperations={operationTypes}
             onSelect={() => setSelectedProperty(p.id)}
           />
         ))}

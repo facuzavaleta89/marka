@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { Check } from "lucide-react";
-import { useForm, Controller, type Resolver } from "react-hook-form";
+import { useForm, Controller, type Control, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Input } from "@/components/ui/input";
@@ -57,20 +57,32 @@ const optNum = (positive = false) =>
       : z.number().min(0).nullable()
   );
 
-const schema = z.object({
+const currencyField = z.enum(["USD", "ARS"]).nullable().default(null);
+
+const baseSchema = z.object({
   title: z.string().min(1, "El título es requerido"),
   description: z.string().optional(),
   property_type: z.enum([
     "casa", "departamento", "terreno", "local",
     "oficina", "campo", "cochera",
   ], { message: "Seleccioná el tipo de propiedad" }),
-  operation_type: z.enum(["venta", "alquiler", "alquiler_temporal"], {
-    message: "Seleccioná el tipo de operación",
-  }),
   status: z.enum(["active", "paused", "sold", "rented"]).optional(),
-  price: z.coerce.number().positive("El precio debe ser mayor a 0"),
-  currency: z.enum(["USD", "ARS"]),
-  price_negotiable: z.boolean().default(false),
+  // ─── Operaciones y precios ───
+  // Tres operaciones independientes, cada una con su par precio + moneda. El
+  // precio es OPCIONAL a propósito: vacío significa "a convenir", que es una
+  // elección de la agencia (no publicar el precio en un mapa) y no un dato
+  // faltante. Los precios usan optNum(true) — el mismo preprocesado del resto
+  // de los numéricos opcionales: "" o null → null, y si hay valor tiene que ser
+  // positivo.
+  for_sale: z.boolean().default(false),
+  sale_price: optNum(true),
+  sale_currency: currencyField,
+  for_rent: z.boolean().default(false),
+  rent_price: optNum(true),
+  rent_currency: currencyField,
+  for_temp_rent: z.boolean().default(false),
+  temp_rent_price: optNum(true),
+  temp_rent_currency: currencyField,
   area_total_m2: optNum(true),
   area_covered_m2: optNum(true),
   bedrooms: z.coerce.number().min(0).default(0),
@@ -88,6 +100,98 @@ const schema = z.object({
   // server valida que pertenezca a la agencia antes de aplicarlo.
   assigned_agent_id: z.string().optional(),
 });
+
+// Las tres operaciones, con los nombres de sus campos. Se usa para validar y
+// para renderizar: agregar una operación es agregar una entrada acá.
+const OPERATIONS = [
+  {
+    flag: "for_sale",
+    price: "sale_price",
+    currency: "sale_currency",
+    label: "Venta",
+  },
+  {
+    flag: "for_rent",
+    price: "rent_price",
+    currency: "rent_currency",
+    label: "Alquiler",
+  },
+  {
+    flag: "for_temp_rent",
+    price: "temp_rent_price",
+    currency: "temp_rent_currency",
+    label: "Alquiler temporal",
+  },
+] as const;
+
+// Replica en el formulario lo que los CHECK de la base ya exigen. La base sigue
+// siendo la fuente de verdad; esto existe para que el agente vea el problema
+// antes de mandar el formulario, no para reemplazarla.
+const schema = baseSchema
+  .superRefine((data, ctx) => {
+    // (1) Al menos una operación. El error se cuelga de for_sale para que se
+    // muestre debajo del grupo de checkboxes.
+    if (!data.for_sale && !data.for_rent && !data.for_temp_rent) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["for_sale"],
+        message: "Marcá al menos una operación (venta, alquiler o temporal).",
+      });
+    }
+    // (2) Si hay precio, tiene que haber moneda — solo se mira en las
+    // operaciones MARCADAS: en las apagadas el transform de abajo manda los dos
+    // campos a null y lo que haya quedado escrito no importa.
+    for (const op of OPERATIONS) {
+      if (!data[op.flag]) continue;
+      if (data[op.price] != null && data[op.currency] == null) {
+        ctx.addIssue({
+          code: "custom",
+          path: [op.currency],
+          message: "Elegí la moneda del precio.",
+        });
+      }
+    }
+  })
+  // (3) Normalización del par precio/moneda, en DOS reglas:
+  //
+  //   a. Operación apagada → precio y moneda en null. Lo exige la base (CHECK
+  //      properties_<op>_operation) y evita mandar un precio de alquiler
+  //      colgado de una propiedad que solo está en venta porque el agente lo
+  //      tipeó y después desmarcó la casilla.
+  //
+  //   b. Operación marcada SIN precio ("a convenir") → la moneda también va en
+  //      null. Los botones de moneda siempre tienen una preseleccionada, así
+  //      que sin esto se enviaría una moneda sin precio.
+  //      La BARRERA de ese par inconsistente es la BASE, no esta línea: los
+  //      CHECK properties_sale_price, properties_rent_price y
+  //      properties_temp_rent_price rechazan las dos direcciones (moneda sin
+  //      precio y precio sin moneda). Esto normaliza ANTES de enviar para que el
+  //      agente no se coma un error de la base por algo que la interfaz resuelve
+  //      sola: es conveniencia, y por eso se conserva.
+  .transform((data) => {
+    const pair = (on: boolean, price: number | null, currency: "USD" | "ARS" | null) =>
+      on && price != null
+        ? { price, currency }
+        : { price: on ? price : null, currency: null };
+
+    const sale = pair(data.for_sale, data.sale_price, data.sale_currency);
+    const rent = pair(data.for_rent, data.rent_price, data.rent_currency);
+    const temp = pair(
+      data.for_temp_rent,
+      data.temp_rent_price,
+      data.temp_rent_currency
+    );
+
+    return {
+      ...data,
+      sale_price: sale.price,
+      sale_currency: sale.currency,
+      rent_price: rent.price,
+      rent_currency: rent.currency,
+      temp_rent_price: temp.price,
+      temp_rent_currency: temp.currency,
+    };
+  });
 
 type FormValues = z.infer<typeof schema>;
 
@@ -153,6 +257,142 @@ function Field({
   );
 }
 
+// ─── Una operación: casilla + (si está marcada) precio y moneda ───
+//
+// ⚠ Todo pasa por Controller, NO por watch(). El único warning de lint del repo
+// era exactamente un watch() de este archivo (react-hooks/incompatible-library:
+// el React Compiler no puede memoizar el watch() de react-hook-form y renuncia
+// a memoizar el componente entero). Triplicar el par precio/moneda con watch()
+// habría triplicado el warning; con Controller cada campo lee su propio valor
+// del render prop y no hace falta ninguna suscripción global.
+
+type OperationFlagName = (typeof OPERATIONS)[number]["flag"];
+type OperationPriceName = (typeof OPERATIONS)[number]["price"];
+type OperationCurrencyName = (typeof OPERATIONS)[number]["currency"];
+
+function OperationField({
+  control,
+  flagName,
+  priceName,
+  currencyName,
+  label,
+  priceError,
+  currencyError,
+}: {
+  control: Control<FormValues>;
+  flagName: OperationFlagName;
+  priceName: OperationPriceName;
+  currencyName: OperationCurrencyName;
+  label: string;
+  priceError?: string;
+  currencyError?: string;
+}) {
+  return (
+    <Controller
+      name={flagName}
+      control={control}
+      render={({ field: flagField }) => (
+        <div
+          className={cn(
+            "rounded-md border transition-colors",
+            flagField.value ? "border-stone bg-white p-4" : "border-transparent"
+          )}
+        >
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id={flagName}
+              checked={flagField.value}
+              onCheckedChange={(v) => flagField.onChange(v === true)}
+              className="data-[state=checked]:bg-terracota data-[state=checked]:border-terracota"
+            />
+            <Label
+              htmlFor={flagName}
+              className="font-sans text-sm text-black cursor-pointer"
+            >
+              {label}
+            </Label>
+          </div>
+
+          {flagField.value && (
+            <Controller
+              name={priceName}
+              control={control}
+              render={({ field: priceField }) => {
+                // Vacío = "a convenir". El valor puede llegar como string (lo
+                // que tipea el agente) o como number (el default de edición),
+                // así que se normaliza para preguntar.
+                const noPrice =
+                  priceField.value == null ||
+                  String(priceField.value).trim() === "";
+
+                return (
+                  <div className="mt-4 space-y-3">
+                    <FieldRow>
+                      <Field label={`Precio (${label.toLowerCase()})`} error={priceError}>
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          value={priceField.value ?? ""}
+                          onChange={(e) => priceField.onChange(e.target.value)}
+                          onBlur={priceField.onBlur}
+                          placeholder="Dejalo vacío si es a convenir"
+                          className={cn(FIELD, priceError && FIELD_ERR)}
+                        />
+                      </Field>
+
+                      <Field label="Moneda" error={currencyError}>
+                        <Controller
+                          name={currencyName}
+                          control={control}
+                          render={({ field: currencyFieldProps }) => (
+                            <div className="flex h-10 rounded-md border border-stone overflow-hidden">
+                              {(["USD", "ARS"] as const).map((c) => (
+                                <button
+                                  key={c}
+                                  type="button"
+                                  onClick={() => currencyFieldProps.onChange(c)}
+                                  className={cn(
+                                    "flex-1 font-sans text-sm font-medium transition-colors",
+                                    currencyFieldProps.value === c
+                                      ? "bg-terracota text-paper"
+                                      : "bg-white text-graphite hover:bg-mist"
+                                  )}
+                                >
+                                  {c}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        />
+                      </Field>
+                    </FieldRow>
+
+                    {/* Consecuencia de dejar el precio vacío. Va VISIBLE y no
+                        como letra chica: es información que la agencia necesita
+                        para decidir, no un detalle. */}
+                    {noPrice && (
+                      <div className="rounded-md border border-stone bg-terracota-subtle px-3 py-2">
+                        <p className="font-sans text-xs text-graphite">
+                          Sin precio se publica como{" "}
+                          <span className="font-medium text-black">
+                            &ldquo;A convenir&rdquo;
+                          </span>
+                          . Tené en cuenta que la propiedad no va a aparecer
+                          cuando alguien filtre por precio.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                );
+              }}
+            />
+          )}
+        </div>
+      )}
+    />
+  );
+}
+
 // ─── Componente principal ─────────────────────────────────────
 
 export function PropertyForm({
@@ -214,11 +454,19 @@ export function PropertyForm({
           title: initialData.title,
           description: initialData.description ?? "",
           property_type: initialData.property_type,
-          operation_type: initialData.operation_type,
           status: initialData.status,
-          price: initialData.price,
-          currency: initialData.currency,
-          price_negotiable: initialData.price_negotiable,
+          for_sale: initialData.for_sale,
+          sale_price: initialData.sale_price,
+          // La moneda cae en "USD" si la operación no tiene precio cargado: es
+          // solo el valor preseleccionado de los botones. Si la operación queda
+          // apagada, el transform del schema la manda a null igual.
+          sale_currency: initialData.sale_currency ?? "USD",
+          for_rent: initialData.for_rent,
+          rent_price: initialData.rent_price,
+          rent_currency: initialData.rent_currency ?? "USD",
+          for_temp_rent: initialData.for_temp_rent,
+          temp_rent_price: initialData.temp_rent_price,
+          temp_rent_currency: initialData.temp_rent_currency ?? "USD",
           area_total_m2: initialData.area_total_m2,
           area_covered_m2: initialData.area_covered_m2,
           bedrooms: initialData.bedrooms,
@@ -237,10 +485,17 @@ export function PropertyForm({
         }
       : {
           property_type: "casa",
-          operation_type: "venta",
           status: "active",
-          currency: "USD",
-          price_negotiable: false,
+          // Venta marcada por defecto (era el default del select de operación).
+          for_sale: true,
+          sale_price: null,
+          sale_currency: "USD",
+          for_rent: false,
+          rent_price: null,
+          rent_currency: "USD",
+          for_temp_rent: false,
+          temp_rent_price: null,
+          temp_rent_currency: "USD",
           bedrooms: 0,
           bathrooms: 0,
           parking_spots: 0,
@@ -266,7 +521,6 @@ export function PropertyForm({
     defaultValues,
   });
 
-  const currency = watch("currency");
   const selectedAmenities = (watch("amenities") ?? []) as string[];
   const lat = watch("lat");
   const lng = watch("lng");
@@ -337,10 +591,15 @@ export function PropertyForm({
         title: data.title,
         description: data.description ?? null,
         property_type: data.property_type,
-        operation_type: data.operation_type,
-        price: data.price,
-        currency: data.currency,
-        price_negotiable: data.price_negotiable,
+        for_sale: data.for_sale,
+        sale_price: data.sale_price,
+        sale_currency: data.sale_currency,
+        for_rent: data.for_rent,
+        rent_price: data.rent_price,
+        rent_currency: data.rent_currency,
+        for_temp_rent: data.for_temp_rent,
+        temp_rent_price: data.temp_rent_price,
+        temp_rent_currency: data.temp_rent_currency,
         area_total_m2: data.area_total_m2 ?? null,
         area_covered_m2: data.area_covered_m2 ?? null,
         bedrooms: data.bedrooms,
@@ -370,10 +629,15 @@ export function PropertyForm({
         description: data.description ?? null,
         status: data.status ?? initialData!.status,
         property_type: data.property_type,
-        operation_type: data.operation_type,
-        price: data.price,
-        currency: data.currency,
-        price_negotiable: data.price_negotiable,
+        for_sale: data.for_sale,
+        sale_price: data.sale_price,
+        sale_currency: data.sale_currency,
+        for_rent: data.for_rent,
+        rent_price: data.rent_price,
+        rent_currency: data.rent_currency,
+        for_temp_rent: data.for_temp_rent,
+        temp_rent_price: data.temp_rent_price,
+        temp_rent_currency: data.temp_rent_currency,
         area_total_m2: data.area_total_m2 ?? null,
         area_covered_m2: data.area_covered_m2 ?? null,
         bedrooms: data.bedrooms,
@@ -451,24 +715,6 @@ export function PropertyForm({
             />
           </Field>
 
-          <Field label="Tipo de operación" error={errors.operation_type?.message}>
-            <Controller
-              name="operation_type"
-              control={control}
-              render={({ field }) => (
-                <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger className={cn(FIELD, "w-full", errors.operation_type && FIELD_ERR)}>
-                    <SelectValue placeholder="Seleccioná" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="venta">Venta</SelectItem>
-                    <SelectItem value="alquiler">Alquiler</SelectItem>
-                    <SelectItem value="alquiler_temporal">Alquiler temporal</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
-            />
-          </Field>
         </FieldRow>
 
         {/* Estado — solo en modo edit */}
@@ -520,60 +766,38 @@ export function PropertyForm({
         )}
       </Section>
 
-      {/* ── Precio ── */}
-      <Section title="Precio">
-        <FieldRow>
-          <Field label="Precio" error={errors.price?.message}>
-            <Input
-              {...register("price")}
-              type="text"
-              inputMode="numeric"
-              placeholder={currency === "USD" ? "250000" : "15000000"}
-              className={cn(FIELD, errors.price && FIELD_ERR)}
+      {/* ── Operaciones y precios ── */}
+      {/* Una propiedad puede ofrecerse en VARIAS operaciones a la vez (la misma
+          casa en venta y en alquiler). Por eso son tres casillas independientes
+          y no un selector: antes había que elegir una o cargar la propiedad dos
+          veces, lo que duplicaba el conteo del plan y ensuciaba el mapa. */}
+      <Section title="Operaciones y precios">
+        <p className="font-sans text-xs text-graphite">
+          Marcá todas las operaciones en las que ofrecés la propiedad. Cada una
+          lleva su propio precio.
+        </p>
+
+        <div className="space-y-4">
+          {OPERATIONS.map((op) => (
+            <OperationField
+              key={op.flag}
+              control={control}
+              flagName={op.flag}
+              priceName={op.price}
+              currencyName={op.currency}
+              label={op.label}
+              currencyError={errors[op.currency]?.message}
+              priceError={errors[op.price]?.message}
             />
-          </Field>
-
-          <Field label="Moneda">
-            <div className="flex h-10 rounded-md border border-stone overflow-hidden">
-              {(["USD", "ARS"] as const).map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setValue("currency", c)}
-                  className={cn(
-                    "flex-1 font-sans text-sm font-medium transition-colors",
-                    currency === c
-                      ? "bg-terracota text-paper"
-                      : "bg-white text-graphite hover:bg-mist"
-                  )}
-                >
-                  {c}
-                </button>
-              ))}
-            </div>
-          </Field>
-        </FieldRow>
-
-        <div className="flex items-center gap-2">
-          <Controller
-            name="price_negotiable"
-            control={control}
-            render={({ field }) => (
-              <Checkbox
-                id="price_negotiable"
-                checked={field.value}
-                onCheckedChange={field.onChange}
-                className="data-[state=checked]:bg-terracota data-[state=checked]:border-terracota"
-              />
-            )}
-          />
-          <Label
-            htmlFor="price_negotiable"
-            className="font-sans text-sm text-black cursor-pointer"
-          >
-            Precio negociable
-          </Label>
+          ))}
         </div>
+
+        {/* Error de "al menos una operación" (colgado de for_sale en el schema) */}
+        {errors.for_sale?.message && (
+          <p className="font-sans text-xs text-error">
+            {errors.for_sale.message}
+          </p>
+        )}
       </Section>
 
       {/* ── Superficie y ambientes ── */}
