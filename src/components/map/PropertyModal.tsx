@@ -19,6 +19,7 @@ import {
   PROPERTY_TYPE_LABELS,
   OPERATION_TYPE_LABELS,
   AMENITY_LABELS,
+  RENT_REQUIREMENT_LABELS,
 } from "@/lib/utils/labels";
 import { cn } from "@/lib/utils";
 import type { Property, PropertyImage, Amenity } from "@/types";
@@ -370,6 +371,51 @@ function ModalContent({
             })}
           </div>
         )}
+
+        {/* Requisitos para alquilar.
+            Solo si la propiedad se ofrece en alquiler Y cargó algún requisito:
+            una propiedad solo en venta no tiene por qué mostrar la sección, y
+            una en alquiler sin requisitos cargados tampoco (un encabezado sobre
+            nada no informa). Lleva encabezado propio porque, a diferencia de los
+            amenities, no se entiende qué son sin decirlo. */}
+        {(property.for_rent || property.for_temp_rent) &&
+          (property.rent_requirements.length > 0 ||
+            property.rent_requirements_other.length > 0) && (
+            <div className="space-y-2 pt-1">
+              <p className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite">
+                Requisitos para alquilar
+              </p>
+
+              {/* UNA sola grilla de chips: primero los de la lista cerrada,
+                  después los libres, con el mismo tratamiento.
+                  Los libres se mostraban como texto corrido con una hairline al
+                  costado, cuando eran UN texto que podía ser una frase entera.
+                  Ahora que son ítems cortos y contables (hasta 5), esa
+                  diferencia visual dejó de tener sentido: distinguir dos cosas
+                  que el visitante lee igual solo agrega ruido.
+                  SIN ícono, a diferencia de los amenities: allá cada ícono es
+                  distinto y por eso informa, acá sería el mismo repetido en cada
+                  chip, o sea decoración (DESIGN §1). */}
+              <div className="flex flex-wrap gap-1.5">
+                {property.rent_requirements.map((r) => (
+                  <span
+                    key={r}
+                    className="inline-flex items-center font-sans text-[11px] font-semibold uppercase tracking-wide text-graphite bg-mist rounded-sm px-2 py-1"
+                  >
+                    {RENT_REQUIREMENT_LABELS[r]}
+                  </span>
+                ))}
+                {property.rent_requirements_other.map((r, i) => (
+                  <span
+                    key={`other-${i}`}
+                    className="inline-flex items-center font-sans text-[11px] font-semibold uppercase tracking-wide text-graphite bg-mist rounded-sm px-2 py-1"
+                  >
+                    {r}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
       </div>
 
       {/* Flujo WhatsApp — fijo en la parte inferior */}

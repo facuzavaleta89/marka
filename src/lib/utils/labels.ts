@@ -5,6 +5,7 @@ import type {
   OperationType,
   PropertyStatus,
   Amenity,
+  RentRequirement,
   Currency,
   ApprovalStatus,
   GeocodeStatus,
@@ -51,6 +52,19 @@ export const AMENITY_LABELS: Record<Amenity, string> = {
   vista_al_mar: "Vista al mar",
   apto_credito: "Apto crédito",
   apto_profesional: "Apto profesional",
+};
+
+// Requisitos para alquilar. Tipado como Record<RentRequirement, string> igual
+// que AMENITY_LABELS: agregar un requisito al tipo sin darle etiqueta acá NO
+// compila. El orden de las claves es el que ve el agente en el formulario.
+export const RENT_REQUIREMENT_LABELS: Record<RentRequirement, string> = {
+  recibo_de_sueldo: "Recibo de sueldo",
+  garantia_propietaria: "Garantía propietaria",
+  seguro_de_caucion: "Seguro de caución",
+  dni: "DNI",
+  comprobante_ingresos_monotributo: "Comprobante de ingresos o monotributo",
+  deposito: "Depósito",
+  mes_adelantado: "Mes adelantado",
 };
 
 export const CURRENCY_LABELS: Record<Currency, string> = {
