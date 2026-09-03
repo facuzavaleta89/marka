@@ -1,148 +1,155 @@
-# Requisitos libres: de un texto único a una lista
+# Documentación del grupo de trabajo del modelo de la propiedad
 
-Trabajo completo. **6 archivos modificados**, ninguno creado. El baseline no se movió:
-**0 errores de TypeScript, 0 errores de lint con 1 warning, build verde con 19 rutas.**
+Hecho. **Dos archivos modificados: `CLAUDE.md` y `PENDIENTES.md`.** Ni una línea de `src/` ni
+del archivo de migración (verificado: `git status` lista solo esos dos). No se ejecutó ningún
+comando de git ni ningún SQL de escritura.
 
-Todo lo que este prompt afirma sobre la base resultó cierto, verificado con MCP antes de
-escribir una línea. No se ejecutó ningún comando de git ni ningún SQL de escritura.
+Todo se escribió **midiendo**, no desde el prompt: abrí los archivos, leí la base con MCP, y
+donde el prompt y la medición diferían, gana la medición (§4).
 
 ---
 
-## 1. Archivos modificados
+## 1. CLAUDE.md
 
-| Archivo | Qué cambió |
+### Secciones agregadas
+
+- **`### Operaciones, precios y requisitos de la propiedad`** (dentro de "Convenciones de
+  Dominio"), que **reemplaza a la vieja `### Precios`** de dos líneas. Es la pieza central, con
+  seis sub-bloques: el modelo de tres pares simétricos (con la tabla de columnas), qué significa
+  precio en NULL, la regla de qué precio se muestra, el filtro público, los requisitos de
+  alquiler, y **las tres trampas medidas**.
+
+### Secciones modificadas
+
+| Dónde | Qué cambió |
 |---|---|
-| `src/types/index.ts` | `rent_requirements_other` pasa de `string \| null` a `string[]`, con el porqué del cambio de modelo. Y los dos topes (`RENT_REQUIREMENTS_OTHER_MAX = 5`, `RENT_REQUIREMENT_OTHER_MAX_LEN = 300`) como constantes exportadas — ver §7. |
-| `src/components/properties/PropertyForm.tsx` | Zod (array en vez de string), transform (el vacío ahora es `[]`), defaults de alta y edición, los dos payloads, y el subcomponente nuevo `RentRequirementsOtherField` con agregar / quitar / Enter / tope. |
-| `src/app/(agent)/dashboard/propiedades/actions.ts` | `normalizeRentRequirementsOther` pasa a normalizar por elemento; `resolveRentRequirements` devuelve `[]` en vez de `null` cuando no hay alquiler. |
-| `src/app/(agent)/dashboard/propiedades/nueva/page.tsx` | El tipo de la precarga (`string[]`). La consulta no cambió. |
-| `src/components/map/PropertyModal.tsx` | Los libres pasan a chips, en la misma grilla que los de la lista cerrada. |
-| `supabase/migrations/20240101000000_initial_schema.sql` | La columna con su tipo nuevo y sus tres CHECK (el viejo `_len` eliminado), la función `jsonb_is_short_string_array` y el comentario del porqué. |
+| **Estado** (cabecera) | Se sumó "Fase de modelo de la propiedad CERRADA (3 sep 2026)" con las tres piezas. |
+| **Estructura de Carpetas** | Entrada nueva para `propertyOperations.ts`; descripciones actualizadas de `formatPrice.ts`, `PropertyMarker.tsx`, `PropertyModal.tsx`, `FilterPanel.tsx`, `ClusterLayer.tsx`, `PropertyCard.tsx`, `PropertyForm.tsx` y `types/`. |
+| **ESLint** | Además de corregir el dato falso (abajo), se agregó la regla operativa: **la regla señala una sola `watch()`, la primera del componente**, así que los campos nuevos van con `Controller` — es lo que hicieron las tres tandas y por eso el warning no se multiplicó. |
+| **Mapa — performance** | El "diff por ids" ahora remite a la trampa 2; y se documentó que el SELECT del hook es una **lista explícita** casteada por `unknown` (una columna que falte llega `undefined` sin que el compilador avise), y que los requisitos **no** están ahí a propósito. |
+| **Base de Datos — fila `properties`** | Los tres pares de operación y las dos columnas JSONB de requisitos. |
+| **Base de Datos — Funciones y RPC** | `jsonb_is_short_string_array` con el porqué (un CHECK no admite subconsultas); la advertencia de que `increment_views` **no se llama**; y el **event trigger `ensure_rls`**, que no estaba documentado en ningún lado. |
+| **Amenities** (referencia rápida) | Marcado que no tiene barrera de dominio en ninguna capa. |
+| **Decisiones de Arquitectura** | Nueve filas nuevas: los dos modelos descartados, moneda por operación, temporal como operación propia, precio opcional, exclusión del filtro de rango, rango habilitado con una sola operación, la regla en una función pura, la validación en tres capas y los libres en columna aparte. |
 
-`src/lib/utils/labels.ts` aparece como modificado en `git status`, pero es del trabajo anterior
-sin commitear: en este turno no se tocó.
+### Corregido por estar diciendo algo falso
 
----
-
-## 2. El Enter que agrega sin enviar el formulario
-
-El input vive dentro de un `<form>`, y en HTML un Enter en un campo de texto dispara el submit
-implícito. Sin prevenirlo, el agente que escribe un requisito y aprieta Enter **publicaría la
-propiedad**.
-
-```tsx
-onKeyDown={(e) => {
-  if (e.key !== "Enter") return;
-  e.preventDefault();
-  add();
-}}
-```
-
-`preventDefault()` sobre el evento de teclado cancela la acción por defecto del navegador —el
-submit implícito— antes de que ocurra, y recién después se agrega el requisito. El botón
-"Agregar" es `type="button"` (no `submit`), así que tampoco envía nada al hacer click.
+1. **La hoja de ruta listaba las tres piezas como pendientes.** Pasaron a "Ya aplicado"; el
+   "Pendiente" quedó solo con registro de visitantes y página por propiedad.
+2. **`src/types/supabase.ts` no existe.** Verificado (`ls src/types/` devuelve solo
+   `index.ts`). Se corrigieron **las dos** menciones: el árbol de carpetas y el comando
+   `supabase gen types typescript --local > src/types/supabase.ts` en "Comandos Útiles", que se
+   eliminó y se reemplazó por una nota que explica por qué el proyecto no usa tipos generados.
+3. **El baseline decía `PropertyForm.tsx:269` (`watch("currency")`)** en dos lugares (cabecera
+   y sección ESLint). Medido: hoy es **`PropertyForm.tsx:808` (`watch("amenities")`)** — la
+   llamada anterior desapareció con el campo de moneda. Ver §3.
 
 ---
 
-## 3. El helper de normalización server-side
+## 2. PENDIENTES.md
 
-En `src/app/(agent)/dashboard/propiedades/actions.ts`. El parámetro entra como `unknown`, igual
-que el de la lista cerrada: si lo tipara como `string[]`, el tipo se borraría al compilar y la
-función parecería validar sin validar.
+### Cerrado
 
-```ts
-// Requisitos libres escritos por el agente. Es una LISTA (antes era un texto
-// único), así que se normaliza elemento por elemento con el mismo criterio que
-// la lista cerrada de arriba: descartar lo que no sea string, trim, recorte a
-// RENT_REQUIREMENT_OTHER_MAX_LEN, descartar los vacíos, deduplicar exacto y
-// cortar en RENT_REQUIREMENTS_OTHER_MAX.
-//
-// Los tres topes replican los CHECK de la base
-// (properties_rent_requirements_other_is_array / _max / _items): acá se recorta
-// en vez de rechazar, para que un payload raro no le explote en la cara al
-// agente por algo que la interfaz ya impide.
-function normalizeRentRequirementsOther(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  const out: string[] = [];
-  for (const item of value) {
-    if (typeof item !== "string") continue;
-    const trimmed = item.trim().slice(0, RENT_REQUIREMENT_OTHER_MAX_LEN);
-    if (trimmed === "") continue;
-    if (out.includes(trimmed)) continue; // sin duplicados exactos
-    out.push(trimmed);
-    if (out.length === RENT_REQUIREMENTS_OTHER_MAX) break;
-  }
-  return out;
-}
-```
+- **B1 · Precio opcional**, **B2 · Requisitos para alquiler** y **B3 · Venta y alquiler a la
+  vez**, cada uno con el nivel de detalle que el archivo ya usa: qué se decidió, qué se
+  descartó y por qué. Incluye las cinco decisiones que el pedido nombraba (los dos modelos
+  alternativos descartados y sus motivos concretos, el temporal como operación simétrica, la
+  eliminación de `price_negotiable`, la validación en tres capas, y el estado único), más tres
+  que salieron de la implementación y no estaban anotadas:
+  - **B1 no se llama "Consultar" sino "A convenir"**, y el precio terminó siendo por
+    **operación**, no por propiedad: al hacerse B3 en el mismo grupo, no hizo falta un flag.
+  - **B2 decía "mismo patrón que `amenities`" y eso es justamente lo que NO se hizo** en la
+    validación. Quedó explícito para que nadie lo lea como un incumplimiento.
+  - El texto libre de B2 **empezó siendo una columna TEXT y terminó siendo una lista**, y su
+    CHECK necesitó una función porque PostgreSQL rechaza subconsultas dentro de un CHECK.
+- Entrada compacta en **"Cerrados recientemente"** que apunta al bloque, siguiendo la
+  convención del archivo.
 
-Y la regla de "sin alquiler no viajan" se adaptó al array sin cambiar el mecanismo:
+### Abierto (cuatro ítems nuevos, todos verificados antes de escribirlos)
 
-```ts
-if (!data.for_rent && !data.for_temp_rent) {
-  return { rent_requirements: [], rent_requirements_other: [] };
-}
-```
+1. **`increment_views` existe pero nunca se llama.** Medido: la función está; `sum(views_count)`
+   da **0** sobre 17 filas; la búsqueda en `src/` no devuelve una sola llamada. La métrica de
+   visitas del panel muestra ceros. Anotado además que **el comentario del modal apunta al lugar
+   equivocado** (dice que falta implementarla en el schema, cuando lo que falta es el `rpc`).
+   Marcado como chico y de buen retorno, con el argumento de septiembre: un panel que dice "0
+   visitas" con propiedades publicadas se lee como que el producto no funciona.
+2. **El event trigger `ensure_rls` no está documentado.** Con su consecuencia práctica: una
+   tabla nueva nace con RLS activada y sin policies, o sea invisible hasta que se le escriban.
+3. **`amenities` sin barrera de dominio en ninguna capa**, con las tres verificadas y con el
+   molde a copiar (el de los requisitos) ya identificado.
+4. **El texto libre se guarda sin escapar**, por qué hoy no es riesgo, y por qué hay que
+   revisarlo en C2 — con la regla a sostener: escapar en el punto de salida, no en el de entrada.
 
-**Probado ejecutando el helper real:**
+### Corregido
 
-| entrada | salida |
-|---|---|
-| `["  garante con propiedad  ", "no se aceptan mascotas"]` | `["garante con propiedad","no se aceptan mascotas"]` |
-| `["garante","garante","   ","","garante "]` | `["garante"]` |
-| `[42, null, {a:1}, ["x"], true, "valido"]` | `["valido"]` |
-| `["a","b","c","d","e","f","g"]` | `["a","b","c","d","e"]` |
-| `"garante"` (no es array) | `[]` |
-| `null` | `[]` |
-| un elemento de 500 caracteres | recortado a 300 |
+- El **baseline** de "Deuda técnica" repetía `PropertyForm.tsx:269`.
+- El **calendario** decía "13 propiedades, 7 consultas"; medido hoy: **17 propiedades, 8
+  consultas** (9 agencias y 9 agentes se mantienen). Agregué que 3 son de doble operación y 5
+  tienen alguna operación sin precio, para que se sepa que son datos fabricados de prueba.
+- **"Multi-agente no tiene millaje real"** decía "las 11 agencias"; son **9**. La sustancia del
+  ítem sigue siendo cierta (re-medido: 0 agencias con más de un agente).
+- **D3 (filtros mobile)** proponía chips de operación; se le agregó que **desde B3 ese filtro es
+  de selección múltiple**, así que los chips tienen que ser interruptores independientes y no
+  una tira excluyente. Es una restricción real para quien lo haga.
 
-Y el transform del schema, con el resolver real: al desmarcar las dos operaciones de alquiler,
-`rent_requirements_other` queda en `[]`; con 6 elementos o con uno de 301 caracteres, error de
-zod.
+El resto del archivo se revisó y se dejó como estaba: D2, C1/C2/C3, las deudas de geocoding,
+Storage, FKs de `agent_id`, `past_due`, vencimiento sin efecto automático y el resto de
+"Decisiones de producto abiertas" siguen vigentes tal cual.
 
 ---
 
-## 4. El texto escrito que el agente no llegó a agregar
+## 3. Afirmaciones falsas encontradas, más allá de las dos que el pedido nombraba
 
-**No se guarda.** El borrador vive en un `useState` local del campo, no en el formulario: lo
-único que se persiste es lo que está en la lista. Es también el motivo por el que el campo es
-un componente propio y no un render prop del `Controller` (los render props se ejecutan durante
-el render del padre y no pueden tener hooks).
+| # | Dónde | Decía | Es |
+|---|---|---|---|
+| 1 | `CLAUDE.md` cabecera **y** sección ESLint **y** `PENDIENTES.md` Deuda técnica (tres lugares) | warning en `PropertyForm.tsx:269` por `watch("currency")` | `PropertyForm.tsx:808` por `watch("amenities")`. La llamada anterior **ya no existe** |
+| 2 | `PENDIENTES.md` calendario | 13 propiedades, 7 consultas | 17 propiedades, 8 consultas |
+| 3 | `PENDIENTES.md` multi-agente | "las 11 agencias de la base" | 9 |
+| 4 | `src/components/map/PropertyModal.tsx` (**NO lo toqué**) | *"Pendiente de implementar en el schema"* junto a `views_count` | La función **ya está en el schema**; lo que falta es la llamada. Quedó como ítem nuevo de PENDIENTES |
 
-La interfaz lo dice **de forma permanente**, en una línea fija debajo del input:
+El punto 4 es un comentario de código, y el pedido decía explícitamente no tocar `src/`. Lo
+reporto y lo dejé anotado en PENDIENTES.md en vez de corregirlo.
 
-> Escribí uno y tocá Agregar (o Enter). Lo que quede en el casillero sin agregar no se guarda.
+---
 
-Va siempre visible y no solo cuando hay texto pendiente: si apareciera recién al escribir, el
-agente ya estaría por apretar guardar cuando lo lee. Esa misma línea es la que cede el lugar a
-los tres motivos por los que no se puede agregar, uno por vez y en el orden en que se los
-encuentra:
+## 4. Lo que el prompt afirma y la medición ajustó
 
-1. **Tope alcanzado** — input y botón deshabilitados: *"Llegaste al máximo de 5 requisitos
-   libres. Quitá uno para agregar otro."*
-2. **Más de 300 caracteres** — borde de error en el input y *"Máximo 300 caracteres por
-   requisito (llevás N)."*
-3. **Duplicado exacto** — *"Ese requisito ya está en la lista."*
+Nada resultó falso, pero **dos cosas quedaron más precisas de lo que el prompt las describe**, y
+escribí lo medido:
 
-Y el resto del comportamiento pedido: trim antes de agregar; si queda vacío no se agrega y **no
-pasa nada** (no es un error que haya que gritar); al agregar, el input se vacía y queda listo
-para el siguiente; la lista va **arriba** del input, porque es el resultado de la acción y
-verla crecer es la confirmación de que se agregó; cada ítem tiene su botón de quitar con
-`aria-label` que nombra el requisito.
+- **El prompt dice "una función `rls_auto_enable`... un event trigger de Supabase".** Medido: la
+  **función** se llama `rls_auto_enable()` pero el **event trigger** se llama **`ensure_rls`**.
+  Documenté los dos nombres, porque quien vaya a buscar el trigger por el nombre de la función
+  no lo encuentra. Además: dispara en `ddl_command_end`, solo para `CREATE TABLE` /
+  `CREATE TABLE AS` / `SELECT INTO`, restringido al esquema `public`, y **falla en silencio**
+  (loguea y sigue) si no puede habilitar RLS.
+- **El prompt describe los CHECK de precio como que dejaban entrar "filas con media pareja".**
+  Confirmado, y con las dos direcciones: moneda sin precio **y** precio sin moneda. Lo escribí
+  así porque el segundo caso es el menos obvio de los dos.
+
+Todo lo demás se verificó y coincide: las cuatro columnas viejas ya no existen en la base; la
+función pura es `getDisplayOperationPrice` en `src/lib/utils/propertyOperations.ts`; el
+mecanismo del cluster es un efecto aparte con clave `filters.operation_types.join(",")` que usa
+`setMarkerPrice` para markers en el DOM y `setIcon` para los clusterizados; el `preventDefault()`
+del Enter está en el campo de requisitos libres; los topes son 5 y 300; `amenities` no valida en
+ninguna de las tres capas; y `views_count` es 0 en las 17 filas.
+
+**Una cosa que no pude verificar y por eso no la escribí como hecho:** el pedido dice que la
+métrica de visitas "muestra ceros" en el panel. Verifiqué que **el dato es 0** y que
+`/dashboard` lo suma y lo muestra, pero no abrí la pantalla en un navegador. Lo escribí como
+consecuencia de lo medido, no como observación visual.
 
 ---
 
 ## 5. Comandos de calidad
 
 ### `npx tsc --noEmit`
-
 ```
 (sin salida)
 TSC EXIT: 0
 ```
 
 ### `npm run lint`
-
 ```
 /home/facuzavaleta89/dev/marka/src/components/properties/PropertyForm.tsx:808:30
 > 808 |   const selectedAmenities = (watch("amenities") ?? []) as string[];
@@ -158,10 +165,7 @@ LINT EXIT: 0
 ```
 
 ### `npx next build`
-
 ```
-✓ Generating static pages using 3 workers (19/19)
-
 Route (app)
 ┌ ○ /                                    ├ ƒ /dashboard/leads
 ├ ○ /_not-found                          ├ ƒ /dashboard/perfil
@@ -180,91 +184,13 @@ BUILD EXIT: 0
 
 ### Contra el baseline
 
-| Medición | Baseline | Ahora | |
+| Medición | Baseline conocido | Ahora | |
 |---|---|---|---|
-| `tsc --noEmit` | 0 errores, exit 0 | 0 errores, exit 0 | igual |
-| `npm run lint` | 0 errores, 1 warning, exit 0 | 0 errores, **1 warning**, exit 0 | igual |
-| `next build` | verde, 19 rutas, exit 0 | verde, **19 rutas**, exit 0 | igual |
+| `tsc --noEmit` | 0 errores, exit 0 | 0 errores, exit 0 | sin cambios |
+| `npm run lint` | 0 errores, 1 warning, exit 0 | 0 errores, 1 warning, exit 0 | sin cambios |
+| `next build` | verde, 19 rutas, exit 0 | verde, 19 rutas, exit 0 | sin cambios |
 
-El warning es el mismo de siempre: misma regla, mismo archivo y **la misma llamada**
-(`watch("amenities")`, preexistente); solo cambió de número de línea. **No se agregó ninguna
-llamada nueva a `watch()`**: el campo nuevo lee su valor por `Controller` y el borrador va en
-`useState` local.
-
----
-
-## 6. Verificación contra la base
-
-Todo medido con MCP **antes** de escribir, no copiado de este prompt.
-
-**La columna:** `information_schema.columns` devuelve `rent_requirements_other` como
-`jsonb`, `is_nullable = NO`, `column_default = '[]'::jsonb`.
-
-**Los tres CHECK**, leídos con `pg_get_constraintdef` y comparados por programa contra lo que
-quedó escrito en el archivo (normalizando espacios):
-
-```
-properties_rent_requirements_other_is_array: IDENTICO
-properties_rent_requirements_other_max:      IDENTICO
-properties_rent_requirements_other_items:    IDENTICO
-properties_rent_requirements_is_array:       IDENTICO   (el de la lista cerrada, sin cambios)
-```
-
-El viejo `properties_rent_requirements_other_len` **ya no existe en la base** y quedó eliminado
-del archivo (verificado: cero menciones en `src/` y en `supabase/`).
-
-**La función:** leída con `pg_get_functiondef` y transcrita textual. Es `LANGUAGE sql`,
-`IMMUTABLE`, no `STRICT`, no `SECURITY DEFINER`. El cuerpo del archivo coincide carácter por
-carácter con el de la base.
-
-**Comportamiento de los tres CHECK, medido caso por caso:**
-
-| valor | is_array | max_5 | items_ok |
-|---|---|---|---|
-| `[]` | ✓ | ✓ | ✓ |
-| `["garante","sin mascotas"]` | ✓ | ✓ | ✓ |
-| 5 elementos | ✓ | ✓ | ✓ |
-| 6 elementos | ✓ | **✗** | ✓ |
-| `["garante",""]` | ✓ | ✓ | **✗** |
-| `["garante",42]` | ✓ | ✓ | **✗** |
-| `["garante",{"a":1}]` | ✓ | ✓ | **✗** |
-| un elemento de 301 chars | ✓ | ✓ | **✗** |
-| un elemento de 300 chars | ✓ | ✓ | ✓ |
-
-Todo lo que produce el normalizador pasa los tres.
-
-**El INSERT de ejemplo** usaba la columna como texto (`'Garante con propiedad en la ciudad'`);
-quedó actualizado a un array de dos elementos.
-
----
-
-## 7. Notas
-
-**Nada de lo que afirma este prompt resultó falso, y ninguna decisión resultó imposible.** Las
-siete se implementaron tal como estaban descritas.
-
-Cuatro cosas que decidí yo y conviene que sepas:
-
-- **Los dos topes viven en `src/types/index.ts`, no en cada archivo.** Los apliqué primero
-  duplicados (una copia en el formulario y otra en la action) y quedaban dos fuentes de verdad
-  para el mismo número, contra la convención del proyecto. No se pueden importar desde
-  `actions.ts` —es un archivo `"use server"` y no exporta constantes planas—, así que los subí
-  a `types/index.ts`, que es donde ya viven `PLANS` y `DEFAULT_FILTERS` y lo importan tanto el
-  cliente como el servidor. Ahora cada número está definido **una sola vez**.
-
-- **El duplicado exacto muestra un mensaje** ("Ese requisito ya está en la lista"). La decisión
-  3 solo pedía no agregarlo; un no-op silencio con el texto todavía en el casillero se lee como
-  que la app está rota.
-
-- **La función lanza una excepción, no devuelve `false`, si el jsonb no es un array** (un
-  escalar como `'"texto"'` da `cannot extract elements from a scalar`, SQLSTATE 22023). La fila
-  se rechaza igual —y el constraint `_other_is_array` cubre ese caso—, pero el error que se ve
-  no es una violación de constraint limpia. Desde la aplicación no es alcanzable: la action
-  siempre manda un array. Quedó anotado en el comentario de la función.
-
-- **El texto libre se guarda tal cual lo escribe el agente**, incluido algo como
-  `<script>alert(1)</script>`: el normalizador no lo escapa ni lo rechaza, porque es texto y
-  recortarlo sería adivinar. No es un riesgo: el modal lo renderiza como hijo de texto de un
-  `<span>` y React escapa eso por defecto (no hay `dangerouslySetInnerHTML` en ese camino).
-
-No se tocaron `CLAUDE.md` ni `PENDIENTES.md`.
+**Nada se movió**, como correspondía a un cambio que solo toca archivos `.md`. **No hay
+regresión que reportar.** El único matiz es el que ya está en §3: el warning está en la línea
+808 y no en la 269 que decía la documentación — pero eso no es un movimiento de este trabajo,
+es la documentación que estaba desactualizada, y quedó corregida en los tres lugares.
