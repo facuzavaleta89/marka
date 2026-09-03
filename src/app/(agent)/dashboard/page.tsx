@@ -7,12 +7,13 @@ import { AgencyApprovalNotice } from "@/components/dashboard/AgencyApprovalNotic
 import { getLatestRejectionNote } from "@/lib/utils/getLatestRejectionNote";
 import { getPublishBlock } from "@/lib/utils/getPublishBlock";
 import { formatPrice } from "@/lib/utils/formatPrice";
+import { getActiveOperations } from "@/lib/utils/propertyOperations";
 import { getPlanUsage } from "@/lib/utils/getPlanUsage";
 import {
   PROPERTY_TYPE_LABELS,
   PROPERTY_STATUS_LABELS,
 } from "@/lib/utils/labels";
-import type { Currency, PropertyStatus, PropertyType } from "@/types";
+import type { PropertyStatus, PropertyType } from "@/types";
 import Link from "next/link"
 
 const STATUS_COLOR: Record<PropertyStatus, string> = {
@@ -73,7 +74,9 @@ export default async function DashboardPage() {
 
     supabase
       .from("properties")
-      .select("id, title, property_type, price, currency, status")
+      .select(
+        "id, title, property_type, for_sale, sale_price, sale_currency, for_rent, rent_price, rent_currency, for_temp_rent, temp_rent_price, temp_rent_currency, status"
+      )
       .eq(scope.col, scope.val)
       .order("created_at", { ascending: false })
       .limit(3),
@@ -209,9 +212,19 @@ export default async function DashboardPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="font-sans text-sm font-medium text-black">
-                        {formatPrice(p.price, p.currency as Currency)}
-                      </span>
+                      {/* Un precio por operación activa. Sin filtro de por medio
+                          no hay una operación que priorizar, así que se muestran
+                          todas (igual que en el listado de Propiedades). */}
+                      <div className="space-y-0.5">
+                        {getActiveOperations(p).map((o) => (
+                          <p
+                            key={o.operation}
+                            className="font-sans text-sm font-medium text-black"
+                          >
+                            {formatPrice(o.price, o.currency)}
+                          </p>
+                        ))}
+                      </div>
                     </td>
                     <td className="px-6 py-4">
                       <span

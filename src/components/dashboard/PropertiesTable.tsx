@@ -43,7 +43,12 @@ import {
   markAsRentedAction,
   deletePropertyAction,
 } from "@/app/(agent)/dashboard/propiedades/actions";
+import { getActiveOperations } from "@/lib/utils/propertyOperations";
 import type { Property, PropertyImage, PropertyStatus } from "@/types";
+
+// Operaciones activas de una fila, en orden de prioridad. Alias local para no
+// repetir el import largo en cada celda.
+const operationsOf = getActiveOperations;
 
 // ─── Tipos ───────────────────────────────────────────────────
 
@@ -51,7 +56,19 @@ type CoverImage = Pick<PropertyImage, "url" | "is_cover" | "sort_order">;
 
 export type PropertyRow = Pick<
   Property,
-  "id" | "title" | "property_type" | "operation_type" | "price" | "currency" | "status"
+  | "id"
+  | "title"
+  | "property_type"
+  | "for_sale"
+  | "sale_price"
+  | "sale_currency"
+  | "for_rent"
+  | "rent_price"
+  | "rent_currency"
+  | "for_temp_rent"
+  | "temp_rent_price"
+  | "temp_rent_currency"
+  | "status"
 > & {
   images: CoverImage[] | null;
   // Nombre del agente dueño. Solo se usa en la vista de admin de agencia
@@ -249,18 +266,29 @@ export function PropertiesTable({
                     </span>
                   </td>
 
-                  {/* Operación */}
+                  {/* Operación — todas las activas ("Venta · Alquiler") */}
                   <td className="px-4 py-3 whitespace-nowrap">
                     <span className="font-sans text-sm text-graphite">
-                      {OPERATION_TYPE_LABELS[p.operation_type]}
+                      {operationsOf(p)
+                        .map((o) => OPERATION_TYPE_LABELS[o.operation])
+                        .join(" · ")}
                     </span>
                   </td>
 
-                  {/* Precio */}
+                  {/* Precio — uno por operación. Es la vista de la agencia
+                      sobre su propia carga: acá no hay filtro que priorice una
+                      operación, así que se muestran todos los precios. */}
                   <td className="px-4 py-3 whitespace-nowrap">
-                    <span className="font-sans text-sm font-medium text-black">
-                      {formatPrice(p.price, p.currency)}
-                    </span>
+                    <div className="space-y-0.5">
+                      {operationsOf(p).map((o) => (
+                        <p
+                          key={o.operation}
+                          className="font-sans text-sm font-medium text-black"
+                        >
+                          {formatPrice(o.price, o.currency)}
+                        </p>
+                      ))}
+                    </div>
                   </td>
 
                   {/* Estado */}
@@ -309,12 +337,24 @@ export function PropertiesTable({
                     {p.title}
                   </p>
                   <p className="font-sans text-xs text-graphite mt-0.5">
-                    {PROPERTY_TYPE_LABELS[p.property_type]}{" "}
-                    · {OPERATION_TYPE_LABELS[p.operation_type]}
+                    {PROPERTY_TYPE_LABELS[p.property_type]}
+                    {operationsOf(p).map((o) => (
+                      <span key={o.operation}>
+                        {" · "}
+                        {OPERATION_TYPE_LABELS[o.operation]}
+                      </span>
+                    ))}
                   </p>
-                  <p className="font-sans text-sm font-medium text-black mt-1">
-                    {formatPrice(p.price, p.currency)}
-                  </p>
+                  <div className="mt-1 space-y-0.5">
+                    {operationsOf(p).map((o) => (
+                      <p
+                        key={o.operation}
+                        className="font-sans text-sm font-medium text-black"
+                      >
+                        {formatPrice(o.price, o.currency)}
+                      </p>
+                    ))}
+                  </div>
                 </div>
                 <div className="shrink-0">
                   <ActionMenu
@@ -430,10 +470,11 @@ function ActionMenu({
   ) => void;
   onDeleteRequest: (id: string, title: string) => void;
 }) {
-  const isVenta = property.operation_type === "venta";
-  const isAlquiler =
-    property.operation_type === "alquiler" ||
-    property.operation_type === "alquiler_temporal";
+  // Una propiedad puede estar en venta Y en alquiler a la vez, así que puede
+  // ofrecer las dos opciones de cierre. El STATUS sigue siendo uno solo: cerrar
+  // cualquiera de las operaciones cierra la ficha entera.
+  const isVenta = property.for_sale;
+  const isAlquiler = property.for_rent || property.for_temp_rent;
   const canToggle =
     property.status === "active" || property.status === "paused";
 

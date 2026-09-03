@@ -294,12 +294,33 @@ export interface Property {
 
   // Tipo
   property_type: PropertyType;
-  operation_type: OperationType;
 
-  // Precio
-  price: number;
-  currency: Currency;
-  price_negotiable: boolean;
+  // ─── Operaciones y precios ───
+  // Una propiedad puede ofrecerse en VARIAS operaciones a la vez (la misma casa
+  // en venta y en alquiler, el dueño toma lo que aparezca primero). Antes había
+  // una sola operación con un solo precio (operation_type/price/currency), y ese
+  // caso real no se podía representar sin cargar la propiedad dos veces.
+  //
+  // ⚠ Al menos una de las tres tiene que estar en true: lo garantiza el CHECK
+  // properties_at_least_one_operation de la base, no este tipo.
+  //
+  // ⚠ PRECIO EN NULL CON LA OPERACIÓN ACTIVA = "A convenir". NO es un dato
+  // faltante ni un error: es una elección de la agencia (publicar el precio en
+  // un mapa revela la tasación por m² de la zona, que es información
+  // competitiva). La interfaz lo muestra como "A convenir" — nunca como vacío,
+  // cero ni "sin datos". Precio y moneda viajan siempre juntos: o los dos en
+  // null, o los dos con valor (CHECK properties_<op>_price).
+  for_sale: boolean;
+  sale_price: number | null;
+  sale_currency: Currency | null;
+
+  for_rent: boolean;
+  rent_price: number | null;
+  rent_currency: Currency | null;
+
+  for_temp_rent: boolean;
+  temp_rent_price: number | null;
+  temp_rent_currency: Currency | null;
 
   // Superficie
   area_total_m2: number | null;
@@ -363,8 +384,17 @@ export interface Lead {
 // ─── Filtros del mapa ─────────────────────────────────────────
 
 export interface MapFilters {
-  operation_type: OperationType | null;
+  // Selección MÚLTIPLE (igual que property_types): el visitante puede marcar
+  // Venta y Alquiler a la vez y ver las propiedades que tengan cualquiera de
+  // las dos. Vacío = sin filtrar por operación.
+  operation_types: OperationType[];
   property_types: PropertyType[];
+  // ⚠ El rango de precio SOLO se aplica cuando hay EXACTAMENTE UNA operación
+  // marcada: un precio de venta y uno de alquiler no viven en la misma escala,
+  // así que filtrar las dos con un único rango devolvería un resultado que
+  // parece filtrado y no lo está. Con cero o con dos o más operaciones, la UI
+  // deshabilita el rango y limpia estos valores (no pueden quedar aplicándose
+  // de forma invisible).
   price_min: number | null;
   price_max: number | null;
   currency: Currency;
@@ -377,7 +407,7 @@ export interface MapFilters {
 }
 
 export const DEFAULT_FILTERS: MapFilters = {
-  operation_type: null,
+  operation_types: [],
   property_types: [],
   price_min: null,
   price_max: null,

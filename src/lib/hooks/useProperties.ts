@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useMapFilters } from "@/store/mapFiltersStore";
+import { OPERATION_COLUMNS } from "@/lib/utils/propertyOperations";
 import type { MapBounds, Property } from "@/types";
 
 // agencyId opcional: cuando viene (vista white-label /[slug]), restringe el mapa
@@ -34,10 +35,15 @@ export function useProperties(
       // para no ocultar propiedades sin foto.
       // Nota: debe ser un único string literal (no concatenado) para que
       // Supabase infiera correctamente el tipo de retorno.
+      //
+      // ⚠ LISTA EXPLÍCITA, NO "*": las NUEVE columnas de operación/precio
+      // (for_*/[op]_price/[op]_currency) tienen que estar todas. El resultado se
+      // castea por unknown a Property[] (abajo), así que una que falte llega
+      // como undefined y el pin imprime "NaN" sin que el compilador diga nada.
       let query = supabase
         .from("properties")
         .select(
-          `id, title, slug, description, status, property_type, operation_type, price, currency, is_featured, lat, lng, address, neighborhood, city, bedrooms, bathrooms, parking_spots, area_covered_m2, amenities, year_built, agent_id, agency_id, city_id, images:property_images(url, is_cover, sort_order), agent:agents(full_name, phone_wa, avatar_url)`
+          `id, title, slug, description, status, property_type, for_sale, sale_price, sale_currency, for_rent, rent_price, rent_currency, for_temp_rent, temp_rent_price, temp_rent_currency, is_featured, lat, lng, address, neighborhood, city, bedrooms, bathrooms, parking_spots, area_covered_m2, amenities, year_built, agent_id, agency_id, city_id, images:property_images(url, is_cover, sort_order), agent:agents(full_name, phone_wa, avatar_url)`
         )
         .eq("city_id", cityId)
         .eq("status", "active");
@@ -48,20 +54,41 @@ export function useProperties(
       }
 
       // Filtros opcionales — solo se aplican si tienen valor
-      if (filters.operation_type) {
-        query = query.eq("operation_type", filters.operation_type);
+
+      // Operación: selección MÚLTIPLE. Una propiedad matchea si tiene activa
+      // CUALQUIERA de las marcadas (OR entre los flags), y el .or() se combina
+      // con AND contra el resto de los filtros.
+      if (filters.operation_types.length > 0) {
+        const anyOperation = filters.operation_types
+          .map((op) => `${OPERATION_COLUMNS[op].flag}.eq.true`)
+          .join(",");
+        query = query.or(anyOperation);
       }
       if (filters.property_types.length > 0) {
         query = query.in("property_type", filters.property_types);
       }
-      if (filters.price_min != null || filters.price_max != null) {
+      // Rango de precio: SOLO con exactamente una operación marcada. Con cero o
+      // con varias no se aplica, porque no hay una sola columna de precio contra
+      // la cual comparar y un rango de venta no significa nada sobre un alquiler.
+      // La UI deshabilita el rango y limpia los valores en ese caso; esta guarda
+      // es la que garantiza que un valor que igual quede en el store no se
+      // aplique contra la columna equivocada.
+      //
+      // Las propiedades sin precio ("a convenir") quedan FUERA de este filtro, y
+      // es deliberado: la columna es NULL, y tanto el .eq de moneda como el gte/
+      // lte comparan contra NULL y no matchean. No hay que compensarlo.
+      if (
+        filters.operation_types.length === 1 &&
+        (filters.price_min != null || filters.price_max != null)
+      ) {
+        const cols = OPERATION_COLUMNS[filters.operation_types[0]];
         // El filtro de precio solo tiene sentido dentro de la misma moneda
-        query = query.eq("currency", filters.currency);
+        query = query.eq(cols.currency, filters.currency);
         if (filters.price_min != null) {
-          query = query.gte("price", filters.price_min);
+          query = query.gte(cols.price, filters.price_min);
         }
         if (filters.price_max != null) {
-          query = query.lte("price", filters.price_max);
+          query = query.lte(cols.price, filters.price_max);
         }
       }
       if (filters.area_min != null) {

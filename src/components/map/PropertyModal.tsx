@@ -14,6 +14,7 @@ import { useMapFilters } from "@/store/mapFiltersStore";
 import { useFavorites } from "@/lib/hooks/useFavorites";
 import { generateWaUrl } from "@/lib/utils/waMessage";
 import { formatPrice } from "@/lib/utils/formatPrice";
+import { getActiveOperations } from "@/lib/utils/propertyOperations";
 import {
   PROPERTY_TYPE_LABELS,
   OPERATION_TYPE_LABELS,
@@ -185,6 +186,9 @@ function ModalContent({
   const images = (property.images ?? []).sort(
     (a, b) => a.sort_order - b.sort_order
   );
+  // Operaciones activas en orden de prioridad (venta → alquiler → temporal).
+  // Alimentan el kicker y el bloque de precios.
+  const operations = getActiveOperations(property);
 
   const agent = property.agent as
     | { full_name: string; phone_wa: string }
@@ -258,11 +262,15 @@ function ModalContent({
 
       {/* Cuerpo scrolleable */}
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-        {/* Tipo + operación */}
+        {/* Tipo + TODAS las operaciones activas ("Casa · Venta · Alquiler") */}
         <p className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite">
           {PROPERTY_TYPE_LABELS[property.property_type]}
-          {" · "}
-          {OPERATION_TYPE_LABELS[property.operation_type]}
+          {operations.map((o) => (
+            <span key={o.operation}>
+              {" · "}
+              {OPERATION_TYPE_LABELS[o.operation]}
+            </span>
+          ))}
           {property.is_featured && (
             <span className="ml-2 text-terracota">★ Destacada</span>
           )}
@@ -273,15 +281,27 @@ function ModalContent({
           {property.title}
         </h2>
 
-        {/* Precio */}
-        <p className="font-serif text-3xl font-bold text-terracota">
-          {formatPrice(property.price, property.currency)}
-          {property.price_negotiable && (
-            <span className="font-sans text-sm font-normal text-graphite ml-2">
-              · Negociable
-            </span>
-          )}
-        </p>
+        {/* Precios — el modal es el ÚNICO lugar que muestra las operaciones con
+            sus precios completos (el pin y la card muestran uno solo). El par
+            operación-precio es una unidad repetible: una línea por operación
+            activa. La etiqueta solo aparece cuando hay más de una — con una
+            sola, el bloque queda idéntico al de antes de que una propiedad
+            pudiera tener varias. El precio sigue siendo el elemento dominante
+            (DESIGN §5: Noto Serif 32px bold terracota). */}
+        <div className="space-y-2.5">
+          {operations.map((o) => (
+            <div key={o.operation}>
+              {operations.length > 1 && (
+                <p className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite">
+                  {OPERATION_TYPE_LABELS[o.operation]}
+                </p>
+              )}
+              <p className="font-serif text-3xl font-bold text-terracota">
+                {formatPrice(o.price, o.currency)}
+              </p>
+            </div>
+          ))}
+        </div>
 
         {/* Ubicación */}
         <div className="flex items-start gap-1.5 text-graphite">

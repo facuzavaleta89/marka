@@ -256,13 +256,109 @@ CREATE TABLE properties (
   -- Tipo
   property_type    TEXT NOT NULL
                    CHECK (property_type IN ('casa','departamento','terreno','local','oficina','campo','cochera')),
-  operation_type   TEXT NOT NULL
-                   CHECK (operation_type IN ('venta','alquiler','alquiler_temporal')),
 
-  -- Precio
-  price            NUMERIC(15,2) NOT NULL,
-  currency         TEXT NOT NULL DEFAULT 'USD' CHECK (currency IN ('USD','ARS')),
+  -- ── COLUMNAS OBSOLETAS (3 sep 2026) ────────────────────────────────────
+  -- Una propiedad tenía UNA operación y UN precio. Eso no permitía representar
+  -- un caso real y frecuente del rubro: la misma casa ofrecida EN VENTA Y EN
+  -- ALQUILER a la vez. La agencia tenía que elegir una operación o cargar la
+  -- propiedad dos veces, lo que duplicaba el conteo del plan y ensuciaba el
+  -- mapa. Las reemplazan las nueve columnas de abajo.
+  --
+  -- ⚠ SIGUEN EXISTIENDO EN LA BASE (medido), pero pasaron a ser NULLABLE y
+  -- NINGÚN código las lee ni las escribe. Se borran en una migración posterior.
+  -- Los datos ya se migraron: cada propiedad tiene activada la operación que
+  -- tenía acá, con su precio y su moneda copiados.
+  operation_type   TEXT
+                   CHECK (operation_type IN ('venta','alquiler','alquiler_temporal')),
+  price            NUMERIC(15,2),
+  currency         TEXT DEFAULT 'USD' CHECK (currency IN ('USD','ARS')),
+  -- price_negotiable: OBSOLETA Y PENDIENTE DE ELIMINACIÓN. Ya se eliminó del
+  -- modelo, del formulario y de la interfaz (producía un sufijo "· Negociable"
+  -- en el modal). Se solapaba con el precio a convenir, que es una señal más
+  -- fuerte y más clara. La columna sobrevive solo hasta la migración de borrado.
   price_negotiable BOOLEAN DEFAULT false,
+
+  -- ── OPERACIONES Y PRECIOS (3 sep 2026, YA MIGRADO por ALTER) ───────────
+  -- Una propiedad puede ofrecerse en VARIAS operaciones a la vez, cada una con
+  -- su propio precio: el dueño acepta lo que aparezca primero.
+  --
+  -- ⚠ PRECIO EN NULL CON LA OPERACIÓN ACTIVA = "A CONVENIR". No es un dato
+  -- faltante ni un error: es una elección de la agencia. Publicar el precio en
+  -- un mapa revela la tasación por m² de la zona, que es información
+  -- competitiva, y muchas inmobiliarias no publican por eso. Cuando el precio
+  -- era obligatorio, esas propiedades directamente no se cargaban.
+  --
+  -- Los CHECK de abajo imponen tres reglas, y las tres están medidas contra la
+  -- base:
+  --   1. properties_at_least_one_operation → al menos una operación activa.
+  --   2. properties_<op>_operation  → operación apagada ⇒ su precio y su moneda
+  --      son NULL (no queda un precio de alquiler colgado de algo que solo se
+  --      vende).
+  --   3. properties_<op>_price      → o precio y moneda son ambos NULL, o el
+  --      precio es > 0 y la moneda es 'USD'/'ARS'. Precio y moneda viajan
+  --      SIEMPRE juntos: no existe uno sin el otro (ver la nota de abajo).
+  for_sale           BOOLEAN NOT NULL DEFAULT false,
+  sale_price         NUMERIC(15,2),
+  sale_currency      TEXT,
+  for_rent           BOOLEAN NOT NULL DEFAULT false,
+  rent_price         NUMERIC(15,2),
+  rent_currency      TEXT,
+  for_temp_rent      BOOLEAN NOT NULL DEFAULT false,
+  temp_rent_price    NUMERIC(15,2),
+  temp_rent_currency TEXT,
+
+  CONSTRAINT properties_at_least_one_operation
+    CHECK (for_sale OR for_rent OR for_temp_rent),
+
+  -- ⚠ LOS TRES properties_<op>_price COMPARAN CONTRA "IS NOT NULL" EN LAS DOS
+  -- RAMAS, Y NO ES REDUNDANTE: es lo único que cierra la trampa de la lógica de
+  -- tres valores de PostgreSQL. Un CHECK rechaza la fila solo si su expresión da
+  -- FALSE; si da NULL, se considera SATISFECHO.
+  --
+  -- La versión anterior era "(precio IS NULL AND moneda IS NULL) OR (precio > 0
+  -- AND moneda IN (...))". Con un solo lado cargado —(NULL, 'USD') o (250000,
+  -- NULL)— la primera rama daba FALSE y la segunda NULL (cualquier comparación
+  -- contra NULL da NULL), o sea (FALSE OR NULL) = NULL: el par inconsistente
+  -- entraba EN SILENCIO. Medido contra la base, las dos versiones lado a lado:
+  --
+  --   par                          vieja    nueva
+  --   (NULL,   NULL)                true     true    ← "a convenir", válido
+  --   (NULL,   'USD')               NULL     false   ← entraba; ahora se rechaza
+  --   (250000, NULL)                NULL     false   ← entraba; ahora se rechaza
+  --   (250000, 'USD')               true     true
+  --   (0,      'USD')               false    false
+  --
+  -- Con el IS NOT NULL explícito la segunda rama nunca puede dar NULL, así que
+  -- la expresión completa siempre es TRUE o FALSE y el CHECK decide de verdad.
+  -- QUIEN SAQUE ESOS "IS NOT NULL" POR PARECER REDUNDANTES REABRE EL AGUJERO,
+  -- y no se va a notar: no falla nada, solo entran filas con media pareja.
+  --
+  -- Transcritos exactamente como los devuelve pg_get_constraintdef (forma
+  -- normalizada de PostgreSQL), solo con saltos de línea agregados.
+
+  CONSTRAINT properties_sale_operation
+    CHECK (for_sale OR (sale_price IS NULL AND sale_currency IS NULL)),
+  CONSTRAINT properties_sale_price
+    CHECK ((((sale_price IS NULL) AND (sale_currency IS NULL))
+            OR ((sale_price IS NOT NULL) AND (sale_price > (0)::numeric)
+                AND (sale_currency IS NOT NULL)
+                AND (sale_currency = ANY (ARRAY['USD'::text, 'ARS'::text]))))),
+
+  CONSTRAINT properties_rent_operation
+    CHECK (for_rent OR (rent_price IS NULL AND rent_currency IS NULL)),
+  CONSTRAINT properties_rent_price
+    CHECK ((((rent_price IS NULL) AND (rent_currency IS NULL))
+            OR ((rent_price IS NOT NULL) AND (rent_price > (0)::numeric)
+                AND (rent_currency IS NOT NULL)
+                AND (rent_currency = ANY (ARRAY['USD'::text, 'ARS'::text]))))),
+
+  CONSTRAINT properties_temp_rent_operation
+    CHECK (for_temp_rent OR (temp_rent_price IS NULL AND temp_rent_currency IS NULL)),
+  CONSTRAINT properties_temp_rent_price
+    CHECK ((((temp_rent_price IS NULL) AND (temp_rent_currency IS NULL))
+            OR ((temp_rent_price IS NOT NULL) AND (temp_rent_price > (0)::numeric)
+                AND (temp_rent_currency IS NOT NULL)
+                AND (temp_rent_currency = ANY (ARRAY['USD'::text, 'ARS'::text]))))),
 
   -- Superficie
   area_total_m2    NUMERIC(10,2),
@@ -626,11 +722,26 @@ CREATE INDEX idx_properties_city_status
   ON properties(city_id, status);
 
 -- Filtros del mapa
+-- ⚠ Estos dos son de las columnas OBSOLETAS (operation_type / price) y se van
+-- con ellas en la migración de borrado. Los reemplazan los tres parciales de
+-- abajo.
 CREATE INDEX idx_properties_type_op
   ON properties(property_type, operation_type);
 
 CREATE INDEX idx_properties_price
   ON properties(price);
+
+-- Un índice PARCIAL por operación (3 sep 2026, YA MIGRADO por ALTER): indexa
+-- solo las filas que ofrecen esa operación, que es exactamente lo que el mapa
+-- consulta (ciudad + la operación filtrada, con rango de precio opcional).
+CREATE INDEX idx_properties_for_sale
+  ON properties(city_id, sale_price) WHERE for_sale;
+
+CREATE INDEX idx_properties_for_rent
+  ON properties(city_id, rent_price) WHERE for_rent;
+
+CREATE INDEX idx_properties_for_temp_rent
+  ON properties(city_id, temp_rent_price) WHERE for_temp_rent;
 
 CREATE INDEX idx_properties_agent
   ON properties(agent_id);
@@ -925,8 +1036,14 @@ VALUES (
 );
 
 -- 5. Propiedad
+-- Esta casa está en venta Y en alquiler a la vez: cada operación lleva su
+-- propio precio. Para publicarla "a convenir" en alguna de las dos, se dejan
+-- NULL su precio y su moneda (las dos juntas), manteniendo el flag en true.
 INSERT INTO properties (agent_id, agency_id, city_id, title, slug,
-  property_type, operation_type, price, currency, area_covered_m2,
+  property_type,
+  for_sale, sale_price, sale_currency,
+  for_rent, rent_price, rent_currency,
+  area_covered_m2,
   bedrooms, bathrooms, address, neighborhood, city, lat, lng)
 VALUES (
   'TU-UUID-DE-AUTH-AQUI',
@@ -934,8 +1051,10 @@ VALUES (
   (SELECT id FROM cities WHERE slug = 'santiago-del-estero'),
   'Casa 3 ambientes en el centro',
   'casa-3-amb-centro-001',
-  'casa', 'venta',
-  85000, 'USD', 120, 3, 2,
+  'casa',
+  true, 85000, 'USD',
+  true, 350000, 'ARS',
+  120, 3, 2,
   'Av. Belgrano 1234', 'Centro', 'Santiago del Estero',
   -27.7951, -64.2615
 );

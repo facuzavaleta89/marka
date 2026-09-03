@@ -16,8 +16,10 @@ export default async function PropiedadesPage() {
   // nombre del agente de cada propiedad para la columna "Agente".
   const isAgencyAdmin = agent.role === "admin";
 
+  // Las NUEVE columnas de operación/precio: la tabla muestra todas las
+  // operaciones activas con su precio (o "A convenir" si no tiene).
   const baseSelect =
-    "id, title, property_type, operation_type, price, currency, status, images:property_images(url, is_cover, sort_order)";
+    "id, title, property_type, for_sale, sale_price, sale_currency, for_rent, rent_price, rent_currency, for_temp_rent, temp_rent_price, temp_rent_currency, status, images:property_images(url, is_cover, sort_order)";
   const adminSelect = `${baseSelect}, agent:agents(full_name)`;
 
   const propertiesQuery = isAgencyAdmin
@@ -51,9 +53,15 @@ export default async function PropiedadesPage() {
       id: p.id,
       title: p.title,
       property_type: p.property_type,
-      operation_type: p.operation_type,
-      price: p.price,
-      currency: p.currency,
+      for_sale: p.for_sale,
+      sale_price: p.sale_price,
+      sale_currency: p.sale_currency,
+      for_rent: p.for_rent,
+      rent_price: p.rent_price,
+      rent_currency: p.rent_currency,
+      for_temp_rent: p.for_temp_rent,
+      temp_rent_price: p.temp_rent_price,
+      temp_rent_currency: p.temp_rent_currency,
       status: p.status,
       images: p.images,
       agent_name: agentName,

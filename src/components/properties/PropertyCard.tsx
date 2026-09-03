@@ -4,11 +4,15 @@ import { Heart, MapPin, Bed, Bath, Square, ImageOff } from "lucide-react";
 import { useFavorites } from "@/lib/hooks/useFavorites";
 import { formatPrice } from "@/lib/utils/formatPrice";
 import {
+  getActiveOperations,
+  getDisplayOperationPrice,
+} from "@/lib/utils/propertyOperations";
+import {
   PROPERTY_TYPE_LABELS,
   OPERATION_TYPE_LABELS,
 } from "@/lib/utils/labels";
 import { cn } from "@/lib/utils";
-import type { Property } from "@/types";
+import type { OperationType, Property } from "@/types";
 
 // Subconjunto que la card necesita. Tipado explícito (no `Property` completo)
 // para que sea reutilizable desde cualquier fuente que provea estos campos
@@ -18,9 +22,15 @@ export type PropertyCardData = Pick<
   | "id"
   | "title"
   | "property_type"
-  | "operation_type"
-  | "price"
-  | "currency"
+  | "for_sale"
+  | "sale_price"
+  | "sale_currency"
+  | "for_rent"
+  | "rent_price"
+  | "rent_currency"
+  | "for_temp_rent"
+  | "temp_rent_price"
+  | "temp_rent_currency"
   | "is_featured"
   | "neighborhood"
   | "city"
@@ -34,12 +44,20 @@ interface PropertyCardProps {
   property: PropertyCardData;
   /** Qué hace el click en la card (ej: abrir el PropertyModal de esa propiedad) */
   onSelect: () => void;
+  /**
+   * Operaciones marcadas en el filtro del mapa. Deciden CUÁL de los precios se
+   * muestra cuando la propiedad tiene varias operaciones (misma regla que el pin
+   * del mapa: ver getDisplayOperationPrice). Se recibe por prop en vez de leer el
+   * store acá para que la card siga siendo reutilizable desde cualquier fuente.
+   */
+  filteredOperations?: OperationType[];
   className?: string;
 }
 
 export function PropertyCard({
   property,
   onSelect,
+  filteredOperations,
   className,
 }: PropertyCardProps) {
   const { isFavorite, toggleFavorite } = useFavorites();
@@ -50,6 +68,11 @@ export function PropertyCard({
   const location = [property.neighborhood, property.city]
     .filter(Boolean)
     .join(", ");
+
+  // Todas las operaciones para el kicker; una sola (la que corresponda al
+  // filtro) para el precio, que es lo único que entra en la card.
+  const operations = getActiveOperations(property);
+  const displayPrice = getDisplayOperationPrice(property, filteredOperations);
 
   const hasMetrics =
     property.bedrooms > 0 ||
@@ -117,11 +140,15 @@ export function PropertyCard({
 
       {/* ── Cuerpo ── */}
       <div className="p-4">
-        {/* Kicker: tipo · operación */}
+        {/* Kicker: tipo · todas las operaciones activas ("Casa · Venta · Alquiler") */}
         <p className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite">
           {PROPERTY_TYPE_LABELS[property.property_type]}
-          {" · "}
-          {OPERATION_TYPE_LABELS[property.operation_type]}
+          {operations.map((o) => (
+            <span key={o.operation}>
+              {" · "}
+              {OPERATION_TYPE_LABELS[o.operation]}
+            </span>
+          ))}
         </p>
 
         {/* Título */}
@@ -131,7 +158,7 @@ export function PropertyCard({
 
         {/* Precio */}
         <p className="mt-1.5 font-serif text-xl font-bold text-terracota">
-          {formatPrice(property.price, property.currency)}
+          {formatPrice(displayPrice?.price ?? null, displayPrice?.currency ?? null)}
         </p>
 
         {/* Ubicación */}
