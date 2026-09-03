@@ -20,11 +20,11 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 
 **Distribución:** web responsive + PWA instalable. No hay app nativa ni stores.
 
-**Estado:** Deployado en Vercel, **sin datos reales todavía** (lo cargado es de prueba; el lanzamiento con inmobiliarias fundadoras se apunta a octubre). MVP + multi-agente completos. **Fase White-label cerrada** en lo esencial: Sub-pieza A (ruta `/[slug]` + mapa filtrado + gate de plan), B1 (subir logo) y B2a (mostrar logo + nombre + "powered by Marka." en el header) hechas y probadas. **B2b (variante admin en `disabled`) y C (slug editable) quedan EN PAUSA**. **Fase de modelo de agencias CERRADA** (ago 2026): solo-agencias, matrícula + aprobación manual, bloqueo de publicación en la base, sesión unificada. Ver "Aprobación de agencias" abajo. **Fase de cobrabilidad CERRADA** (31 ago – 1 sep 2026): la visibilidad pública ahora depende de que la agencia esté al día (ver "Visibilidad pública de las propiedades") y el panel `/admin` dejó de ser de una sola vía —cancelar solicitud, vencimiento, baja/reactivación, eliminación y cambio de plan (ver "Panel de plataforma")—. **Ese era el bloqueante para poder cobrar y ya no lo es.**
+**Estado:** Deployado en Vercel, **sin datos reales todavía** (lo cargado es de prueba; el lanzamiento con inmobiliarias fundadoras se apunta a octubre). MVP + multi-agente completos. **Fase White-label cerrada** en lo esencial: Sub-pieza A (ruta `/[slug]` + mapa filtrado + gate de plan), B1 (subir logo) y B2a (mostrar logo + nombre + "powered by Marka." en el header) hechas y probadas. **B2b (variante admin en `disabled`) y C (slug editable) quedan EN PAUSA**. **Fase de modelo de agencias CERRADA** (ago 2026): solo-agencias, matrícula + aprobación manual, bloqueo de publicación en la base, sesión unificada. Ver "Aprobación de agencias" abajo. **Fase de cobrabilidad CERRADA** (31 ago – 1 sep 2026): la visibilidad pública ahora depende de que la agencia esté al día (ver "Visibilidad pública de las propiedades") y el panel `/admin` dejó de ser de una sola vía —cancelar solicitud, vencimiento, baja/reactivación, eliminación y cambio de plan (ver "Panel de plataforma")—. **Ese era el bloqueante para poder cobrar y ya no lo es.** **Fase de modelo de la propiedad CERRADA** (3 sep 2026): una propiedad puede ofrecerse en **varias operaciones a la vez** con precio y moneda propios por operación, el **precio es opcional** ("a convenir") y las propiedades en alquiler llevan **requisitos para el inquilino**. Ver "Operaciones, precios y requisitos de la propiedad".
 
-**Baseline de calidad medido (no documentado de memoria; última medición: 1 sep 2026):** `npx tsc --noEmit` 0 errores (exit 0), `npm run lint` **0 errores y 1 warning** (`PropertyForm.tsx:269`, exit 0), `npx next build` verde (exit 0) con **19 rutas**. Cualquier error nuevo, un warning distinto del único conocido, o una ruta que aparezca sin motivo, es una regresión. Ver "ESLint".
+**Baseline de calidad medido (no documentado de memoria; última medición: 3 sep 2026):** `npx tsc --noEmit` 0 errores (exit 0), `npm run lint` **0 errores y 1 warning** (`PropertyForm.tsx:808`, exit 0), `npx next build` verde (exit 0) con **19 rutas**. Cualquier error nuevo, un warning distinto del único conocido, o una ruta que aparezca sin motivo, es una regresión. Ver "ESLint".
 
-> **⚠️ Hoja de ruta de modelo (tras validación con el rubro y el colegio de corredores).** **Ya aplicado:** los particulares se eliminaron (la app es solo-agencias); las agencias requieren **número de matrícula + aprobación manual** del dueño de la plataforma (ver "Aprobación de agencias"); y el formulario de propiedad tiene el **atajo de sugerencia de ubicación desde la dirección** (ver "Ubicación de la propiedad"), que era el ítem D1 de la hoja de ruta; y **el mapa público ya filtra por agencia habilitada** (era el bloqueante para cobrar: ver "Visibilidad pública de las propiedades"). **Pendiente:** precio opcional en las propiedades ("Consultar"/"a convenir") y requisitos de alquiler; **una propiedad en venta y alquiler a la vez**; registro opcional de visitantes; página y link por propiedad. Ver PENDIENTES.md → "Nueva fase".
+> **⚠️ Hoja de ruta de modelo (tras validación con el rubro y el colegio de corredores).** **Ya aplicado:** los particulares se eliminaron (la app es solo-agencias); las agencias requieren **número de matrícula + aprobación manual** del dueño de la plataforma (ver "Aprobación de agencias"); y el formulario de propiedad tiene el **atajo de sugerencia de ubicación desde la dirección** (ver "Ubicación de la propiedad"), que era el ítem D1 de la hoja de ruta; y **el mapa público ya filtra por agencia habilitada** (era el bloqueante para cobrar: ver "Visibilidad pública de las propiedades"); y **una propiedad puede estar en venta y en alquiler a la vez**, con **precio opcional** ("a convenir") y **requisitos de alquiler** (ver "Operaciones, precios y requisitos de la propiedad"). **Pendiente:** registro opcional de visitantes; página y link por propiedad. Ver PENDIENTES.md → "Nueva fase".
 
 ---
 
@@ -210,20 +210,28 @@ En el cambio de plan el campo viene **precargado** con el valor vigente, justame
 │   │   │   └── AuthLayout.tsx           ← Shell split-screen de login/register
 │   │   ├── map/
 │   │   │   ├── MapView.tsx              ← Raíz del mapa (client, ssr:false)
-│   │   │   ├── PropertyMarker.tsx       ← Pin terracota + estados (CSS sobre DivIcon)
-│   │   │   ├── PropertyModal.tsx        ← Drawer/sheet + flujo WA + carrusel
-│   │   │   ├── FilterPanel.tsx          ← Filtros (checkboxes shadcn, commit on-blur)
+│   │   │   ├── PropertyMarker.tsx       ← Pin terracota + estados (CSS sobre DivIcon). El precio del pin
+│   │   │   │                              depende del filtro de operación → createPropertyIcon lo recibe
+│   │   │   ├── PropertyModal.tsx        ← Drawer/sheet + flujo WA + carrusel. Único lugar que muestra
+│   │   │   │                              TODAS las operaciones con sus precios + los chips de requisitos
+│   │   │   ├── FilterPanel.tsx          ← Filtros (checkboxes shadcn, commit on-blur). Operación es
+│   │   │   │                              MÚLTIPLE; el rango de precio solo se habilita con UNA marcada
 │   │   │   ├── CityPicker.tsx           ← Selector de ciudad (lee cityStore)
 │   │   │   ├── AgencyMapView.tsx        ← Mapa filtrado a una agencia (white-label, mirror de la home SIN CityPicker). Header con logo + nombre de la agencia + "Powered by Marka." (B2a). Sub-pieza A/B2a
-│   │   │   └── ClusterLayer.tsx         ← Clustering, diff por id, estados live
+│   │   │   └── ClusterLayer.tsx         ← Clustering, diff por id, estados live. ⚠ Efecto aparte que
+│   │   │                                  refresca el PRECIO de los pines al cambiar el filtro de
+│   │   │                                  operación: el diff por id no lo detecta (ver la trampa abajo)
 │   │   ├── agency/
 │   │   │   └── AgencyUnavailable.tsx    ← Página "sitio no disponible" (estado disabled: sin has_white_label o agencia no aprobada). Sub-pieza A
 │   │   ├── feedback/
 │   │   │   └── Notice.tsx               ← Aviso persistente reutilizable (Server Component, tonos info/warning/error). NO es el "banner de error" descartable
 │   │   ├── properties/
-│   │   │   ├── PropertyCard.tsx         ← Card editorial reutilizable
+│   │   │   ├── PropertyCard.tsx         ← Card editorial reutilizable. Kicker con todas las operaciones,
+│   │   │   │                              UN precio (el de getDisplayOperationPrice, según el filtro)
 │   │   │   ├── PropertyList.tsx         ← Lista mobile (cards-first)
-│   │   │   ├── PropertyForm.tsx         ← CRUD form + barra de acción sticky
+│   │   │   ├── PropertyForm.tsx         ← CRUD form + barra de acción sticky. Tres casillas de operación,
+│   │   │   │                              cada una con su precio+moneda opcionales, y la sección de
+│   │   │   │                              requisitos (solo si hay alquiler). Todo con Controller, sin watch()
 │   │   │   ├── AddressSearchButton.tsx  ← Botón "Buscar esta dirección en el mapa": llama a /api/geocode y emite una SUGERENCIA. Nunca busca al tipear (política de Nominatim). No puede bloquear el guardado
 │   │   │   ├── LocationPicker.tsx       ← Pin manual: CONTROLADO (la posición vive en el form), tiles compartidos. Emite la causa del cambio ("drag" confirma / "center" desconfirma)
 │   │   │   └── ImageUploader.tsx        ← Drag&drop, progreso por imagen, máx 10
@@ -263,7 +271,11 @@ En el cambio de plan el campo viene **precargado** con el valor vigente, justame
 │   │   └── utils/
 │   │       ├── coords.ts                ← Coords + roundCoord (7 decimales, ÚNICO redondeo del proyecto) + distanceKm (equirectangular con corrección por latitud). Sin dependencias: lo usan servidor y cliente
 │   │       ├── getAgencyCity.ts         ← Ciudad de una agencia (nombre, provincia, país, centro) para armar la consulta de geocodificación. Server-only; la ciudad NUNCA viene del cliente
-│   │       ├── formatPrice.ts           ← formatPrice + formatPriceCompact (pines)
+│   │       ├── formatPrice.ts           ← formatPrice + formatPriceCompact (pines). Aceptan precio y
+│   │       │                              moneda NULOS y devuelven "A convenir" (NO_PRICE_LABEL)
+│   │       ├── propertyOperations.ts    ← Operaciones activas de una propiedad + REGLA DE PRIORIDAD de
+│   │       │                              qué precio se muestra cuando entra uno solo. Fuente única:
+│   │       │                              el pin y la card tienen que elegir el mismo
 │   │       ├── generateSlug.ts          ← slugifyBase (limpieza pura) + generateSlug (propiedades, sufijo aleatorio)
 │   │       ├── agencySlug.ts            ← generateUniqueAgencySlug: slug LIMPIO de agencia (sufijo numérico -2/-3 ante colisión). Lo usa el registro; el UNIQUE de agencies.slug es la garantía final
 │   │       ├── waMessage.ts             ← generateWaUrl(): string | null
@@ -281,8 +293,10 @@ En el cambio de plan el campo viene **precargado** con el valor vigente, justame
 │   │   └── cityStore.ts                 ← Ciudad activa, initCity(), setCity(), nearbyCityId
 │   │
 │   ├── types/
-│   │   ├── index.ts                     ← Todos los tipos del proyecto
-│   │   └── supabase.ts                  ← Generado por Supabase CLI (no editar)
+│   │   └── index.ts                     ← Todos los tipos del proyecto + constantes de dominio
+│   │                                      (PLANS, DEFAULT_FILTERS, topes de requisitos libres).
+│   │                                      ⚠ NO hay supabase.ts generado: los tipos de la base
+│   │                                      se mantienen A MANO acá
 │   │
 │   └── proxy.ts                         ← Convención Next.js 16: auth guard
 │
@@ -330,7 +344,8 @@ En el cambio de plan el campo viene **precargado** con el valor vigente, justame
 
 ### ESLint
 - El patrón `setIsLoading(true)` al inicio de efectos: usar IIFE async dentro del efecto. No bajar la regla globalmente.
-- **Baseline medido: 0 errores y 1 warning.** El único warning es `react-hooks/incompatible-library` en `PropertyForm.tsx:269` (`watch("currency")`): el React Compiler detecta que el `watch()` de react-hook-form no se puede memoizar y renuncia a memoizar el componente. Es inherente a la librería, no un defecto del código; no bloquea el build. **Cualquier otro warning es una regresión.** (Histórico: había un segundo warning idéntico en `RegisterForm.tsx` por `watch("tenantType")`; desapareció al eliminarse el selector de tipo de cuenta.)
+- **Baseline medido: 0 errores y 1 warning.** El único warning es `react-hooks/incompatible-library` en `PropertyForm.tsx:808` (`watch("amenities")`): el React Compiler detecta que el `watch()` de react-hook-form no se puede memoizar y renuncia a memoizar el componente. Es inherente a la librería, no un defecto del código; no bloquea el build. **Cualquier otro warning es una regresión.**
+- **La regla señala UNA sola llamada: la primera `watch()` del componente.** `PropertyForm.tsx` tiene cuatro (`amenities`, `lat`, `lng`, `address`) y el warning es uno solo, así que **al agregar campos nuevos no hay que usar `watch()`: hay que usar `Controller`**. Es lo que hacen el bloque de operaciones y precios y la sección de requisitos, y por eso ninguno de los dos sumó un warning. (Histórico: el warning apuntaba antes a `watch("currency")` y a un segundo idéntico en `RegisterForm.tsx`; los dos desaparecieron con sus campos, y el señalamiento se corrió a la `watch()` siguiente.)
 
 ### Estilos
 - Tailwind, sin CSS-in-JS ni módulos CSS. shadcn/ui para componentes base
@@ -543,11 +558,84 @@ Columna nueva: `text`, **nullable**, con `CHECK (location_source IS NULL OR loca
 - **Deuda de seguridad (ver PENDIENTES):** las policies laxas son aceptables en desarrollo pero permiten que cualquier autenticado toque archivos ajenos. Antes de producción real conviene un repaso de RLS de Storage con seguridad fina (validar uid/agencia por path). La policy de DELETE vieja intentaba seguridad fina (`uid` = primera carpeta) pero nunca matcheaba para `avatars/`/`logos/` (la primera carpeta es la palabra literal) — quedó reemplazada por la laxa.
 - Reemplazar (no acumular) es el comportamiento deseado para avatar y logo: `upsert: true` sobre path fijo. Para logos, ojo que si cambia la extensión (`logo.png` → `logo.webp`) quedan 2 objetos; el `logo_url` apunta al último, el anterior queda huérfano (inocuo).
 
-### Precios
-- `formatPrice(price, currency)` → `$250.000`. `formatPriceCompact` → `USD 250k` (pines).
+### Operaciones, precios y requisitos de la propiedad
+
+#### Una propiedad, VARIAS operaciones
+
+Una misma casa puede ofrecerse **en venta y en alquiler a la vez** (el dueño toma lo que aparezca primero). El modelo son **tres pares simétricos** de columnas en `properties`, uno por operación, cada uno con **su propio precio y su propia moneda**:
+
+| Operación | Flag | Precio | Moneda |
+|---|---|---|---|
+| Venta | `for_sale` | `sale_price` | `sale_currency` |
+| Alquiler | `for_rent` | `rent_price` | `rent_currency` |
+| Alquiler temporal | `for_temp_rent` | `temp_rent_price` | `temp_rent_currency` |
+
+- **Al menos una operación tiene que estar activa**: lo garantiza el CHECK `properties_at_least_one_operation`, no el tipo de TypeScript.
+- **⚠ LA MONEDA ES POR OPERACIÓN, NO POR PROPIEDAD, y no es un lujo del modelo:** en Argentina **la venta se cotiza en dólares y el alquiler en pesos**. Con una moneda única por propiedad, la casa que está en venta y en alquiler a la vez —que es justo el caso que este modelo existe para representar— no se puede expresar.
+- **Operación apagada ⇒ su precio y su moneda son NULL** (CHECK `properties_<op>_operation`): no queda un precio de alquiler colgado de algo que solo se vende.
+- El **estado (`status`) sigue siendo UNO SOLO**. Cerrar cualquiera de las operaciones cierra la ficha entera; una propiedad con `for_sale` y `for_rent` ofrece las dos opciones de cierre en el menú del listado ("Marcar como vendida" y "Marcar como alquilada") y eso es correcto.
+
+#### Precio en NULL = "A convenir"
+
+- Una operación activa **sin precio cargado** significa **"a convenir"**. **NO es un dato faltante ni un error: es una elección de la agencia.** Publicar el precio en un mapa revela la tasación por m² de la zona, que es información competitiva, y muchas inmobiliarias no publicaban por eso.
+- El texto es **"A convenir"** (`NO_PRICE_LABEL` en `formatPrice.ts`), nunca vacío, cero ni "sin datos". **No es "Consultar"**: el modal tiene dos botones que dicen "Consultar por WhatsApp" a centímetros del precio.
+- `formatPrice(price, currency)` → `$250.000`; `formatPriceCompact` → `USD 250k` (pines). **Las dos aceptan `null` en los dos argumentos** y devuelven "A convenir".
+- **Precio y moneda viajan SIEMPRE juntos**: o los dos en NULL, o los dos con valor (CHECK `properties_<op>_price`).
+- **⚠ CONSECUENCIA DELIBERADA: una propiedad sin precio queda FUERA del filtro de rango de precio.** Sale gratis (`>=`/`<=` contra NULL no matchea) y **no hay que compensarlo**. El formulario **se lo advierte al agente antes de que decida**, en un aviso visible junto al campo vacío — es información que la agencia necesita para elegir, no letra chica.
+
+#### Qué precio se muestra cuando entra UNO SOLO
+
+El pin del mapa y la card de la lista tienen lugar para un solo número. La regla vive en **`getDisplayOperationPrice`** (`src/lib/utils/propertyOperations.ts`), función pura y **fuente única**: si se repartiera por componente, el pin y la card podrían mostrar números distintos para la misma propiedad.
+
+1. Si el visitante marcó **exactamente una** operación **y la propiedad la tiene activa**, se muestra el precio de **esa** operación: es lo que pidió ver.
+2. En cualquier otro caso (ninguna marcada, o varias), gana la prioridad **venta → alquiler → alquiler temporal** entre las que la propiedad tenga activas.
+3. Si la operación elegida no tiene precio, se muestra "A convenir".
+
+El mismo archivo exporta `getActiveOperations` (todas las activas, en orden de prioridad) para los kickers y el modal, y `OPERATION_COLUMNS` (el mapeo operación → nombres de columna) para que el hook del mapa no escriba esos nombres a mano.
+
+- **El kicker de la card y del modal listan TODAS las operaciones activas** ("Casa · Venta · Alquiler"). En el pin no: no entra.
+- **El modal es el único lugar que muestra las operaciones con sus precios completos**, una línea por operación.
+
+#### Filtro público: operación múltiple, precio condicionado
+
+- **El filtro de operación es de SELECCIÓN MÚLTIPLE** (como el de tipo de propiedad): marcar Venta y Alquiler muestra las que tengan **cualquiera** de las dos, no la intersección. En `MapFilters` es `operation_types: OperationType[]`.
+- **⚠ EL RANGO DE PRECIO SOLO SE HABILITA CON EXACTAMENTE UNA OPERACIÓN MARCADA.** Con cero o con dos o más, los inputs y los botones de moneda quedan deshabilitados con una leyenda que lo explica. El motivo: **un precio de venta y uno de alquiler no viven en la misma escala**, y no hay una sola columna contra la cual comparar — filtrar los dos con un único rango devolvería un resultado que *parece* filtrado y no lo está.
+- Al deshabilitarse, **`price_min`/`price_max` se limpian**: no pueden quedar aplicándose de forma invisible. La guarda está además en el hook (`useProperties`), no solo en la UI.
+
+#### Requisitos para alquilar
+
+Qué le pide la inmobiliaria al inquilino. Sin esto el visitante contacta por WhatsApp sin saber si califica, y la agencia contesta lo mismo una y otra vez.
+
+- **Dos columnas JSONB, y son dos a propósito:**
+  - `rent_requirements` → **lista cerrada** de siete valores (tipo `RentRequirement`), dato controlado.
+  - `rent_requirements_other` → hasta **5** requisitos libres escritos por el agente, de hasta **300** caracteres cada uno. Los topes son constantes exportadas de `types/index.ts` (`RENT_REQUIREMENTS_OTHER_MAX`, `RENT_REQUIREMENT_OTHER_MAX_LEN`) porque los aplican tres capas: el formulario, la server action y los CHECK de la base.
+  - Mezclar los libres dentro del array cerrado volvería imposible confiar en el contenido de aquel.
+- **La lista cerrada está validada en las TRES capas** (CHECK de forma en la base, zod contra los siete literales en el formulario, y **filtrado contra la lista en la server action**, que descarta en silencio lo que no pertenezca). El cast de TypeScript no protege nada: se borra al compilar. **Esto NO copia el molde de `amenities`**, que no valida en ninguna capa — ver PENDIENTES.md.
+- **La sección solo existe si la propiedad tiene alquiler** (`for_rent` o `for_temp_rent`), en el formulario y en el modal. En el formulario aparece y desaparece **en vivo** al marcar las casillas.
+- **⚠ Si el agente carga requisitos y después desmarca las dos operaciones de alquiler, los requisitos NO viajan.** Desaparecer de la pantalla no limpia el formulario: el vaciado lo hace el `transform` del schema, y la action lo repite server-side.
+- En el modal los dos tipos se muestran como **chips en una misma grilla**, primero los de la lista cerrada y después los libres, sin ícono. La sección no se muestra si no hay ningún requisito de ningún tipo.
+
+#### ⚠ Tres trampas medidas
+
+**1. En PostgreSQL, un CHECK que evalúa a NULL se considera SATISFECHO.** Los tres `properties_<op>_price` comparan contra `IS NOT NULL` **explícito en las dos ramas**, y no es redundante: escritos de la forma natural —`(precio IS NULL AND moneda IS NULL) OR (precio > 0 AND moneda IN (...))`— con media pareja cargada la primera rama da `FALSE` y la segunda `NULL`, o sea `(FALSE OR NULL) = NULL`, y la fila **entra en silencio**. Pasaba en las dos direcciones: moneda sin precio **y** precio sin moneda. **Quien saque esos `IS NOT NULL` por parecer redundantes reabre el agujero, y no falla nada visible.**
+
+**2. `ClusterLayer` decide si redibujar comparando SOLO los ids de las propiedades**, y eso dejó de alcanzar. Una propiedad en venta **y** en alquiler aparece en los resultados de los dos filtros: al cambiar el filtro de operación **el conjunto de ids no cambia**, el diff corta temprano y el pin se queda mostrando el precio de la operación anterior. No rompe nada y no da síntoma — solo muestra un número equivocado. Lo resuelve un **efecto aparte**, con el mismo patrón que la selección y los favoritos: se actualiza lo que cambió en vez de recrear markers. Depende de la clave estable `filters.operation_types.join(",")` y lee las operaciones de una ref; si el marker está en el DOM le cambia el texto del precio (`setMarkerPrice`), y si está clusterizado le rehace el ícono. **No meter el precio en la firma del diff**: obligaría a destruir y recrear todos los markers en cada cambio de filtro para actualizar un texto, perdiendo las clases de estado vivas y las transiciones CSS que ese diff existe para preservar.
+
+**3. Un Enter en un input de texto dentro de un `<form>` dispara el submit implícito.** En el campo de requisitos libres eso **publicaría la propiedad a medio cargar**. Está prevenido explícitamente:
+
+```tsx
+onKeyDown={(e) => {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  add();
+}}
+```
+
+**Es el patrón a seguir para cualquier campo futuro que agregue elementos a una lista**: el Enter tiene que agregar (es lo que el dedo espera), y el `preventDefault()` es lo único que impide que además envíe el formulario. El botón que acompaña va con `type="button"`, nunca `submit`.
 
 ### Mapa — performance
-- Debounce 400ms en `moveend`. `ClusterLayer` diff por ids. `useProperties` con SELECT acotado, no `*`. La lista mobile usa `bounds = null` (toda la ciudad).
+- Debounce 400ms en `moveend`. `ClusterLayer` diff por ids (**⚠ ese diff no detecta un cambio de precio por filtro de operación: ver la trampa 2 en "Operaciones, precios y requisitos"**). `useProperties` con SELECT acotado, no `*`. La lista mobile usa `bounds = null` (toda la ciudad).
+- **⚠ El SELECT del hook es una lista EXPLÍCITA de columnas y el resultado se castea por `unknown`**, así que una columna que falte llega como `undefined` sin que el compilador diga nada (el pin imprimiría `NaN`). Las nueve columnas de operación/precio tienen que estar todas. Los requisitos de alquiler **NO** están ahí a propósito: no se muestran ni en el pin ni en la card, y esa es la query caliente. El modal usa `select("*")` y hereda las columnas solas.
 
 ---
 
@@ -582,7 +670,7 @@ Schema en `supabase/migrations/20240101000000_initial_schema.sql`.
 | `agencies` | Inmobiliarias. `city_id` NOT NULL. `tenant_type` (`agency`/`individual`) **legacy**: el registro escribe siempre `'agency'`; nada de la base la lee (verificado: 0 funciones y 0 policies la mencionan). `phone_wa` NOT NULL. `license_number` (matrícula, TEXT nullable) + `approval_status` (`pending`/`approved`/`rejected`, DEFAULT `pending`). `brand_color` para white-label futuro |
 | `subscriptions` | `plan` (el que RIGE) + `pending_plan` (pedido, esperando activación) + `status` (`active`/`pending`/`past_due`/`canceled`), `property_limit`, entitlements `has_*`, `activated_at` (desde cuándo rige el pago) y `current_period_end` (vencimiento; **lo escribe el panel, no lo vigila nadie**). Por agencia |
 | `agents` | `id` = `auth.users.id`. `agency_id` NOT NULL. `role` (`admin`/`agent`) gatea la sección Equipo. `email` denormalizado de auth.users (copia de lectura) |
-| `properties` | `agency_id` y `city_id` NOT NULL; `location` GEOGRAPHY generada. `location_source` (TEXT nullable, CHECK `manual`/`suggested`): de dónde salió la coordenada. **Dato de medición: no gatea nada** |
+| `properties` | `agency_id` y `city_id` NOT NULL; `location` GEOGRAPHY generada. **Tres pares de operación** (`for_sale`/`sale_price`/`sale_currency` y sus equivalentes de `rent` y `temp_rent`): al menos una activa, precio y moneda siempre juntos o los dos NULL (= "a convenir"). **Requisitos de alquiler** en dos JSONB: `rent_requirements` (lista cerrada) y `rent_requirements_other` (hasta 5 strings de hasta 300). `location_source` (TEXT nullable, CHECK `manual`/`suggested`): de dónde salió la coordenada. **Dato de medición: no gatea nada** |
 | `property_images` | `is_cover` + `sort_order` |
 | `leads` | Contactos WA. Incluye `agency_id`. Se listan en `/dashboard/leads` (Consultas), diferenciado por rol vía RLS |
 | `agency_reviews` | Historial de decisiones del dueño sobre una agencia, de los DOS ejes en una sola línea de tiempo. `decision` admite **seis** valores (medido): `approved`/`rejected` (legitimidad) + `plan_canceled`/`subscription_canceled`/`subscription_restored`/`plan_changed` (comercial). **La eliminación de una agencia NO se registra** (la FK cascadea: la fila se borraría con lo registrado). **RLS habilitada y CERO policies a propósito**: solo service role desde el server. Ahí vive la nota del rechazo, que no puede ir en `agencies` porque esa tabla es de lectura pública |
@@ -598,11 +686,13 @@ WHERE city_id = $1 AND status = 'active'
   AND lat BETWEEN $south AND $north AND lng BETWEEN $west AND $east;
 ```
 
-**Amenities** JSONB: filtrar con `.contains("amenities", JSON.stringify([...]))` (genera `@>`).
+**Amenities** JSONB: filtrar con `.contains("amenities", JSON.stringify([...]))` (genera `@>`). ⚠ **No tiene barrera de dominio en ninguna capa** (zod `z.array(z.string())`, la action escribe sin filtrar, la columna no tiene CHECK): lo que se cuele ahí se renderiza en el modal público. Es deuda anotada — el molde para arreglarlo es el de los requisitos de alquiler. Ver PENDIENTES.md.
 
 **Triggers de `properties` (los TRES gates de publicación, ver "Bloqueo de publicación"), en el orden alfabético en que Postgres los dispara:** `trg_check_agency_approved` (BEFORE INSERT → agencia aprobada), `trg_check_agency_subscription` (BEFORE INSERT → suscripción no `canceled`/`past_due`) y `trg_check_property_limit` (BEFORE INSERT OR UPDATE → cupo del plan; sin fila de suscripción el límite es 0). Los tres lanzan SQLSTATE **23514**, así que **ese orden decide qué mensaje ve el agente**. (Hay además dos `trg_*_updated_at` sobre `properties` y `subscriptions`.)
 
-**Funciones y RPC:** `agency_is_publicly_visible(target_agency_id)` — la regla de visibilidad pública, SECURITY DEFINER + STABLE, invocada por tres policies y por `resolveAgencyBySlug` (ver "Visibilidad pública de las propiedades"). `increment_views(property_id)` — incrementa `views_count` (SECURITY DEFINER).
+**Funciones y RPC:** `agency_is_publicly_visible(target_agency_id)` — la regla de visibilidad pública, SECURITY DEFINER + STABLE, invocada por tres policies y por `resolveAgencyBySlug` (ver "Visibilidad pública de las propiedades"). `jsonb_is_short_string_array(arr, max_len)` — IMMUTABLE, la usa el CHECK `properties_rent_requirements_other_items`; **existe porque un CHECK no admite subconsultas** y recorrer un array JSONB exige `jsonb_array_elements()`, que devuelve filas: meter el SELECT dentro del CHECK no compila. `increment_views(property_id)` — incrementa `views_count` (SECURITY DEFINER); **⚠ existe pero NO se la llama desde ningún lado, así que `views_count` es 0 en todas las propiedades** (ver PENDIENTES.md).
+
+**⚠ Event trigger `ensure_rls`** (función `public.rls_auto_enable()`, SECURITY DEFINER): en `ddl_command_end`, **habilita RLS automáticamente en toda tabla nueva del esquema `public`**. Consecuencia práctica: una tabla nueva nace con RLS activada **y sin policies**, o sea invisible para todos —incluido el dueño— hasta que se le escriban. No es un bug: es la red de seguridad que evita publicar una tabla sin querer.
 
 ---
 
@@ -629,9 +719,13 @@ npm run dev
 npx tsc --noEmit
 npm run lint          # debe dar 0 errors
 npx next build
-supabase gen types typescript --local > src/types/supabase.ts
 npx shadcn@latest add [componente]
 ```
+
+> **No hay `supabase gen types`.** El proyecto NO usa tipos generados por el CLI de Supabase:
+> `src/types/index.ts` se escribe a mano y es la única fuente de tipos del dominio. Si
+> agregás una columna, la agregás ahí (y al schema documentado). Generar `supabase.ts` sin
+> migrar todos los consumidores dejaría dos fuentes de verdad compitiendo.
 
 ---
 
@@ -658,6 +752,15 @@ npx shadcn@latest add [componente]
 | Guardar exige "la ubicación actual está confirmada", no "el pin se movió alguna vez" | La regla vieja era irreversible y se podía satisfacer y después deshacer: arrastrar el pin y luego tocar "Centrar" publicaba la propiedad en el centro exacto de la ciudad. Es un bug que existía sin ningún geocodificador de por medio |
 | `LocationPicker` controlado (la posición vive solo en el formulario) | Tenía estado propio *además* de la prop, y la confirmación estaba duplicada en dos componentes que no se conocían: esa duplicación es lo que permitió el bug de arriba |
 | `location_source` no gatea nada | Es un dato de medición para comparar a posteriori la calidad de las ubicaciones sugeridas contra las arrastradas. En cuanto condicione una decisión deja de medir el comportamiento y empieza a alterarlo |
+| Tres pares de columnas por operación, no un array JSONB ni una tabla de ofertas | El array rompía el filtro de RANGO DE PRECIO, que necesita comparar contra una columna indexable; la tabla aparte obligaba a un JOIN en la query caliente del mapa. Con columnas, el filtro sigue siendo un `gte`/`lte` sobre un índice parcial |
+| La moneda es POR OPERACIÓN, no por propiedad | En Argentina la venta se cotiza en dólares y el alquiler en pesos: con una moneda única, la casa en venta Y en alquiler —el caso que el modelo existe para representar— no se puede expresar |
+| El alquiler temporal es una operación más, simétrica, no una modalidad del alquiler | Es más fiel a cómo lo piensa el rubro, y como modalidad habría obligado a rediseñar el filtro público para exponer un sub-eje |
+| Precio opcional (NULL = "a convenir") | Pedido concreto del rubro: el precio en un mapa revela la tasación por m² de la zona, que es información competitiva. Con el precio obligatorio esas propiedades no se publicaban |
+| Una propiedad sin precio queda FUERA del filtro de rango | Un rango numérico sobre un precio que no existe no significa nada. Sale gratis (comparar contra NULL no matchea) y el formulario se lo advierte al agente antes de que decida |
+| El rango de precio solo se habilita con UNA operación marcada | Un precio de venta y uno de alquiler no viven en la misma escala, y no hay una sola columna contra la cual comparar: con dos operaciones el resultado parecería filtrado sin estarlo |
+| La regla de qué precio mostrar vive en UNA función pura | El pin y la card muestran un solo número cada uno; si la regla se repartiera por componente, podrían elegir precios distintos para la misma propiedad y el mismo filtro |
+| Los requisitos de alquiler SÍ validan en las tres capas (a diferencia de amenities) | El array cerrado se renderiza en el modal público. La única barrera real es el filtrado en la server action: el tipo de TypeScript se borra al compilar y el zod corre en el cliente |
+| Los requisitos libres en su propia columna, no dentro del array cerrado | Uno es dato controlado y el otro es dato del usuario; mezclarlos volvería imposible confiar en el contenido del array |
 | Leaflet en lugar de Mapbox | Tiles OSM gratuitos sin límite |
 | `amenities` como JSONB | Flexible, sin migraciones al agregar amenities |
 | `proxy.ts` (no middleware.ts) | Convención Next.js 16 |
