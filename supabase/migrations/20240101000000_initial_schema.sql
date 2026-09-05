@@ -58,6 +58,15 @@
 --   * CHECK de agency_reviews.decision ampliado a SEIS valores (se sumaron
 --     'plan_canceled', 'subscription_canceled', 'subscription_restored' y
 --     'plan_changed'): YA MIGRADO (1 sep 2026). Incluido abajo.
+--   * auth_agency_id() + las CUATRO policies de storage.objects reescritas con
+--     seguridad fina, y el bucket property-images con file_size_limit (5 MB) y
+--     allowed_mime_types (PNG/JPG/WEBP): YA MIGRADOS (5 sep 2026). La frontera
+--     es por AGENCIA para propiedades y logos, y por USUARIO para avatares; la
+--     lectura por RLS quedó acotada a `authenticated`. Reemplazan a las tres
+--     policies viejas ("Public read property images storage", "Authenticated
+--     users can upload property images", "Users can delete own property
+--     images") y a la de UPDATE laxa que se había agregado a mano. Incluidos
+--     abajo, con las dos trampas que hicieron falta para escribirlas.
 --   * ⚠ DISCREPANCIA CONOCIDA Y NO RESUELTA en dos claves foráneas
 --     (properties.agent_id y leads.agent_id): ver la nota en cada tabla. Este
 --     archivo ahora dice lo que la base TIENE, que NO es lo que el modelo
@@ -792,6 +801,43 @@ AS $$
   );
 $$;
 
+-- ─── FUNCIÓN: agencia del usuario autenticado ────────────────
+-- Devuelve el agency_id del agente logueado, o NULL si el uid no resuelve
+-- ninguna fila de `agents`. La consumen LAS CUATRO POLICIES DE STORAGE (ver
+-- "STORAGE BUCKET" al final del archivo); no la usa nada más.
+--
+-- ⚠ POR QUÉ SECURITY DEFINER. Las policies de storage necesitan responder "¿de
+-- qué agencia es este usuario?", y eso obliga a leer `public.agents` desde
+-- adentro de la policy. Hecho a mano (un subselect suelto), eso queda atado a
+-- que la policy `Public read agents` siga teniendo USING (true): el día que
+-- alguien restrinja esa lectura —algo razonable de querer, hoy expone email y
+-- teléfono de todos los agentes a la anon key— el subselect no vería ninguna
+-- fila y TODA SUBIDA EMPEZARÍA A FALLAR CON UN 403 sin ninguna relación
+-- aparente con `agents`. SECURITY DEFINER corta esa dependencia: la función lee
+-- con los privilegios de su dueño, así que la RLS de `agents` no la afecta.
+--
+-- Es segura por la misma razón que agency_is_publicly_visible: no recibe
+-- ningún argumento (no hay nada que manipular), devuelve un solo uuid, y tiene
+-- search_path fijo. STABLE para que el planificador la evalúe una vez por
+-- sentencia y no fila por fila.
+--
+-- ⚠ DEUDA CONOCIDA, no arreglada: la rama de las policies que valida los paths
+-- de PROPIEDADES todavía hace su propio `EXISTS (SELECT 1 FROM agents a ...)`
+-- fuera de esta función, porque necesita mirar OTRO agente (el dueño de la
+-- carpeta), no el logueado. Esa rama SÍ sigue dependiendo de `Public read
+-- agents`. Ver PENDIENTES.md.
+CREATE OR REPLACE FUNCTION auth_agency_id()
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT agency_id FROM public.agents WHERE id = auth.uid();
+$$;
+
+GRANT EXECUTE ON FUNCTION auth_agency_id() TO anon, authenticated, service_role;
+
 -- ─── ÍNDICES ─────────────────────────────────────────────────
 
 -- Búsqueda geográfica (PostGIS)
@@ -1049,31 +1095,248 @@ CREATE POLICY "Public insert lead"
   );
 
 -- ─── STORAGE BUCKET ─────────────────────────────────────────
--- Ejecutar en Supabase → Storage → New Bucket
--- Nombre: "property-images"  |  Public: true
--- (o crear via SQL):
+-- Un solo bucket para todo el proyecto. Tres tipos de path conviven adentro,
+-- separados por prefijo:
+--
+--   {agent_id}/{property_id}/{filename}   fotos de propiedades
+--   avatars/{agent_id}/avatar.{ext}       avatar del agente
+--   logos/{agency_id}/logo.{ext}          logo de la agencia
+--
+-- ⚠ EN LOS PATHS DE PROPIEDAD, LA PRIMERA CARPETA ES EL AGENTE QUE SUBIÓ EL
+-- ARCHIVO, NO EL DUEÑO DE LA PROPIEDAD. El formulario le pasa al uploader el
+-- uid de la sesión (`agentId={userId}` en las páginas de nueva/editar), así que
+-- cuando un admin sube fotos a la propiedad de otro agente de su equipo, el
+-- archivo queda bajo la carpeta DEL ADMIN. Es exactamente por eso que la
+-- frontera de abajo es por AGENCIA y no por usuario: con la frontera por
+-- usuario, el equipo no puede gestionar sus propias fotos.
+--
+-- El bucket es PÚBLICO: las fotos las sirve el endpoint
+-- /storage/v1/object/public/... a un visitante anónimo, y ese endpoint NO PASA
+-- POR RLS. Las policies de abajo gobiernan la escritura y el listado, no la
+-- lectura por URL directa (ver la nota de la policy de SELECT).
 
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('property-images', 'property-images', true)
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'property-images',
+  'property-images',
+  true,
+  5242880,                                        -- 5 MB
+  ARRAY['image/png', 'image/jpeg', 'image/webp']  -- sin SVG: riesgo XSS
+)
 ON CONFLICT DO NOTHING;
 
-CREATE POLICY "Public read property images storage"
+-- ⚠ EL LÍMITE Y LOS TIPOS LOS APLICA EL MOTOR, y esa es toda la gracia. Antes
+-- estaban en NULL los dos, y las únicas validaciones vivían en el JavaScript de
+-- los formularios (AgencyLogoForm valida 2 MB y PNG/JPG/WEBP; ImageUploader
+-- solo filtra `type.startsWith("image/")`). El JavaScript no es una barrera:
+-- quien hable con la API de Storage directamente con su anon key y su JWT no
+-- pasa por el formulario. Ahora un SVG o un archivo de 50 MB los rechaza
+-- Supabase, no el navegador.
+--
+-- Notas de calibración:
+--   * 5 MB es MÁS PERMISIVO que los 2 MB que exige el formulario del logo. Es a
+--     propósito: el límite del bucket es el techo duro para todos los tipos de
+--     archivo (una foto de propiedad de 2 MB es chica), y la regla más estricta
+--     del logo sigue viviendo en su formulario.
+--   * La lista de MIME es la misma que ya validaba AgencyLogoForm. Consecuencia
+--     medida: un GIF o un HEIC que ImageUploader hoy dejaría pasar
+--     (`startsWith("image/")`) ahora rebota en el motor.
+
+-- ─── POLICIES DE storage.objects ────────────────────────────
+--
+-- LA FRONTERA, por tipo de archivo:
+--   * propiedades → por AGENCIA. Cualquier agente de la agencia opera sobre las
+--     fotos de su agencia, incluidas las que subió un compañero de equipo. Es
+--     coherente con el modelo de datos: la propiedad pertenece a la agencia, no
+--     al agente (el admin la edita y la reasigna; al borrar un agente sus
+--     propiedades pasan al admin).
+--   * logos → por AGENCIA. La carpeta ES el agency_id, así que alcanza con
+--     compararlo contra auth_agency_id(): no hace falta ningún lookup.
+--   * avatares → por USUARIO. El avatar es personal: solo su dueño lo cambia.
+--
+-- Lo que ninguna de las tres ramas permite cruzar es la frontera ENTRE agencias.
+--
+-- ⚠⚠ TRAMPA 1 — LA COMPARACIÓN DE LA CARPETA VA EN TEXTO, NUNCA CASTEANDO LA
+-- CARPETA A uuid.
+--
+-- storage.foldername() devuelve las carpetas del path (todos los segmentos
+-- MENOS el último). Para los avatares y los logos, la PRIMERA carpeta es una
+-- palabra literal:
+--
+--   foldername('7074968a-.../31783607-.../foto.jpg') → {7074968a-..., 31783607-...}
+--   foldername('avatars/7074968a-.../avatar.png')    → {avatars, 7074968a-...}
+--   foldername('logos/6e819c62-.../logo.png')        → {logos, 6e819c62-...}
+--
+-- Castear eso a uuid NO devuelve false: LANZA UN ERROR QUE ABORTA LA SENTENCIA
+-- ENTERA. Medido contra esta misma base:
+--
+--   SELECT ... WHERE ((storage.foldername(name))[1])::uuid IN (SELECT id FROM agents);
+--   ERROR:  22P02: invalid input syntax for type uuid: "avatars"
+--
+-- Por eso la comparación se escribe al revés: se castea el uuid conocido a
+-- texto (`a.id::text`, `auth.uid()::text`, `auth_agency_id()::text`) y se lo
+-- compara contra la carpeta, que ya es texto. Ese cast nunca falla.
+--
+-- ⚠ Y LA SOLUCIÓN APARENTEMENTE OBVIA NO SIRVE: excluir los prefijos con un AND
+-- antes de castear (`AND foldername[1] <> 'avatars' AND ...::uuid = ...`)
+-- FUNCIONA POR CASUALIDAD. PostgreSQL NO garantiza el orden de evaluación de
+-- los AND: el planificador reordena las condiciones según costo. Esa policy
+-- puede andar perfecto en desarrollo con 24 archivos y empezar a tirar 22P02 en
+-- producción con 5.000, cuando el planificador elija otro orden. No hay síntoma
+-- previo. Si alguien "simplifica" estas expresiones a un cast, esto vuelve.
+--
+-- ⚠⚠ TRAMPA 2 — EL USING Y EL WITH CHECK DE LA POLICY DE UPDATE DICEN LO MISMO,
+-- Y ES DELIBERADO. NO ES COPY-PASTE REDUNDANTE.
+--
+-- En un UPDATE, las dos expresiones controlan cosas distintas:
+--   * USING      → QUÉ archivo se puede tocar (la fila como está hoy).
+--   * WITH CHECK → CÓMO PUEDE QUEDAR después del cambio (la fila resultante).
+--
+-- Si solo se endurece el USING, un agente puede tomar un archivo propio
+-- (permitido por USING) y RENOMBRARLO hacia la carpeta de otra agencia, porque
+-- nada valida el estado final. El resultado es escritura cruzada entre agencias
+-- por la puerta de atrás. Quien edite una de las dos expresiones TIENE que
+-- editar la otra.
+--
+-- Nota de forma: los `IS NOT NULL` implícitos salen gratis — si auth_agency_id()
+-- devuelve NULL (un uid sin fila en `agents`), la comparación da NULL, que no es
+-- TRUE, y la policy niega. Falla cerrada.
+
+-- LECTURA. Cerrada a `authenticated`, ya no al rol `public`.
+--
+-- ⚠ ESTO NO APAGA LA LECTURA PÚBLICA DE LAS FOTOS, y no pretende hacerlo: el
+-- bucket es `public = true`, así que /storage/v1/object/public/... sigue
+-- sirviendo cualquier archivo a cualquiera SIN pasar por RLS. Eso es requisito
+-- del producto (el visitante anónimo del mapa ve las fotos).
+--
+-- Lo que SÍ cierra es la ENUMERACIÓN: antes esta policy tenía rol `public`, así
+-- que con la anon key —la que está en el bundle de JavaScript de cualquier
+-- visitante— se podía LISTAR el árbol completo del bucket y quedarse con todos
+-- los agent_id que subieron algo, todos los agency_id con logo y todos los
+-- property_id con fotos, incluidos los de propiedades pausadas o borradas.
+-- Verificado después del cambio: ese listado ahora devuelve [].
+CREATE POLICY "Authenticated reads storage files"
   ON storage.objects FOR SELECT
+  TO authenticated
   USING (bucket_id = 'property-images');
 
-CREATE POLICY "Authenticated users can upload property images"
+-- ALTA. Un archivo solo puede NACER dentro de la frontera de quien lo sube.
+CREATE POLICY "Agency writes own storage files"
   ON storage.objects FOR INSERT
+  TO authenticated
   WITH CHECK (
     bucket_id = 'property-images'
-    AND auth.role() = 'authenticated'
+    AND (
+      -- logos/{agency_id}/… → la carpeta ES mi agencia
+      (name LIKE 'logos/%' AND (storage.foldername(name))[2] = auth_agency_id()::text)
+      OR
+      -- avatars/{agent_id}/… → la carpeta ES mi uid (frontera por USUARIO)
+      (name LIKE 'avatars/%' AND (storage.foldername(name))[2] = auth.uid()::text)
+      OR
+      -- {agent_id}/{property_id}/… → el agente de la carpeta es de mi agencia
+      (
+        name NOT LIKE 'logos/%'
+        AND name NOT LIKE 'avatars/%'
+        AND EXISTS (
+          SELECT 1 FROM agents a
+          WHERE a.id::text = (storage.foldername(objects.name))[1]
+            AND a.agency_id = auth_agency_id()
+        )
+      )
+    )
   );
 
-CREATE POLICY "Users can delete own property images"
-  ON storage.objects FOR DELETE
+-- REEMPLAZO. Un `upload(..., { upsert: true })` sobre un archivo que YA existe
+-- es un UPDATE, no un INSERT: es el camino del avatar y del logo, que usan path
+-- fijo. Sin policy de UPDATE, RLS lo niega con 403 "new row violates
+-- row-level security policy" mientras la PRIMERA subida (INSERT) sí pasa — un
+-- síntoma confuso que ya se pagó una vez en este proyecto.
+--
+-- ⚠ USING y WITH CHECK son IDÉNTICOS a propósito: ver TRAMPA 2 arriba.
+CREATE POLICY "Agency updates own storage files"
+  ON storage.objects FOR UPDATE
+  TO authenticated
   USING (
     bucket_id = 'property-images'
-    AND auth.uid()::text = (storage.foldername(name))[1]
+    AND (
+      (name LIKE 'logos/%' AND (storage.foldername(name))[2] = auth_agency_id()::text)
+      OR
+      (name LIKE 'avatars/%' AND (storage.foldername(name))[2] = auth.uid()::text)
+      OR
+      (
+        name NOT LIKE 'logos/%'
+        AND name NOT LIKE 'avatars/%'
+        AND EXISTS (
+          SELECT 1 FROM agents a
+          WHERE a.id::text = (storage.foldername(objects.name))[1]
+            AND a.agency_id = auth_agency_id()
+        )
+      )
+    )
+  )
+  WITH CHECK (
+    bucket_id = 'property-images'
+    AND (
+      (name LIKE 'logos/%' AND (storage.foldername(name))[2] = auth_agency_id()::text)
+      OR
+      (name LIKE 'avatars/%' AND (storage.foldername(name))[2] = auth.uid()::text)
+      OR
+      (
+        name NOT LIKE 'logos/%'
+        AND name NOT LIKE 'avatars/%'
+        AND EXISTS (
+          SELECT 1 FROM agents a
+          WHERE a.id::text = (storage.foldername(objects.name))[1]
+            AND a.agency_id = auth_agency_id()
+        )
+      )
+    )
   );
+
+-- BORRADO. Misma frontera.
+--
+-- Reemplaza a la vieja "Users can delete own property images", que era
+-- `auth.uid()::text = (storage.foldername(name))[1]`. Esa policy tenía DOS
+-- defectos que este cambio corrige:
+--   1. Era por USUARIO, no por agencia: un admin no podía borrar una foto que
+--      había subido otro agente de su propio equipo.
+--   2. NUNCA matcheaba para avatares ni logos, porque ahí foldername[1] es la
+--      palabra literal 'avatars'/'logos' y jamás iba a ser igual a un uid. O
+--      sea que NADIE podía borrar un avatar ni un logo por RLS, ni su dueño.
+--      No daba síntoma solo porque ningún camino del código lo intenta: el
+--      único borrado de esos archivos va por service role (removeAgencyFiles).
+CREATE POLICY "Agency deletes own storage files"
+  ON storage.objects FOR DELETE
+  TO authenticated
+  USING (
+    bucket_id = 'property-images'
+    AND (
+      (name LIKE 'logos/%' AND (storage.foldername(name))[2] = auth_agency_id()::text)
+      OR
+      (name LIKE 'avatars/%' AND (storage.foldername(name))[2] = auth.uid()::text)
+      OR
+      (
+        name NOT LIKE 'logos/%'
+        AND name NOT LIKE 'avatars/%'
+        AND EXISTS (
+          SELECT 1 FROM agents a
+          WHERE a.id::text = (storage.foldername(objects.name))[1]
+            AND a.agency_id = auth_agency_id()
+        )
+      )
+    )
+  );
+
+-- ⚠ EL SERVICE ROLE SALTEA TODO ESTO. storage.objects tiene RLS habilitada pero
+-- NO forzada (relforcerowsecurity = false), así que removeAgencyFiles()
+-- —el único código del proyecto que borra logos y avatares— sigue funcionando
+-- igual y no lo afecta ninguna de estas cuatro policies.
+--
+-- ⚠ EFECTO COLATERAL ACEPTADO: los archivos huérfanos quedan INALCANZABLES. Un
+-- archivo bajo la carpeta de un agente que ya no existe no matchea ninguna
+-- rama —no hay fila de `agents` contra la cual comparar—, así que ningún
+-- usuario puede borrarlo. Solo service role, y hoy ningún código del proyecto
+-- los alcanza. Ver PENDIENTES.md.
 
 -- ─── SEED: datos de prueba ────────────────────────────────────
 -- Después de crear un usuario con Supabase Auth, reemplazar el UUID:
