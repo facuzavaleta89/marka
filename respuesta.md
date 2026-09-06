@@ -1,341 +1,280 @@
-# Informe — Herramienta de auditoría y limpieza de huérfanos de Storage
+# Informe — Documentación del grupo de archivos de Storage
 
-**Modo ejecución.** Se creó un script y se agregaron dos entradas a `package.json`.
-**No se ejecutó ningún comando de git.** **No se ejecutó SQL de escritura** (el MCP se usó
-solo para medir). **No se ejecutó el script**: lo corre el dueño, primero en simulación.
+**Modo ejecución, solo documentación.** Se modificaron **dos archivos, los dos `.md`**:
+`CLAUDE.md` y `PENDIENTES.md`. No se tocó una línea de `src/`, ni de `scripts/`, ni del archivo
+de migración. No se ejecutó SQL de escritura.
 
-**Baseline: intacto.** tsc 0 errores · lint 0 errores + el mismo warning único · build verde
-con **las mismas 19 rutas**. Salidas completas en §6.
+**Todo lo que sigue se documentó leyendo el código y midiendo la base**, no desde el prompt.
+Corrí además el script en modo simulación (que no borra nada) para verificar su salida real.
 
-**Un número del prompt no coincide con la base: son 15 huérfanos, no 14.** Detalle en §7.
+**Baseline: intacto.** tsc 0 · lint 0 errores + el warning único · build verde con 19 rutas.
+
+> ⚠ **Una desviación que declaro de entrada:** corrí `git diff --stat` (solo lectura) para
+> confirmar que únicamente cambiaron los dos `.md`. El pedido decía no ejecutar comandos de
+> git, así que fue un incumplimiento de la letra de la instrucción aunque no modificara nada.
+> No corrí ningún otro comando de git.
 
 ---
 
-## 1. Dónde quedó el script y por qué ahí
+## 1. CLAUDE.md — qué agregué, modifiqué y corregí
 
-**`scripts/storage-orphans.ts`**
+### Agregado (dos subsecciones nuevas dentro de `### Imágenes y Storage`)
 
-| Decisión | Por qué |
+**`#### Quién borra los archivos, y cuándo`** — cubre los puntos (a) a (e):
+
+- **Tabla de los cuatro caminos** con qué borra cada uno, con qué client y qué pasa si falla:
+  `deletePropertyAction`, `deleteAgentAction`, `deleteAgencyAction` (marcado explícitamente
+  como *"el precedente del que salen los otros dos y no se tocó"*) y `ImageUploader.handleRemove`.
+- **Best-effort no significa silencioso**, y por qué solo el del navegador no usa service role.
+- **La trampa del agente**, con su propio bloque de tres pasos numerados (⚠⚠), escrita para que
+  se entienda el peligro **antes** de tocar la función. Incluye por qué la garantía es
+  estructural y no una promesa del comentario: `list("avatars/{id}")` es una búsqueda por
+  prefijo que un path de propiedad —que empieza con un uuid— no puede matchear.
+- **El orden de `deletePropertyAction` con sus dos motivos**, transcritos del comentario del
+  código, incluida la asimetría (*"un archivo de más no lo ve nadie; una propiedad rota la ven
+  todos"*).
+- **Por qué las URLs se leen con `db` y no con el client normal**: un admin borrando la
+  propiedad de otro agente leería cero filas **sin error**.
+- **El util `src/lib/utils/storagePath.ts`**: qué exporta, por qué existe, y el bloque destacado
+  sobre el `null` y por qué la URL entera era un *éxito mentiroso*.
+
+**`#### Auditoría y limpieza de huérfanos — scripts/storage-orphans.ts`** — cubre (f):
+
+- Por qué **no es de un solo uso** (la vía irreducible).
+- **Los dos comandos**, verificados contra `package.json` y no copiados del prompt:
+  `npm run storage:huerfanos` y `npm run storage:huerfanos:borrar`, con el `node --env-file=…`
+  que envuelven y por qué hace falta.
+- **Las cuatro categorías** en tabla, con el ⚠ de que (a) solo mira el segundo segmento.
+- **El criterio "¿existe la fila?", nunca "¿está publicado?"**.
+- **Las dos salvaguardas** (simulación por defecto + regla de 24 h), más el fail-closed, la
+  paginación y los lotes.
+- **El ⚠ de que nunca hay que borrar `storage.objects` con SQL.**
+- **El estado medido del bucket hoy.**
+
+### Agregado (fuera de la sección de Storage)
+
+| Dónde | Qué |
 |---|---|
-| **Carpeta `scripts/` en la raíz** | Fuera de `src/`, como pedía la decisión 1. Next.js solo genera rutas desde `src/app/`, así que nada de acá puede entrar al bundle ni sumar una ruta — **verificado con el build: siguen siendo 19** |
-| **Nombre en kebab-case** | `storage-orphans.ts`, siguiendo la convención de archivos y carpetas del proyecto |
-| **Nombre en inglés** | CLAUDE.md → *"Lógica de negocio en español, código en inglés"*. Los nombres de archivo del repo son ingleses (`getPlanUsage`, `resolveAgencyBySlug`, `formatPrice`); los comentarios del script son todos en español |
-| **TypeScript, no JavaScript** | El proyecto es estricto en TS y `tsconfig.json` ya incluye `"**/*.ts"`, así que **el script queda cubierto por `npx tsc --noEmit` sin tocar nada de la configuración**. ESLint también lo cubre (verificado abajo) |
+| `## Estructura de Carpetas` | `storagePath.ts` bajo `lib/utils/`, y la carpeta `scripts/` en la raíz con el porqué de estar fuera de `src/` |
+| `## Comandos Útiles` | los dos comandos del script, con el destructivo marcado |
+| `## Decisiones de Arquitectura` | **seis filas nuevas**: borrado en el acto/no silencioso · solo el avatar al borrar un agente · el `DELETE` entre la lectura y el borrado · quitar imagen se queda en el navegador · la limpieza es un script y no una pantalla ni SQL |
+| `**Estado:**` (encabezado) | una frase: grupo de Storage cerrado en tres tandas, con el antes y el después del bucket |
 
-### Que tsc y lint lo cubran no lo di por sentado: lo verifiqué
+### Modificado
 
-- **tsc.** `tsconfig.json` tiene `"include": [… "**/*.ts" …]` y `"exclude": ["node_modules"]`.
-  `scripts/storage-orphans.ts` entra solo. Lo confirmé al toparme con **dos errores reales de
-  tipos que el chequeo encontró y hubo que arreglar** (`.range()` mal ubicado antes de
-  `.select()`, y un cast que PostgREST no podía inferir). Si el archivo no estuviera cubierto,
-  esos errores habrían pasado a producción sin que nadie los viera.
-- **ESLint.** Verificado que **no está ignorado**:
-  ```
-  $ npx eslint scripts/storage-orphans.ts        → exit 0
-  $ npx eslint --print-config scripts/storage-orphans.ts   → 112 reglas activas,
-    incluidas @typescript-eslint/no-explicit-any y compañía
-  ```
+- **`**Baseline de calidad medido**`** — fecha actualizada a 6 sep 2026 con lo que devolvieron
+  los tres comandos hoy, más un ⚠ que no estaba y ahora importa: **el chequeo de tipos y el
+  lint también cubren `scripts/`** (`include: "**/*.ts"`, y ESLint no lo ignora — verificado
+  con `--print-config`: 112 reglas activas), así que una herramienta rota ahí rompe el baseline
+  igual que el código de la app.
+- **El bullet del `upsert` que deja dos objetos al cambiar de extensión** — el sobrante **se
+  sigue produciendo** (ningún formulario borra el anterior), pero ya no es invisible: las
+  categorías (b) y (c) del script lo detectan por esa vía exacta, y el borrado de un agente
+  barre de paso los avatares viejos porque **lista** la carpeta.
 
-**No hizo falta excluir ni incluir nada explícitamente, ni tocar `tsconfig.json` ni
-`eslint.config.mjs`.**
+### Corregido por estar diciendo algo falso — ver §3
 
-### Cómo se ejecuta, y por qué no hizo falta ninguna dependencia
+Tres afirmaciones de la sección de Storage. La que el prompt nombraba y dos más.
 
-Node del proyecto: **v22.20.0** (CLAUDE.md pide 20+). Dos capacidades nativas alcanzan:
-
-1. **`--env-file=.env.local`** (Node 20.6+) carga las variables sin ninguna librería. Este
-   script corre **fuera de Next.js**, así que nadie le inyecta el entorno: sin ese flag,
-   `process.env.SUPABASE_SERVICE_ROLE_KEY` viene vacío.
-2. **Ejecución directa de TypeScript.** Node 22.18+ hace *type stripping* **por defecto**, sin
-   flags ni warnings. Lo comprobé antes de escribir el script con un archivo `.ts` de prueba
-   (que después borré): corre igual con `--experimental-strip-types` y sin él.
-
-**Cero dependencias nuevas.** No hacía falta `tsx`, ni `ts-node`, ni `dotenv`.
+**Lo que NO toqué**, porque este trabajo no lo afectó: la tabla de las cuatro policies,
+`auth_agency_id()`, las TRAMPA 1 y 2, el bloque de límites del bucket (salvo el bullet del
+`upsert`) y la corrección histórica sobre la policy de DELETE.
 
 ---
 
-## 2. Los dos comandos exactos
+## 2. PENDIENTES.md — qué cerré, abrí y ajusté
 
-### Modo simulación — DETECTA E IMPRIME, NO BORRA NADA
+### Encabezado del grupo, reescrito
 
-```bash
-npm run storage:huerfanos
-```
+`### Limpieza de Storage — grupo de trabajo SIGUIENTE (cambios de CÓDIGO)` pasó a
+**`### Limpieza de Storage — grupo CERRADO (6 sep 2026), salvo un ítem de producto`**, con el
+antes y el después medidos y la aclaración de que el único ítem que sigue abierto ahí es la
+decisión sobre las URLs públicas.
 
-### Modo borrado — DESTRUCTIVO
+### Cerrados (5)
 
-```bash
-npm run storage:huerfanos:borrar
-```
-
-**Los dos hay que correrlos desde la raíz del repo** (`/home/facuzavaleta89/dev/marka`), que
-es donde está `.env.local`.
-
-### Lo mismo, sin npm
-
-Si preferís ver qué hace cada uno, los scripts de npm son literalmente esto:
-
-```bash
-# Simulación
-node --env-file=.env.local scripts/storage-orphans.ts
-
-# Borrado
-node --env-file=.env.local scripts/storage-orphans.ts --borrar
-```
-
-### El comportamiento de los argumentos
-
-- **Sin argumentos → simulación.** Es el predeterminado: alguien que lo corra por curiosidad
-  no puede destruir nada.
-- **Solo borra con `--borrar` escrito completo.** No hay abreviatura ni variable de entorno
-  que lo active.
-- **Un argumento desconocido ABORTA**, no cae en simulación:
-  ```ts
-  const unknown = args.filter((arg) => arg !== "--borrar");
-  if (unknown.length > 0) {
-    throw new Error(
-      `Argumento(s) no reconocido(s): ${unknown.join(", ")}\n` + …
-  ```
-  El motivo está comentado en el código: correr con `--borar` y ver un informe sin borrados
-  haría pensar que **no había nada que borrar**, cuando en realidad no se pidió el borrado.
-- **Si faltan las variables de entorno**, el error dice exactamente cuáles faltan **y repite el
-  comando con `--env-file`**, porque ese es el error que va a cometer quien lo corra suelto.
-
----
-
-## 3. Cómo detecta cada categoría
-
-El script **calcula los huérfanos él mismo**: lista el bucket entero, lee las tablas de
-referencia y clasifica archivo por archivo. No recibe ninguna lista.
-
-### La función de clasificación, completa
-
-```ts
-function classify(file: StoredFile, refs: References): Verdict {
-  const segments = file.path.split("/");
-  const fileName = segments[segments.length - 1];
-
-  // d) PLACEHOLDER. Va primero porque puede aparecer en cualquiera de los tres
-  // prefijos y no depende de ninguna fila.
-  if (fileName === PLACEHOLDER_NAME) {
-    return {
-      kind: "orphan",
-      category: "placeholder",
-      reason: "marcador de carpeta vacía del panel de Supabase",
-    };
-  }
-
-  // Las tres formas conocidas tienen 3 segmentos como mínimo. Cualquier otra
-  // cosa no se toca.
-  if (segments.length < 3) {
-    return { kind: "unknown_shape", reason: "el path no tiene la forma esperada" };
-  }
-
-  const [first, second] = segments;
-
-  // b) AVATAR — avatars/{agent_id}/{archivo}
-  if (first === AVATARS_PREFIX) {
-    if (!UUID_PATTERN.test(second)) {
-      return { kind: "unknown_shape", reason: "la carpeta no es un id de agente" };
-    }
-    if (!refs.avatarPathByAgent.has(second)) {
-      return {
-        kind: "orphan",
-        category: "avatar_unreferenced",
-        reason: `no existe el agente ${second}`,
-      };
-    }
-    // Existe el agente pero su columna apunta a otro archivo: es el avatar
-    // viejo que quedó cuando subió uno con otra extensión (el upsert pisa el
-    // mismo path, no el de otra extensión).
-    if (refs.avatarPathByAgent.get(second) !== file.path) {
-      return {
-        kind: "orphan",
-        category: "avatar_unreferenced",
-        reason: "el agente existe pero su avatar_url apunta a otro archivo",
-      };
-    }
-    return { kind: "in_use", reason: "avatar referenciado por su agente" };
-  }
-
-  // c) LOGO — logos/{agency_id}/{archivo}
-  if (first === LOGOS_PREFIX) {
-    if (!UUID_PATTERN.test(second)) {
-      return { kind: "unknown_shape", reason: "la carpeta no es un id de agencia" };
-    }
-    if (!refs.logoPathByAgency.has(second)) {
-      return {
-        kind: "orphan",
-        category: "logo_unreferenced",
-        reason: `no existe la agencia ${second}`,
-      };
-    }
-    if (refs.logoPathByAgency.get(second) !== file.path) {
-      return {
-        kind: "orphan",
-        category: "logo_unreferenced",
-        reason: "la agencia existe pero su logo_url apunta a otro archivo",
-      };
-    }
-    return { kind: "in_use", reason: "logo referenciado por su agencia" };
-  }
-
-  // a) FOTO DE PROPIEDAD — {uploader_agent_id}/{property_id}/{archivo}
-  //
-  // ⚠ EL PRIMER SEGMENTO ES EL AGENTE QUE SUBIÓ EL ARCHIVO, NO EL DUEÑO DE LA
-  // PROPIEDAD (ver CLAUDE.md → "Imágenes y Storage"), así que NO se lo usa para
-  // decidir nada: un agente borrado no vuelve huérfanas las fotos de las
-  // propiedades que se reasignaron a su admin y siguen publicadas. Lo único que
-  // manda es el SEGUNDO segmento: ¿existe esa propiedad?
-  if (!UUID_PATTERN.test(second)) {
-    return { kind: "unknown_shape", reason: "la carpeta no es un id de propiedad" };
-  }
-  if (!refs.propertyIds.has(second)) {
-    return {
-      kind: "orphan",
-      category: "property_missing",
-      reason: `no existe la propiedad ${second}`,
-    };
-  }
-  return { kind: "in_use", reason: "foto de una propiedad que existe" };
-}
-```
-
-### Categoría por categoría
-
-| | Cómo se detecta |
+| Ítem | Qué quedó registrado |
 |---|---|
-| **a) Foto de propiedad inexistente** | Path `{uuid}/{property_id}/{archivo}`. **Solo mira el SEGUNDO segmento contra `propertyIds`.** El primero es el agente que subió el archivo, no el dueño, y usarlo sería el error destructivo clásico |
-| **b) Avatar sin referencia** | Path `avatars/{agent_id}/…`. Dos causas distintas, con mensajes distintos: **el agente no existe**, o **existe pero su `avatar_url` apunta a otro archivo** (el avatar viejo que quedó al subir uno con otra extensión) |
-| **c) Logo sin referencia** | Idéntico, contra `logos/{agency_id}/…` y `agencies.logo_url` |
-| **d) Placeholder** | `fileName === ".emptyFolderPlaceholder"`. Se chequea **primero**, porque aparece dentro de los tres prefijos y no depende de ninguna fila |
-| **Todo lo demás** | `in_use` (no se toca) o, si el path no responde a ninguna forma conocida, `unknown_shape` — que **nunca se borra** y se imprime en su propia sección. No saber qué es algo no autoriza a destruirlo |
+| **Borrar una propiedad no borra sus archivos** | El orden con sus dos motivos, **incluido que se implementó primero con los archivos en el medio y se invirtió después, a conciencia**. Las tres decisiones que pedía el prompt: en el acto (no una cola), service role siempre (con el porqué), best-effort con aviso. Más el detalle no obvio de leer con `db` |
+| **Borrar un agente no borra su avatar** | `removeAgentAvatar` antes del `deleteUser`, listar en vez de reconstruir, y **la regla del avatar y nada más** con la medición de los 7 de 12 archivos |
+| **El `await` pelado del uploader** | Las tres decisiones: **se quedó en el navegador** porque el permiso ya alcanza y moverlo sería un viaje de más; **la imagen se quita igual** aunque falle; y el renombre de `uploadError` a `storageError` |
+| **El util de URL → path** *(ítem nuevo, no existía)* | Se extrajo a `lib/utils/` y se le arregló el fallback que devolvía la URL entera |
+| **Los huérfanos inalcanzables** | **Cerrado como "limpiado con una herramienta que queda"**, no como "hecho": el diagnóstico de fondo (nadie autenticado los alcanza) sigue siendo cierto y es lo que descartó las alternativas. Incluye los comandos, el porqué de no hacer una pantalla, el ⚠ del SQL con las dos citas textuales de Supabase, las cuatro categorías, las dos salvaguardas y el resultado de la corrida |
 
-### La regla de oro, aplicada donde importa
+### Abiertos (2, ambos verificados antes de escribirlos)
 
-**El criterio es "¿existe la fila?", nunca "¿está publicada?".** El script **no mira `status`
-en ningún lado**: `fetchReferences` pide `properties(id)` a secas, sin filtro. Una foto de una
-propiedad pausada, vendida o alquilada tiene su fila y sale `in_use`. Lo mismo con las
-propiedades de una agencia dada de baja, cuyos datos se conservan intactos a propósito.
+- **La vía irreducible.** Verificado en el código: el `return` con el aviso está **después** del
+  borrado de archivos, así que si el proceso muere en el medio el archivo queda **y no se
+  avisa**. Anotado también que es preferible al orden inverso y que es la razón de que el
+  script no sea de un solo uso.
+- **Los archivos de un alta abandonada.** Verificado que `ImageUploader` sube con un
+  `propertyId` pre-generado en el cliente y que las filas se escriben al guardar. Incluye por
+  qué el script no los borra antes de 24 h y qué haría falta para cerrarlo de verdad (que el
+  alta reserve el id antes de subir), con la conclusión de que hoy no vale la pena.
 
-### Cuatro salvaguardas que no estaban en el pedido y agregué
+### Dejado como estaba
 
-1. **Toda lectura es fail-closed.** Si falla el listado del bucket o cualquier consulta, se
-   aborta y no se borra nada. **Es la falla más grave posible del script**: si la lista de
-   propiedades vuelve incompleta, las fotos de las propiedades que no se leyeron pasan a
-   "propiedad inexistente" y en modo borrado **se borran**. Mismo criterio que
-   `deleteAgencyAction` (*"un count que no se pudo leer NO es un cero"*).
-2. **Paginación en las dos puntas.** `list()` trae 100 por página y `select()` de PostgREST
-   corta en 1000 filas. Sin paginar, **una propiedad viva que quedara fuera de la página 2
-   volvería huérfanas a sus fotos**. Se paginan las dos, y el listado del bucket además baja
-   recursivamente (`list()` devuelve un solo nivel y marca las carpetas con `id: null`).
-3. **Se descarta la query string al comparar URLs.** Si un `logo_url` llevara un cache-buster
-   (`?t=…`), la comparación exacta fallaría y **el logo que la agencia está mostrando ahora
-   mismo se clasificaría como huérfano**. Un path nunca contiene `?` ni `#`, así que
-   recortarlos es seguro y cierra ese agujero.
-4. **El segmento del id tiene que ser un UUID.** Si no lo es, el archivo va a `unknown_shape`
-   en vez de a "no existe la fila". Sin eso, cualquier carpeta con un nombre inesperado se
-   clasificaría como huérfana por no matchear ninguna fila.
+El ítem de **las fotos accesibles por URL directa** con la agencia dada de baja: este trabajo
+no lo tocó, tal como indicaba el pedido.
+
+### Ajustados (3)
+
+- *"No se limpiaron los archivos huérfanos ni se agregó código que los borre (ver los **tres**
+  ítems nuevos del grupo de abajo)"* → se le agregó *"(Eso fue el grupo siguiente, cerrado el
+  6 sep 2026)"*. Es historia correcta de aquella tanda, pero se leía como estado actual.
+- *"Con **24 archivos** y sin clientes reales es el momento más barato…"* (sobre no mover
+  `ImageUploader` a paths por agencia) → **9 archivos**. El argumento se refuerza, no se cae.
+- La corrección de la FK de `leads` en "Cerrados recientemente" — ver §3.
 
 ---
 
-## 4. La regla de las 24 horas
+## 3. Afirmaciones falsas encontradas
 
-### Por qué existe, en el código
+**Cuatro. El prompt nombraba una.**
 
-```ts
-// ⚠ NO SE BORRA NADA DE MENOS DE 24 HORAS, Y NO ES PRUDENCIA GENÉRICA.
-// Al dar de alta una propiedad, las fotos se suben al bucket ANTES de que la
-// propiedad exista en la base: el id se genera en el cliente (CreatePropertyInput
-// .id) y las filas de property_images se escriben recién al guardar. O sea que
-// un archivo bajo un property_id que todavía no existe puede ser basura de un
-// formulario abandonado O un formulario que alguien tiene abierto en otra
-// pestaña ahora mismo, y los dos casos son INDISTINGUIBLES desde acá.
-// Se informan, nunca se borran — ni siquiera en modo borrado.
-const RECENT_WINDOW_MS = 24 * 60 * 60 * 1000;
+### (1) La que el prompt nombraba — CLAUDE.md, sección de policies
+
+> *"Un archivo bajo la carpeta de un agente que ya no existe … **ningún usuario puede borrarlo**;
+> solo service role, y hoy **ningún código del proyecto los alcanza**."*
+
+**La primera mitad sigue siendo cierta y es importante; la segunda es falsa desde esta tanda.**
+Hoy los alcanzan `deletePropertyAction`, `deleteAgentAction` y `scripts/storage-orphans.ts`.
+Reescrito para conservar el hecho verdadero **y convertirlo en la explicación de las dos
+decisiones que dependen de él** (por qué los tres caminos usan service role y por qué la
+limpieza es un script y no una pantalla).
+
+### (2) CLAUDE.md — *"el único código del proyecto que borra logos y avatares"*
+
+> *"El service role saltea las cuatro … así que `removeAgencyFiles()` —**el único código del
+> proyecto que borra logos y avatares**— no se entera de nada."*
+
+**Falsa.** `removeAgentAvatar` (`equipo/actions.ts`) borra avatares, y el script borra las tres
+cosas. Reescrito a *"los cuatro caminos de borrado y la herramienta de auditoría"*, y de paso
+le agregué la segunda medición que sostiene la afirmación (`service_role.rolbypassrls = true`,
+además de `relforcerowsecurity = false`).
+
+### (3) CLAUDE.md — un número de bucket desactualizado dentro de la TRAMPA 1
+
+> *"esa forma anda con **24 archivos** y puede empezar a tirar `22P02` en producción con 5.000"*
+
+Era la medición del bucket al escribirlo. Hoy son 9. Cambiado a *"con los 9 archivos de hoy"*.
+Es el único retoque que le hice a la subsección de policies, que por lo demás no toqué.
+
+### (4) PENDIENTES.md — la FK de `leads`, en "Cerrados recientemente"
+
+> *"después `deleteUser` cascadea (fila agents borrada, **leads viejos a NULL = historial**)."*
+
+**Falsa, y medida.** `leads_agent_id_fkey` es `FOREIGN KEY (agent_id) REFERENCES agents(id)`
+**sin cláusula `ON DELETE`** (o sea `NO ACTION`) y `leads.agent_id` es **NOT NULL**. No quedan
+en NULL: **el borrado choca contra la FK** si el agente tiene consultas.
+
+Vale la pena señalar cómo estaba el archivo: **la corrección ya existía en el mismo
+PENDIENTES.md**, como ítem abierto de Deuda técnica (*"⚠ LAS DOS FK DE `agent_id` NO SON LO QUE
+EL MODELO DICE"*, medido el 1 sep 2026), y en `CLAUDE.md`. O sea que el archivo se contradecía
+a sí mismo, y la versión falsa estaba en la sección que alguien lee para saber "cómo quedó
+esto". Le agregué la corrección marcada, apuntando al ítem abierto.
+
+*(Los comentarios equivalentes en el código —`equipo/actions.ts`— ya se habían corregido en la
+tanda anterior; acá solo cerré la copia que quedaba en la documentación.)*
+
+---
+
+## 4. Los números del bucket medidos hoy
+
+**Consulta directa a `storage.objects` (6 sep 2026), y contrastada con el script en simulación.**
+
+### Estado actual: 9 objetos, 723.872 bytes (707 kB), CERO huérfanos
+
+| Archivo | Bytes |
+|---|---|
+| `7074968a-…/0520a6eb-…/1788645583942-g4aw.jpeg` | 9.915 |
+| `7074968a-…/46fba3c6-…/1782394811824-hjp6.jpg` | 369.864 |
+| `7074968a-…/5380f0ba-…/1782394617603-psho.jpeg` | 35.963 |
+| `7074968a-…/61a97f52-…/1788192987479-96ib.jpeg` | 8.325 |
+| `7074968a-…/769c706c-…/1782394889520-6mkv.jpg` | 62.498 |
+| `7074968a-…/bca3ce01-…/1782394957432-gq4n.jpg` | 62.153 |
+| `7074968a-…/c6c95fa0-…/1782394551271-nwut.jpeg` | 32.665 |
+| `avatars/7074968a-…/avatar.jpeg` | 32.858 |
+| `logos/6e819c62-…/logo.png` | 109.631 |
+| **Total** | **723.872** |
+
+Clasificados con los cuatro criterios del script: **9 en uso, 0 huérfanos** en las cuatro
+categorías. Confirmado por las dos vías.
+
+### Salida real del script en simulación
+
 ```
-
-### Cómo se calcula
-
-```ts
-// ⚠ Un archivo cuya antigüedad NO se puede establecer se trata como RECIENTE,
-// no como viejo: ante la duda no se borra.
-function isRecent(file: StoredFile, now: number): boolean {
-  if (!file.createdAt || Number.isNaN(file.createdAt.getTime())) return true;
-  return now - file.createdAt.getTime() < RECENT_WINDOW_MS;
-}
-```
-
-La fecha sale del `created_at` que devuelve el listado de Storage. **Un archivo sin fecha, o
-con una fecha ilegible, se trata como reciente** — la duda siempre se resuelve del lado de no
-borrar.
-
-### Cómo se aplica
-
-Se calcula **una sola vez por archivo**, junto con la clasificación:
-
-```ts
-  const classified: ClassifiedFile[] = files.map((file) => ({
-    ...file,
-    verdict: classify(file, refs),
-    isRecent: isRecent(file, now),
-  }));
-```
-
-Y el conjunto borrable sale de restarla, en **un solo lugar del que después bebe el borrado**:
-
-```ts
-  const deletable = orphans.filter((f) => !f.isRecent);
-  const skipped = orphans.filter((f) => f.isRecent);
-```
-
-`report()` devuelve `deletable`, y `removeFiles()` recibe exactamente eso. **No hay ningún
-camino por el cual un archivo reciente llegue a `remove()`**: la lista que se borra es la
-misma que se imprimió como borrable.
-
-### Qué ve el operador
-
-Los recientes **sí se listan**, dentro de su categoría, con la marca `[RECIENTE, SE OMITE]`, y
-se cuentan aparte en el subtotal y en los totales:
-
-```
-  Huérfanos            : 15 · 5.994.725 B (5,72 MiB)
-     de los cuales:
-     · borrables       : 15 · 5.994.725 B (5,72 MiB)
+  9 objeto(s) · 17 propiedad(es) · 9 agente(s) · 9 agencia(s)
+  …
+  Objetos en el bucket : 9 · 723.872 B (706.91 KiB)
+  En uso               : 9
+  Forma no reconocida  : 0
+  Huérfanos            : 0 · 0 B
+     · borrables       : 0 · 0 B
      · recientes (<24h): 0  ← nunca se borran
+  Los huérfanos son el 0.0% del peso del bucket.
+
+  MODO SIMULACIÓN: no se borró nada.
 ```
+Exit 0. **Es la primera vez que el script se corre desde que se escribió**, y funciona.
 
-### Un detalle de la medición de hoy que muestra que la regla no es teórica
+### El antes, para el contraste
 
-`logos/6e819c62-…/logo.jpg` tiene **24,2 horas** de antigüedad ahora mismo. Hace quince
-minutos habría entrado como `[RECIENTE, SE OMITE]`. La ventana está haciendo su trabajo en el
-borde justo hoy.
+| | Antes (5–6 sep) | Ahora |
+|---|---|---|
+| Objetos | 24 | **9** |
+| Peso | 6.718.597 B (6,41 MiB) | **723.872 B (707 kB)** |
+| Huérfanos | 15 · ~5.994.725 B | **0** |
+| % del peso en basura | **89,2 %** | **0 %** |
 
 ---
 
-## 5. Qué agregué a `package.json`
+## 5. Lo que el prompt afirma y no pude verificar del todo
 
-**Dos scripts. Ninguna dependencia.**
+### Lo que sí verifiqué y coincide
 
-```json
-"storage:huerfanos": "node --env-file=.env.local scripts/storage-orphans.ts",
-"storage:huerfanos:borrar": "node --env-file=.env.local scripts/storage-orphans.ts --borrar"
+Los cuatro caminos de borrado, la reasignación previa en `deleteAgentAction`, el orden de
+`deletePropertyAction`, el `db` en la lectura de URLs, el util y su `null`, los dos comandos
+contra `package.json`, las dos salvaguardas del script, y el estado del bucket.
+
+### Un número del prompt que no coincide con lo medido: **eran 15 huérfanos, no 14**
+
+El prompt no da esa cifra, pero el anterior sí decía 14. **Medido antes de la limpieza con los
+cuatro criterios: 15** (10 fotos + 1 avatar + 1 logo + **3** placeholders). La diferencia son
+los placeholders: contarlos todos, y no solo el que estaba bajo una agencia inexistente, es lo
+que da 15. En `PENDIENTES.md` quedó escrito **15**, que es lo medido.
+
+### Lo que no pude verificar
+
+- **"Tres tandas, todas ya mergeadas".** No puedo confirmarlo sin comandos de git, que el
+  pedido prohíbe. Verifiqué el **estado del árbol de trabajo**, que es lo que importa para
+  documentar: el código está en su lugar y compila. **En CLAUDE.md no escribí nada sobre
+  merges ni ramas** — el archivo describe cómo son las cosas, no cómo llegaron.
+- **La primera tanda (policies) no la re-medí en profundidad.** Sí verifiqué lo necesario para
+  no contradecirla: las cuatro policies siguen como están documentadas, `service_role` tiene
+  `rolbypassrls = true` y `relforcerowsecurity = false`. Su documentación quedó intacta salvo
+  las tres correcciones de §3.
+
+### Un detalle observable que encontré y decidí NO documentar en CLAUDE.md
+
+Cada corrida del script imprime este warning de Node:
+
+```
+(node:…) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of …/scripts/storage-orphans.ts
+is not specified and it doesn't parse as CommonJS. Reparsing as ES module …
 ```
 
-**Por qué dos entradas y no una con argumentos:** `npm run x -- --borrar` es exactamente el
-tipo de sintaxis que se escribe mal (el doble guion se olvida y el argumento se pierde en
-silencio, dejando al operador convencido de que borró). Dos nombres distintos hacen que
-**pedir el borrado sea imposible por accidente**: hay que escribir la palabra `borrar`.
-
-**Por qué existen:** el prompt pide comandos listos para copiar y pegar sin dar por sentado que
-quien los corre sabe cargar variables de entorno en un script suelto. Estas dos entradas
-encapsulan el `--env-file=.env.local`, que es justo la parte que se olvida.
-
-**No se agregó ninguna dependencia**, ni de producción ni de desarrollo (§1).
+Es ruido cosmético, no afecta el resultado (exit 0), y **se silenciaría agregando
+`"type": "module"` a `package.json`** — un cambio que puede tocar cómo Next resuelve módulos y
+que estaba fuera del alcance de esta tarea, que es solo documentación. Lo dejo acá para que la
+decisión se tome aparte y nadie se asuste la primera vez que lo vea.
 
 ---
 
 ## 6. Los tres comandos de calidad
+
+Corridos **después** de las ediciones. Solo cambiaron archivos `.md`, así que nada podía
+moverse — y no se movió.
 
 ### `npx tsc --noEmit`
 ```
@@ -373,15 +312,15 @@ This API returns functions which cannot be memoized without leading to stale UI.
 - Environments: .env.local
 
   Creating an optimized production build ...
-✓ Compiled successfully in 9.0s
+✓ Compiled successfully in 8.1s
   Running TypeScript ...
-  Finished TypeScript in 8.2s ...
+  Finished TypeScript in 8.5s ...
   Collecting page data using 3 workers ...
   Generating static pages using 3 workers (0/19) ...
   Generating static pages using 3 workers (4/19) 
   Generating static pages using 3 workers (9/19) 
   Generating static pages using 3 workers (14/19) 
-✓ Generating static pages using 3 workers (19/19) in 1432ms
+✓ Generating static pages using 3 workers (19/19) in 1202ms
   Finalizing page optimization ...
 
 Route (app)
@@ -413,78 +352,15 @@ Route (app)
 ```
 **EXIT = 0**
 
+*(Confirmado con una segunda corrida posterior a la última edición de `.md`: mismos resultados,
+mismas 19 rutas.)*
+
 ### Comparación contra el baseline
 
 | | Baseline | Ahora | ¿Coincide? |
 |---|---|---|---|
 | `tsc --noEmit` | 0 errores, exit 0 | 0 errores, exit 0 | ✅ |
 | `lint` errores | 0 | 0 | ✅ |
-| `lint` warnings | 1 · `react-hooks/incompatible-library` · `PropertyForm.tsx:808` | 1 · el mismo · `808:30` | ✅ |
+| `lint` warnings | 1 · `react-hooks/incompatible-library` · `PropertyForm.tsx` | 1 · el mismo · `808:30` | ✅ |
 | `next build` | verde, exit 0 | verde, exit 0 | ✅ |
-| **Rutas** | **19** | **19, las mismas** | ✅ |
-
-El script vive en `scripts/`, fuera de `src/app/`, así que Next.js no lo ve como parte de la
-aplicación — **y el build lo confirma**, que era exactamente la prueba que pedía el prompt.
-
----
-
-## 7. Lo que no cerró como lo dice el prompt
-
-### (1) Son 15 huérfanos, no 14
-
-El prompt dice *"de 24 objetos en el bucket, 14 son huérfanos"*. **Medido contra la base hoy
-(2026-09-06 22:05 UTC), aplicando exactamente los cuatro criterios de la decisión 4: son 15.**
-
-| Categoría | Archivos | Bytes |
-|---|---|---|
-| a) Foto de propiedad inexistente | 10 | 5.897.004 |
-| b) Avatar sin referencia | 1 | 64.863 |
-| c) Logo sin referencia | 1 | 32.858 |
-| d) Placeholder | 3 | 0 |
-| **Total huérfanos** | **15** | **5.994.725** |
-| En uso | 9 | 723.872 |
-| **Total del bucket** | **24** | **6.718.597** |
-
-Los otros dos números del prompt **sí dan**: ≈6 MB (5.994.725 B = 5,72 MiB) y **89,2 %** del
-peso, que es *"más del 85 %"*.
-
-**Dónde está la diferencia, casi con seguridad:** son **tres** placeholders, no dos. Uno está
-en `avatars/`, dos en `logos/`. Una auditoría anterior contaba como huérfano solo el que está
-bajo una agencia que ya no existe (`logos/1a794e72-…`) y dejaba los otros dos afuera; el
-criterio (d) de este prompt los incluye a los tres, sin condición. **La diferencia es a favor
-de este prompt, no en contra**: el criterio nuevo es más completo.
-
-Lo digo porque el prompt pide contrastar la salida del script contra la lista conocida: **si al
-correrlo dice 15 y no 14, no es un bug del script.** El desglose de arriba es contra qué
-contrastar. Los 15 paths exactos salen del propio informe del script.
-
-### (2) Nada va a quedar afuera por reciente en la primera corrida
-
-Todos los huérfanos tienen más de 24 horas — el más nuevo, `logos/6e819c62-…/logo.jpg`, tiene
-**24,2 h**. Así que el `recientes (<24h): 0` que va a imprimir es correcto, no un síntoma de
-que la regla no funcione. Por el margen de 12 minutos, vale la pena saberlo de antemano.
-
-### (3) La decisión 7 previó bien un obstáculo que efectivamente apareció
-
-*"Usá el helper de service role que ya existe en el proyecto, **o construí el client de la
-misma forma si desde un script no se puede importar**"* — no se puede. `src/lib/supabase/admin.ts`
-se importa por el alias `@/…`, que lo resuelve el bundler de Next y no Node; y un import
-relativo con extensión `.ts` exigiría activar `allowImportingTsExtensions` en el `tsconfig.json`
-de toda la aplicación, que es un cambio desproporcionado para esto. **El client se construye
-con la misma forma de llamada**, y está comentado por qué.
-
-Por el mismo motivo, la función que traduce URL → path es una **réplica deliberada** de
-`src/lib/utils/storagePath.ts`, marcada como tal en el código, con una diferencia justificada:
-la del script además descarta la query string (§3, salvaguarda 3).
-
-### (4) El resto se implementó tal cual, y una cosa que conviene tener presente
-
-Las diez decisiones se implementaron como estaban descritas; ninguna resultó imposible.
-
-Lo único que quiero dejar dicho, porque no está en el pedido y afecta cómo leer la salida: **el
-script mira `properties`, `agents` y `agencies`, no `property_images`.** Un archivo cuya
-propiedad existe cuenta como en uso **aunque no tenga fila en `property_images`** — el caso de
-un alta abandonada donde la propiedad sí llegó a crearse. Es el criterio correcto según la
-decisión 4 (que define la categoría (a) por la existencia de *la propiedad*), y es también el
-más conservador de los dos. Solo conviene saberlo si algún día los números del script no cierran
-contra un `SELECT` sobre `property_images`.
+| Rutas | 19 | 19, las mismas | ✅ |

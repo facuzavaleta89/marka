@@ -20,9 +20,9 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 
 **Distribución:** web responsive + PWA instalable. No hay app nativa ni stores.
 
-**Estado:** Deployado en Vercel, **sin datos reales todavía** (lo cargado es de prueba; el lanzamiento con inmobiliarias fundadoras se apunta a octubre). MVP + multi-agente completos. **Fase White-label cerrada** en lo esencial: Sub-pieza A (ruta `/[slug]` + mapa filtrado + gate de plan), B1 (subir logo) y B2a (mostrar logo + nombre + "powered by Marka." en el header) hechas y probadas. **B2b (variante admin en `disabled`) y C (slug editable) quedan EN PAUSA**. **Fase de modelo de agencias CERRADA** (ago 2026): solo-agencias, matrícula + aprobación manual, bloqueo de publicación en la base, sesión unificada. Ver "Aprobación de agencias" abajo. **Fase de cobrabilidad CERRADA** (31 ago – 1 sep 2026): la visibilidad pública ahora depende de que la agencia esté al día (ver "Visibilidad pública de las propiedades") y el panel `/admin` dejó de ser de una sola vía —cancelar solicitud, vencimiento, baja/reactivación, eliminación y cambio de plan (ver "Panel de plataforma")—. **Ese era el bloqueante para poder cobrar y ya no lo es.** **Fase de modelo de la propiedad CERRADA** (3 sep 2026): una propiedad puede ofrecerse en **varias operaciones a la vez** con precio y moneda propios por operación, el **precio es opcional** ("a convenir") y las propiedades en alquiler llevan **requisitos para el inquilino**. Ver "Operaciones, precios y requisitos de la propiedad".
+**Estado:** Deployado en Vercel, **sin datos reales todavía** (lo cargado es de prueba; el lanzamiento con inmobiliarias fundadoras se apunta a octubre). MVP + multi-agente completos. **Fase White-label cerrada** en lo esencial: Sub-pieza A (ruta `/[slug]` + mapa filtrado + gate de plan), B1 (subir logo) y B2a (mostrar logo + nombre + "powered by Marka." en el header) hechas y probadas. **B2b (variante admin en `disabled`) y C (slug editable) quedan EN PAUSA**. **Fase de modelo de agencias CERRADA** (ago 2026): solo-agencias, matrícula + aprobación manual, bloqueo de publicación en la base, sesión unificada. Ver "Aprobación de agencias" abajo. **Fase de cobrabilidad CERRADA** (31 ago – 1 sep 2026): la visibilidad pública ahora depende de que la agencia esté al día (ver "Visibilidad pública de las propiedades") y el panel `/admin` dejó de ser de una sola vía —cancelar solicitud, vencimiento, baja/reactivación, eliminación y cambio de plan (ver "Panel de plataforma")—. **Ese era el bloqueante para poder cobrar y ya no lo es.** **Fase de modelo de la propiedad CERRADA** (3 sep 2026): una propiedad puede ofrecerse en **varias operaciones a la vez** con precio y moneda propios por operación, el **precio es opcional** ("a convenir") y las propiedades en alquiler llevan **requisitos para el inquilino**. Ver "Operaciones, precios y requisitos de la propiedad". **Grupo de archivos de Storage CERRADO** (5–6 sep 2026), en tres tandas: policies finas por agencia, borrado de archivos en los caminos que no lo hacían, y una herramienta de línea de comandos que audita y limpia huérfanos. El bucket quedó en **9 objetos y 707 kB, sin un solo huérfano**; venía de 24 objetos y 6,4 MB con el 89 % del peso en basura. Ver "Imágenes y Storage".
 
-**Baseline de calidad medido (no documentado de memoria; última medición: 3 sep 2026):** `npx tsc --noEmit` 0 errores (exit 0), `npm run lint` **0 errores y 1 warning** (`PropertyForm.tsx:808`, exit 0), `npx next build` verde (exit 0) con **19 rutas**. Cualquier error nuevo, un warning distinto del único conocido, o una ruta que aparezca sin motivo, es una regresión. Ver "ESLint".
+**Baseline de calidad medido (no documentado de memoria; última medición: 6 sep 2026):** `npx tsc --noEmit` 0 errores (exit 0), `npm run lint` **0 errores y 1 warning** (`PropertyForm.tsx:808`, exit 0), `npx next build` verde (exit 0) con **19 rutas**. Cualquier error nuevo, un warning distinto del único conocido, o una ruta que aparezca sin motivo, es una regresión. Ver "ESLint". ⚠ El chequeo de tipos y el lint **también cubren `scripts/`** (el `include` de `tsconfig.json` es `**/*.ts` y ESLint no lo ignora): una herramienta rota ahí rompe el baseline igual que el código de la app.
 
 > **⚠️ Hoja de ruta de modelo (tras validación con el rubro y el colegio de corredores).** **Ya aplicado:** los particulares se eliminaron (la app es solo-agencias); las agencias requieren **número de matrícula + aprobación manual** del dueño de la plataforma (ver "Aprobación de agencias"); y el formulario de propiedad tiene el **atajo de sugerencia de ubicación desde la dirección** (ver "Ubicación de la propiedad"), que era el ítem D1 de la hoja de ruta; y **el mapa público ya filtra por agencia habilitada** (era el bloqueante para cobrar: ver "Visibilidad pública de las propiedades"); y **una propiedad puede estar en venta y en alquiler a la vez**, con **precio opcional** ("a convenir") y **requisitos de alquiler** (ver "Operaciones, precios y requisitos de la propiedad"). **Pendiente:** registro opcional de visitantes; página y link por propiedad. Ver PENDIENTES.md → "Nueva fase".
 
@@ -286,6 +286,10 @@ En el cambio de plan el campo viene **precargado** con el valor vigente, justame
 │   │       ├── licenseNumber.ts         ← Formato y normalización de la matrícula, compartidos por el alta y por Preferencias
 │   │       ├── resolveAgencyBySlug.ts   ← Resuelve slug → agencia + suscripción + ciudad (service role). 3 estados: not_found / disabled / active. `disabled` = 3 gates (aprobación + has_white_label + pago vía RPC agency_is_publicly_visible). White-label
 │   │       ├── authErrors.ts            ← translateAuthError: mapea errores de Supabase Auth a español (registro + alta de agente)
+│   │       ├── storagePath.ts           ← PROPERTY_IMAGES_BUCKET + extractStoragePath(url): string | null.
+│   │       │                              URL pública → path del bucket. Servidor y cliente. Devuelve NULL
+│   │       │                              si la URL no es del bucket: mandar la URL entera a remove() no
+│   │       │                              borra nada y tampoco falla
 │   │       └── labels.ts                ← Etiquetas UI compartidas
 │   │
 │   ├── store/
@@ -304,6 +308,11 @@ En el cambio de plan el campo viene **precargado** con el valor vigente, justame
 │   ├── markers/                         ← SVG fuente de verdad de los pines
 │   ├── icon-192.png / icon-512.png      ← PWA icons ("M" terracota)
 │   └── manifest.json
+│
+├── scripts/                             ← Herramientas de línea de comandos. FUERA de src/ a propósito:
+│   └── storage-orphans.ts                  Next solo genera rutas desde src/app/, así que nada de acá
+│                                           entra al bundle ni suma una ruta al build. Detecta y borra
+│                                           archivos huérfanos del bucket; simulación por defecto
 │
 ├── supabase/
 │   ├── migrations/20240101000000_initial_schema.sql
@@ -568,14 +577,14 @@ Columna nueva: `text`, **nullable**, con `CHECK (location_source IS NULL OR loca
 
 La agencia se resuelve con **`auth_agency_id()`** (`public`, SQL, `STABLE`, **`SECURITY DEFINER`**, `search_path` fijo). Es SECURITY DEFINER para que las policies **no dependan de que `Public read agents` siga teniendo `USING (true)`**: el día que se restrinja esa lectura —algo razonable, hoy expone email y teléfono de todos los agentes a la anon key— un subselect suelto dejaría de ver filas y **toda subida empezaría a fallar con un 403 sin relación aparente con `agents`**. ⚠ **Deuda conocida:** la rama de propiedades **todavía** hace su propio `EXISTS (SELECT 1 FROM agents …)` fuera de la función (necesita mirar a OTRO agente, no al logueado), así que **esa rama sigue atada a `Public read agents`**. Ver PENDIENTES.md.
 
-**⚠⚠ TRAMPA 1 — LA CARPETA SE COMPARA EN TEXTO, NUNCA CASTEÁNDOLA A `uuid`.** `storage.foldername()` devuelve las carpetas del path, y para avatares y logos la **primera es una palabra literal** (`avatars`, `logos`), no un uuid. Castearla **no devuelve `false`: lanza un error que ABORTA LA SENTENCIA ENTERA** — medido: `ERROR: 22P02: invalid input syntax for type uuid: "avatars"`. Por eso se castea el uuid conocido a texto (`a.id::text`, `auth.uid()::text`, `auth_agency_id()::text`) y se lo compara contra la carpeta. **Y excluir los prefijos con un `AND` antes de castear NO SIRVE:** PostgreSQL **no garantiza el orden de evaluación de los `AND`** (el planificador los reordena por costo), así que esa forma anda con 24 archivos y puede empezar a tirar `22P02` en producción con 5.000, sin síntoma previo.
+**⚠⚠ TRAMPA 1 — LA CARPETA SE COMPARA EN TEXTO, NUNCA CASTEÁNDOLA A `uuid`.** `storage.foldername()` devuelve las carpetas del path, y para avatares y logos la **primera es una palabra literal** (`avatars`, `logos`), no un uuid. Castearla **no devuelve `false`: lanza un error que ABORTA LA SENTENCIA ENTERA** — medido: `ERROR: 22P02: invalid input syntax for type uuid: "avatars"`. Por eso se castea el uuid conocido a texto (`a.id::text`, `auth.uid()::text`, `auth_agency_id()::text`) y se lo compara contra la carpeta. **Y excluir los prefijos con un `AND` antes de castear NO SIRVE:** PostgreSQL **no garantiza el orden de evaluación de los `AND`** (el planificador los reordena por costo), así que esa forma anda con los 9 archivos de hoy y puede empezar a tirar `22P02` en producción con 5.000, sin síntoma previo.
 
 **⚠⚠ TRAMPA 2 — EL `USING` Y EL `WITH CHECK` DE LA POLICY DE UPDATE SON IDÉNTICOS A PROPÓSITO.** No es copy-paste redundante: el `USING` controla **qué archivo se puede tocar** y el `WITH CHECK` **cómo puede quedar después**. Endureciendo solo el `USING`, un agente puede tomar un archivo propio y **renombrarlo hacia la carpeta de otra agencia** — escritura cruzada por la puerta de atrás. **Quien edite una, tiene que editar la otra.**
 
 - **La policy de UPDATE es la que hace posible el reemplazo.** Un `upload(..., { upsert: true })` sobre un archivo que YA existe es un **UPDATE**, no un INSERT: es el camino del avatar y del logo, que usan path fijo. Sin ella, RLS lo niega con 403 *"new row violates row-level security policy"* mientras la **primera** subida (INSERT) sí pasa. Ese síntoma confuso ya se pagó una vez acá.
-- **El service role saltea las cuatro.** `storage.objects` tiene RLS habilitada pero **no forzada** (`relforcerowsecurity = false`), así que `removeAgencyFiles()` —el único código del proyecto que borra logos y avatares— no se entera de nada.
+- **El service role saltea las cuatro.** `storage.objects` tiene RLS habilitada pero **no forzada** (`relforcerowsecurity = false`) y `service_role` tiene además `rolbypassrls = true` (las dos cosas medidas), así que **los cuatro caminos de borrado y la herramienta de auditoría** (ver "Quién borra los archivos") no se enteran de nada.
 - **La lectura por RLS quedó acotada a `authenticated`, pero eso NO apaga la lectura pública de las fotos:** el bucket es `public = true` y `/storage/v1/object/public/…` **no pasa por RLS** (requisito del producto: el visitante anónimo del mapa ve las fotos). Lo que sí cerró es la **enumeración**: antes esa policy tenía rol `public`, o sea que con la anon key —la del bundle de JavaScript— se podía **listar el árbol completo del bucket**. Verificado después del cambio: ese listado devuelve `[]`.
-- **Efecto colateral aceptado: los archivos huérfanos quedaron inalcanzables.** Un archivo bajo la carpeta de un agente que ya no existe no matchea ninguna rama (no hay fila contra la cual comparar), así que **ningún usuario puede borrarlo**; solo service role, y hoy ningún código del proyecto los alcanza. Ver PENDIENTES.md.
+- **Los archivos huérfanos son inalcanzables POR RLS, y de ahí sale todo lo que sigue.** Un archivo bajo la carpeta de un agente que ya no existe no matchea ninguna rama (no hay fila contra la cual comparar), así que **ningún usuario autenticado puede borrarlo** — ni siquiera el admin de su agencia. Solo el service role. **Esa es la razón de que los tres caminos de borrado usen service role y de que la limpieza sea un script y no una pantalla**: cualquier solución basada en el client del navegador dejaría afuera exactamente los archivos que hay que borrar. Ver "Quién borra los archivos" y "Auditoría y limpieza de huérfanos".
 - **⚠ CORRECCIÓN DE UNA AFIRMACIÓN QUE ESTUVO ACÁ Y ERA FALSA.** Este archivo decía que las policies eran *"laxas y consistentes"* y que la policy de DELETE original *"quedó reemplazada por la laxa"*. **Nunca ocurrió.** Hasta el 5 sep 2026 la de DELETE fue **la única fina** del bucket (`auth.uid()::text = (storage.foldername(name))[1]`), textualmente la de la migración original; lo que se agregó al arreglar el 403 de reemplazo fue una policy de **UPDATE nueva y laxa**, sin tocar la de DELETE. O sea que las policies eran **tres laxas y una fina**, no cuatro laxas — y esa inconsistencia tenía dos consecuencias medidas: **nadie podía borrar un avatar ni un logo por RLS** (ni su dueño: ahí `foldername[1]` es la palabra literal), y **un admin no podía borrar una foto subida por otro agente de su equipo**. El daño real de las laxas nunca estuvo en el borrado sino en el **UPDATE**: permitía **sobrescribir** con `upsert` el logo, el avatar o las fotos de cualquier otra agencia, dejando `agencies.logo_url` intacto y el sitio white-label sirviendo contenido ajeno.
 
 #### Límites del bucket — los aplica el MOTOR, no el JavaScript
@@ -584,7 +593,80 @@ La agencia se resuelve con **`auth_agency_id()`** (`public`, SQL, `STABLE`, **`S
 
 - **Los 5 MB son MÁS PERMISIVOS que los 2 MB del formulario del logo, a propósito:** el límite del bucket es el techo duro para todos los tipos de archivo (una foto de propiedad de 2 MB es chica); la regla más estricta del logo sigue viviendo en su formulario.
 - ⚠ **Consecuencia medida:** un GIF o un HEIC que `ImageUploader` hoy dejaría pasar (`startsWith("image/")`) **ahora rebota en el motor**.
-- Reemplazar (no acumular) es el comportamiento deseado para avatar y logo: `upsert: true` sobre path fijo. Para logos, ojo que si cambia la extensión (`logo.png` → `logo.webp`) quedan 2 objetos; el `logo_url` apunta al último, el anterior queda huérfano (inocuo).
+- Reemplazar (no acumular) es el comportamiento deseado para avatar y logo: `upsert: true` sobre path fijo. **⚠ Pero el `upsert` pisa el MISMO path, no el de otra extensión:** si cambia (`logo.png` → `logo.webp`, `avatar.png` → `avatar.jpeg`) quedan 2 objetos y el `logo_url`/`avatar_url` apunta al último. Los dos formularios siguen sin borrar el anterior, así que **el sobrante se sigue produciendo**; lo que cambió es que ya no es invisible: las categorías (b) y (c) de `scripts/storage-orphans.ts` lo detectan por esa vía exacta ("existe la fila pero su columna apunta a otro archivo"), y el borrado de un agente barre de paso los avatares viejos porque **lista** la carpeta en vez de reconstruir el nombre.
+
+#### Quién borra los archivos, y cuándo
+
+**Cuatro caminos borran archivos del bucket. Los cuatro con service role, los cuatro best-effort, ninguno silencioso.**
+
+| Camino | Qué borra | Client | Si falla |
+|---|---|---|---|
+| `deletePropertyAction` (`propiedades/actions.ts`) | las fotos de esa propiedad, vía `removePropertyFiles` | service role, **siempre** | la propiedad ya se borró; se avisa *"…pero quedaron archivos sin borrar en el almacenamiento (N archivo(s))"* |
+| `deleteAgentAction` (`equipo/actions.ts`) | **el avatar del agente y NADA MÁS**, vía `removeAgentAvatar` | service role | la cuenta ya se borró; mismo aviso |
+| `deleteAgencyAction` (`admin/actions.ts`) | el logo de la agencia + los avatares de sus agentes, vía `removeAgencyFiles` | service role | la agencia ya se borró; mismo aviso. **Es el precedente del que salen los otros dos y no se tocó** |
+| `ImageUploader.handleRemove` (navegador) | el archivo de la imagen que el agente saca del formulario | **client de navegador** | la imagen **se quita igual** de la grilla y se avisa *"La imagen se quitó, pero no se pudo borrar el archivo del almacenamiento"* |
+
+- **Best-effort no significa silencioso.** Los tres del servidor devuelven el aviso por el mismo `{ error }` que ya usaba cada pantalla, y ninguno aborta la operación principal: un archivo que queda es basura inerte, dejar viva una fila que el usuario pidió borrar es peor.
+- **Solo el del navegador NO usa service role**, y es deliberado: el path ya está a mano y la frontera por agencia de las policies le da permiso al agente (incluso sobre una foto que subió un compañero de equipo). Moverlo al servidor sería un viaje de más para hacer lo mismo. Lo que ahí se arregló fue el silencio: era un `await` pelado sin `const { error } =`, así que un rechazo de RLS, un 404 o una caída de red producían **exactamente la misma pantalla que el éxito**.
+
+**⚠⚠ LA TRAMPA MÁS CARA DEL BUCKET: AL BORRAR UN AGENTE SE BORRA SU AVATAR Y NADA MÁS.**
+
+Leé esto antes de tocar `removeAgentAvatar`. La tentación es barrer la carpeta `{agent_id}/` entera —se ve más completo— y **es destructivo**:
+
+1. El primer segmento de un path de foto de propiedad es **el agente que SUBIÓ el archivo, no el dueño de la propiedad** (ver el ⚠ del principio de esta sección).
+2. `deleteAgentAction` **reasigna las propiedades del agente al admin** antes de borrarlo (Modelo B), así que esas propiedades **siguen vivas y publicadas en el mapa**.
+3. Por lo tanto, barrer `{agent_id}/` se llevaría las fotos de propiedades que están funcionando. Cuando se escribió esto había **7 de 12 archivos** bajo una de esas carpetas que pertenecían a propiedades existentes.
+
+**La regla, sin excepciones: las fotos de propiedad se borran cuando se borra LA PROPIEDAD, nunca cuando se borra una persona.** `avatars/{agent_id}` es el único prefijo que pertenece a la persona. Y la garantía no es una promesa del comentario, es estructural: `removeAgentAvatar` **lista** `avatars/{agentId}` —una búsqueda por prefijo que un path de propiedad, que empieza con un uuid, no puede matchear— y borra exactamente lo que ese listado devolvió, re-prefijado con la misma carpeta. Se lista en vez de reconstruir el nombre porque la extensión depende del archivo que se subió y no se puede adivinar (y de paso barre los avatares viejos de otra extensión).
+
+**⚠ EL ORDEN DE `deletePropertyAction` TIENE DOS MOTIVOS DISTINTOS, Y LOS DOS IMPORTAN.** El orden es: **① leer las URLs → ② borrar la fila → ③ borrar los archivos.**
+
+- **① antes de ②, o los paths se pierden.** `property_images_property_id_fkey` es `ON DELETE CASCADE`: el `DELETE` de la propiedad se lleva las filas con las URLs en el mismo instante. Es el mismo razonamiento que `removeAgencyFiles`, que localiza los archivos primero porque *"son lo único que NO se puede volver a localizar una vez borradas las filas"*.
+- **③ después de ②, y NO pegado a ①.** Acá está la tentación de "agrupar": leer las URLs y borrar los archivos de una parece más prolijo. **Es un error.** El motivo ① se satisface con solo leerlas —una vez leídas viven en memoria y el CASCADE ya no las alcanza—, así que agrupar no compra nada y paga un riesgo. La asimetría, que no es pareja ni por asomo:
+  - si los archivos se borran y el `DELETE` falla después, queda una propiedad **viva y publicada con sus imágenes destruidas**: filas de `property_images` apuntando a archivos que no existen, o sea una propiedad rota en el mapa público, a la vista de cualquier visitante;
+  - si la fila se borra y el borrado de archivos falla después, quedan archivos que ya no sirve nadie: basura inerte, invisible para todo el mundo, **y encima avisada**.
+  - Un archivo de más no lo ve nadie; una propiedad rota la ven todos. El `DELETE` va en el medio para que el paso irreversible sobre el bucket ocurra recién cuando ya no queda nada que romper.
+
+**⚠ LAS URLs SE LEEN CON `db`, NO CON EL CLIENT NORMAL.** `db` es el client que devuelve `authorizePropertyAccess` (normal para el dueño, service role para el admin de la agencia). Con el client normal, un **admin borrando la propiedad de otro agente de su agencia leería CERO filas**: la policy `Agent manages own property images` está atada a `agent_id = auth.uid()`. Y no daría error —daría una lista vacía—, así que el borrado de archivos no fallaría: **simplemente no borraría nada, en silencio**, que es justo el fallo que todo esto existe para eliminar.
+
+**El util que traduce URL → path: `src/lib/utils/storagePath.ts`.** Exporta `PROPERTY_IMAGES_BUCKET` y `extractStoragePath(url): string | null`. Hace falta porque `property_images.url` guarda la **URL pública completa** (la de `getPublicUrl`) y la API de Storage borra **por path**. Vive en `lib/utils/` y no dentro de un componente porque lo usan servidor y cliente, mismo precedente que `coords.ts`.
+
+> **⚠ Devuelve `null` —no la URL— cuando la URL no pertenece al bucket, y ESO es el arreglo.** La versión vieja vivía dentro de `ImageUploader` y en ese caso devolvía **la URL entera**. Pasada a `storage.remove()`, una URL completa es un path que no existe: **no borra nada y tampoco devuelve error** (borrar algo inexistente no falla). O sea que el defecto no se manifestaba como una falla sino como un éxito mentiroso. **Los llamadores tienen que descartar los nulos en vez de mandarlos a borrar**, y los dos lo hacen: `removePropertyFiles` los cuenta como archivos que quedaron, y `handleRemove` avisa sin llamar a `remove()`.
+
+#### Auditoría y limpieza de huérfanos — `scripts/storage-orphans.ts`
+
+**No es una herramienta de un solo uso.** Los cuatro caminos de arriba frenan la generación de huérfanos, pero queda una vía irreducible: el borrado de la fila y el del archivo son dos sistemas que no se pueden transaccionar juntos, así que si el proceso muere entre uno y otro el archivo queda. Esto sirve para auditar cada tanto.
+
+```bash
+npm run storage:huerfanos          # simulación: detecta e imprime, NO borra nada
+npm run storage:huerfanos:borrar   # destructivo
+```
+
+Las dos entradas de `package.json` envuelven `node --env-file=.env.local scripts/storage-orphans.ts [--borrar]`. El script corre **fuera de Next.js**, así que nadie le inyecta el entorno: `--env-file` es lo que carga `.env.local` y es la parte que se olvida. No hay dependencias nuevas — Node 22 ejecuta TypeScript directo y `--env-file` es nativo desde 20.6.
+
+**Qué detecta.** Lista el bucket entero (recursivo y paginado), lee `properties`, `agents` y `agencies`, y clasifica cada archivo en cuatro categorías, informando en cuál cae y por qué:
+
+| | Categoría | Es huérfano si… |
+|---|---|---|
+| a | Foto de propiedad inexistente | `{uuid}/{property_id}/…` y no existe esa propiedad. **Solo mira el SEGUNDO segmento**: el primero es quien subió el archivo (ver la trampa de arriba) |
+| b | Avatar sin referencia | `avatars/{agent_id}/…` y no existe el agente, **o** existe pero su `avatar_url` apunta a otro archivo |
+| c | Logo sin referencia | ídem con `logos/{agency_id}/…` y `agencies.logo_url` |
+| d | Placeholder | `.emptyFolderPlaceholder`, que crea el panel de Supabase al armar carpetas a mano |
+
+Todo lo demás queda **en uso**, y un path que no responde a ninguna forma conocida va a un grupo aparte que **nunca se borra**.
+
+**⚠ EL CRITERIO ES "¿EXISTE LA FILA?", NUNCA "¿ESTÁ PUBLICADO?".** El script no mira `status` en ningún lado. La foto de una propiedad pausada, vendida o alquilada **no es huérfana**: la propiedad existe y se puede reactivar. Lo mismo con las de una agencia dada de baja, cuyos datos se conservan intactos a propósito.
+
+**Las dos salvaguardas:**
+
+1. **El modo simulación es el predeterminado.** Sin argumentos detecta e imprime y no borra nada; solo borra con `--borrar` escrito completo. Un argumento desconocido **aborta** en vez de caer en simulación — correr con `--borar` y ver un informe sin borrados haría pensar que no había nada que borrar.
+2. **⚠ NO SE BORRA NADA DE MENOS DE 24 HORAS, ni siquiera en modo borrado.** Al dar de alta una propiedad las fotos se suben al bucket **antes** de que la propiedad exista (el id se genera en el cliente y las filas se escriben al guardar), así que un archivo bajo un `property_id` que todavía no existe puede ser basura de un formulario abandonado **o** un formulario abierto en otra pestaña ahora mismo, y **son indistinguibles**. Se informan como `[RECIENTE, SE OMITE]` y se cuentan aparte. Un archivo cuya antigüedad no se puede establecer se trata como reciente: ante la duda no se borra.
+
+Además: toda lectura es **fail-closed** (si falla el listado o cualquier consulta, se aborta y no se borra nada — una lista de propiedades incompleta convertiría fotos vivas en "huérfanas"), se pagina en las dos puntas (`list()` trae 100 por página, PostgREST corta en 1000 filas), y se borra **en lotes de 1000, por la API de Storage**, informando cuántos se borraron, cuántos fallaron y cuáles.
+
+> **⚠ NUNCA borrar filas de `storage.objects` con SQL.** No borra el archivo del almacenamiento: lo deja facturándose y sin registro desde el cual encontrarlo. Es documentación oficial de Supabase, y es la razón de que la limpieza vaya por la API.
+
+**Estado del bucket (medido el 6 sep 2026, después de correr la limpieza): 9 objetos, 723.872 bytes (707 kB), CERO huérfanos.** Venía de 24 objetos y 6.718.597 bytes, de los cuales 15 archivos y ~5,99 MB eran huérfanos: el 89 % del peso.
 
 ### Operaciones, precios y requisitos de la propiedad
 
@@ -748,6 +830,9 @@ npx tsc --noEmit
 npm run lint          # debe dar 0 errors
 npx next build
 npx shadcn@latest add [componente]
+
+npm run storage:huerfanos          # audita el bucket: detecta e imprime, NO borra nada
+npm run storage:huerfanos:borrar   # ⚠ destructivo. Ver "Auditoría y limpieza de huérfanos"
 ```
 
 > **No hay `supabase gen types`.** El proyecto NO usa tipos generados por el CLI de Supabase:
@@ -800,6 +885,11 @@ npx shadcn@latest add [componente]
 | Las carpetas del path se comparan EN TEXTO, nunca casteándolas a `uuid` | Para avatares y logos la primera carpeta es una palabra literal, y castearla **aborta la sentencia entera** (`22P02`), no devuelve `false`. Excluir los prefijos con un `AND` antes de castear no sirve: Postgres no garantiza el orden de evaluación de los `AND` |
 | El `USING` y el `WITH CHECK` de la policy de UPDATE son idénticos | Controlan cosas distintas (qué archivo se toca vs. cómo queda después). Con solo el `USING` endurecido, se puede **renombrar** un archivo propio hacia la carpeta de otra agencia |
 | Los límites de tamaño y tipo van en el bucket, no solo en el formulario | El JavaScript no es una barrera para quien habla con la API de Storage directo con su anon key: el "no SVG, riesgo XSS" del código no lo aplicaba nadie |
+| Los archivos se borran EN EL ACTO, dentro de la misma action que borra la fila, best-effort pero nunca en silencio | Una cola o un proceso diferido sería infraestructura nueva para un problema chico. Y tragarse el error es cómo se llegó a que el 89 % del peso del bucket fuera basura: nadie se enteraba |
+| Al borrar un agente se borra su avatar y NADA MÁS | La primera carpeta de un path de propiedad es quien SUBIÓ el archivo, y sus propiedades se reasignan al admin y siguen publicadas: barrer esa carpeta destruiría fotos en uso. Las fotos de propiedad se borran con la propiedad, nunca con una persona |
+| En `deletePropertyAction` el `DELETE` de la fila va ENTRE la lectura de las URLs y el borrado de los archivos | Leer primero es obligatorio (el CASCADE se lleva los paths), pero agrupar la lectura con el borrado paga un riesgo asimétrico: un archivo de más no lo ve nadie, una propiedad viva con sus imágenes destruidas la ven todos |
+| Quitar una imagen desde el formulario se quedó en el navegador | El path ya está a mano y la frontera por agencia le da permiso al agente; moverlo al servidor sería un viaje de más. Lo que faltaba no era el lugar, era capturar el error |
+| La limpieza de huérfanos es un script de línea de comandos, no una pantalla de `/admin` ni SQL | Una pantalla sería infraestructura permanente para un problema que los caminos arreglados ya no generan; y borrar filas de `storage.objects` con SQL **no borra el archivo**, lo deja facturándose y sin registro desde el cual encontrarlo |
 | Logo de agencia: upload client-side + escritura de `logo_url` por service role (no upload por server action) | Lo sensible es la escritura en `agencies` (gateada a admin), no el archivo en Storage (bucket público). Reusa el patrón del avatar, no estrena upload server-side con FormData |
 | `free` sobrevive como estado de aterrizaje al eliminar los particulares (no se borró del schema ni de `PLAN_ORDER`) | El plan cumplía dos funciones: plan comercial del particular (se eliminó) y estado inicial de toda alta (es el andamio de `plan`/`pending_plan`, del que dependen registro, activación en `/admin` y `getPlanUsage`). Borrarlo habría roto el flujo de upgrades |
 | `tenant_type` no se borró al pasar a solo-agencias | Ninguna policy, función ni trigger la lee (verificado por consulta); borrar una columna NOT NULL con CHECK no aporta nada y la tabla `agencies` se vuelve a tocar en el trabajo de matrícula. Se cerró la puerta de entrada, no la columna |
