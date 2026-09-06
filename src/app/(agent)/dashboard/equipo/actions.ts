@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { translateAuthError } from "@/lib/utils/authErrors";
 import { revalidatePath } from "next/cache";
 import { resolveAgentSession } from "@/lib/utils/resolveAgentSession";
+import { PROPERTY_IMAGES_BUCKET } from "@/lib/utils/storagePath";
 import { z } from "zod";
 
 type ActionResult = { error: string } | undefined;
@@ -89,10 +90,15 @@ export async function createAgentAction(
 // agencia del caller. No se permite el auto-borrado (la agencia no puede quedar
 // sin su admin).
 //
-// ORDEN CRÍTICO: reasignar las propiedades ANTES de borrar. Si se borrara
-// primero, la FK ON DELETE SET NULL dejaría las propiedades huérfanas (que es lo
-// que el Modelo B evita). Reasignar primero garantiza que toda propiedad tenga
-// dueño en todo momento.
+// ORDEN CRÍTICO: reasignar las propiedades ANTES de borrar. La FK real es
+// `properties_agent_id_fkey: FOREIGN KEY (agent_id) REFERENCES agents(id) ON
+// DELETE CASCADE` (medido contra la base), o sea que borrar primero no dejaría
+// las propiedades huérfanas: LAS BORRARÍA, con sus imágenes y sus consultas
+// detrás. Reasignar primero no es prolijidad, es lo único que impide perderlas.
+//
+// (Este comentario decía "ON DELETE SET NULL … dejaría las propiedades
+// huérfanas". Era falso en la cláusula y en la consecuencia; el orden que
+// prescribía, en cambio, era y sigue siendo el correcto.)
 export async function deleteAgentAction(agentId: string): Promise<ActionResult> {
   if (typeof agentId !== "string" || agentId.trim() === "") {
     return { error: "Agente inválido" };
@@ -143,11 +149,25 @@ export async function deleteAgentAction(agentId: string): Promise<ActionResult> 
     };
   }
 
-  // 2) Borrar el agente recién ahora (propiedades ya reasignadas → sin huérfanas).
-  // deleteUser cascadea: borra la fila agents (FK ON DELETE CASCADE desde
-  // auth.users) y pone en NULL los leads VIEJOS del agente (FK SET NULL). Esos
-  // leads quedan como historial; el admin los ve por agencia en Consultas como
-  // "Sin agente asignado". No se reasignan a propósito.
+  // 2) El avatar del agente, ANTES de borrar la cuenta. Mismo criterio que
+  // removeAgencyFiles: si algo falla a mitad de camino, el agente sigue
+  // apareciendo en la pantalla de Equipo y la operación se puede reintentar.
+  // Hecho después, el agente ya no estaría listado en ninguna parte.
+  const storageError = await removeAgentAvatar(admin, agentId);
+
+  // 3) Borrar el agente recién ahora (propiedades ya reasignadas → sin huérfanas).
+  // deleteUser cascadea sobre la fila de agents por `agents_id_fkey: FOREIGN KEY
+  // (id) REFERENCES auth.users(id) ON DELETE CASCADE`.
+  //
+  // ⚠ LOS LEADS NO SE VAN NI QUEDAN EN NULL. La FK real es `leads_agent_id_fkey:
+  // FOREIGN KEY (agent_id) REFERENCES agents(id)`, SIN cláusula ON DELETE (o
+  // sea NO ACTION), y `leads.agent_id` es NOT NULL (las dos cosas medidas contra
+  // la base). Consecuencia: hoy este deleteUser FALLA si el agente tiene
+  // consultas a su nombre, y el agente no se puede borrar hasta que se resuelva
+  // esa FK. Ver PENDIENTES.md.
+  //
+  // (Este comentario decía que la FK era ON DELETE SET NULL y que los leads
+  // viejos quedaban en NULL como historial. Era falso: esa cláusula no existe.)
   const { error: deleteError } = await admin.auth.admin.deleteUser(agentId);
   if (deleteError) {
     // Estado consistente: las propiedades ya quedaron a nombre del admin. Solo
@@ -159,4 +179,60 @@ export async function deleteAgentAction(agentId: string): Promise<ActionResult> 
   }
 
   revalidatePath("/dashboard/equipo");
+
+  // BEST-EFFORT, PERO NO SILENCIOSO: la cuenta ya no existe, así que esto es un
+  // aviso y no un fallo. Misma forma que el cierre de deleteAgencyAction y de
+  // deletePropertyAction.
+  if (storageError) {
+    return {
+      error: `El agente se eliminó, pero quedaron archivos sin borrar en el almacenamiento (${storageError}).`,
+    };
+  }
+}
+
+// Borra el avatar del agente. Devuelve un motivo si algo quedó sin borrar, o
+// null si salió todo bien (mismo contrato que removeAgencyFiles).
+//
+// ⚠⚠ SOLO EL AVATAR, Y NO TOCAR ESTA REGLA. La tentación es barrer la carpeta
+// `{agent_id}/` entera, y sería DESTRUCTIVO: los paths de las fotos de
+// propiedades son `{agent_id}/{property_id}/{archivo}` donde ese primer uuid es
+// EL AGENTE QUE SUBIÓ EL ARCHIVO, no el dueño de la propiedad (las páginas de
+// nueva/editar le pasan al ImageUploader `agentId={userId}`, el de la sesión, y
+// por eso la frontera de las policies de Storage es por agencia y no por
+// usuario). Y el paso anterior REASIGNA las propiedades del agente al admin:
+// siguen vivas y publicadas en el mapa. Barrer la carpeta se llevaría sus
+// fotos. Medido en la base al escribir esto: 7 de los 12 archivos bajo una de
+// esas carpetas pertenecen a propiedades que existen.
+//
+// Las fotos de propiedad se borran cuando se borra LA PROPIEDAD
+// (deletePropertyAction), nunca cuando se borra una persona. `avatars/{id}` es
+// el único prefijo que pertenece a la persona.
+//
+// Se LISTA la carpeta en vez de reconstruir el nombre porque la extensión
+// depende del archivo que se subió (`avatar.png`, `avatar.jpeg`, …) y no se
+// puede adivinar. De paso resuelve un caso que existe en la base: reemplazar el
+// avatar por otro de distinta extensión deja los DOS archivos (el upsert pisa
+// el mismo path, no el de otra extensión), y listar barre también los viejos.
+// Molde tomado de removeAgencyFiles (admin/actions.ts).
+async function removeAgentAvatar(
+  admin: ReturnType<typeof createAdminClient>,
+  agentId: string
+): Promise<string | null> {
+  const folder = `avatars/${agentId}`;
+
+  const { data, error } = await admin.storage
+    .from(PROPERTY_IMAGES_BUCKET)
+    .list(folder);
+
+  // No poder LEER la carpeta no es lo mismo que no tener avatar: en el primer
+  // caso no sabemos qué quedó y hay que decirlo.
+  if (error) return "no se pudo leer la carpeta del avatar";
+  if (!data || data.length === 0) return null;
+
+  const paths = data.map((file) => `${folder}/${file.name}`);
+  const { error: removeError } = await admin.storage
+    .from(PROPERTY_IMAGES_BUCKET)
+    .remove(paths);
+
+  return removeError ? `${paths.length} archivo(s)` : null;
 }
