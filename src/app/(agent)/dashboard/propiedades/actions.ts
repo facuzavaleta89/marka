@@ -6,6 +6,10 @@ import { revalidatePath } from "next/cache";
 import { generateSlug } from "@/lib/utils/generateSlug";
 import { getPlanUsage } from "@/lib/utils/getPlanUsage";
 import { resolveAgentSession } from "@/lib/utils/resolveAgentSession";
+import {
+  PROPERTY_IMAGES_BUCKET,
+  extractStoragePath,
+} from "@/lib/utils/storagePath";
 import { RENT_REQUIREMENT_LABELS } from "@/lib/utils/labels";
 import {
   RENT_REQUIREMENTS_OTHER_MAX,
@@ -210,19 +214,121 @@ export async function markAsRentedAction(id: string): Promise<ActionResult> {
   revalidatePath("/dashboard/propiedades");
 }
 
+// Borra del bucket los archivos de una propiedad. Devuelve un motivo si algo
+// quedó sin borrar, o null si salió todo bien: mismo contrato que
+// removeAgencyFiles (admin/actions.ts), que es el precedente del proyecto.
+//
+// ⚠ SERVICE ROLE SIEMPRE, sin importar si el que borra es el dueño o el admin.
+// No es simetría con el resto de la action: es el único client que alcanza los
+// archivos. La primera carpeta del path es el agente que SUBIÓ el archivo, y
+// las tres ramas de las policies de storage.objects comparan contra una fila
+// (`agents` para propiedades, `agencies` para logos, auth.uid() para avatares).
+// Si ese agente fue borrado después, no hay contra qué comparar, ninguna rama
+// matchea y el borrado rebota para TODO usuario autenticado. En la base hay
+// archivos exactamente en esa condición hoy.
+async function removePropertyFiles(
+  images: { url: string }[]
+): Promise<string | null> {
+  // Una URL que no contiene el marcador del bucket no se puede convertir en
+  // path: se cuenta como "no se pudo borrar" en vez de mandarse a remove(),
+  // donde sería un path inexistente que no borra nada y tampoco da error.
+  const paths: string[] = [];
+  let failed = 0;
+
+  for (const image of images) {
+    const path = extractStoragePath(image.url);
+    if (path === null) {
+      failed += 1;
+      continue;
+    }
+    paths.push(path);
+  }
+
+  if (paths.length > 0) {
+    const admin = createAdminClient();
+    const { error } = await admin.storage
+      .from(PROPERTY_IMAGES_BUCKET)
+      .remove(paths);
+    if (error) failed += paths.length;
+  }
+
+  return failed > 0 ? `${failed} archivo(s)` : null;
+}
+
 export async function deletePropertyAction(id: string): Promise<ActionResult> {
   const { ok, error, db } = await authorizePropertyAccess(id);
   if (!ok) return { error: error! };
 
+  // ⚠ EL ORDEN DE LOS TRES PASOS TIENE DOS MOTIVOS DISTINTOS, Y CONVIENE LEER
+  // LOS DOS ANTES DE REACOMODAR NADA:
+  //   1. leer las URLs   ← antes del DELETE, o se pierden
+  //   2. borrar la fila
+  //   3. borrar los archivos  ← después del DELETE, o se rompe la propiedad
+  //
+  // MOTIVO 1 — POR QUÉ LAS URLs SE LEEN ANTES DEL DELETE.
+  // property_images_property_id_fkey es ON DELETE CASCADE (medido contra la
+  // base), así que el DELETE de la propiedad se lleva las filas con las URLs en
+  // el MISMO instante: después no hay de dónde sacar los paths. Es el mismo
+  // razonamiento que ya está escrito en removeAgencyFiles (admin/actions.ts),
+  // donde los archivos se localizan primero porque "son lo único que NO se
+  // puede volver a localizar una vez borradas las filas".
+  //
+  // MOTIVO 2 — POR QUÉ LOS ARCHIVOS SE BORRAN DESPUÉS DE LA FILA, Y NO PEGADOS
+  // A LA LECTURA DE ARRIBA. Acá está la tentación: agrupar los pasos 1 y 3 se
+  // ve más prolijo —"leo las URLs y borro los archivos de una"— y ES UN ERROR.
+  // El motivo 1 se satisface con SOLO leerlas: una vez leídas viven en memoria
+  // y el CASCADE ya no las alcanza, así que agrupar no compra nada y paga un
+  // riesgo. La asimetría, que no es pareja ni por asomo:
+  //   · si los archivos se borran y el DELETE de la fila falla después, queda
+  //     una propiedad VIVA y PUBLICADA con sus imágenes destruidas: filas de
+  //     property_images apuntando a archivos que ya no existen, o sea una
+  //     propiedad rota en el mapa público, a la vista de cualquier visitante.
+  //   · si la fila se borra y el borrado de archivos falla después, quedan
+  //     archivos que ya no sirve nadie: basura inerte en un bucket, invisible
+  //     para todo el mundo, y que además se avisa (ver el cierre de abajo).
+  // Un archivo de más no lo ve nadie; una propiedad rota la ven todos. Por eso
+  // el DELETE va en el medio: el paso irreversible sobre el bucket ocurre
+  // recién cuando ya no queda nada que romper.
+  //
+  // Se lee con `db`, NO con el client normal: la RLS de property_images está
+  // atada al agent_id dueño ("Agent manages own property images"), así que un
+  // admin borrando la propiedad de otro agente de su agencia leería CERO filas
+  // con el client normal — y el borrado de archivos no fallaría, simplemente no
+  // borraría nada, en silencio. En mode "admin", `db` ya es service role.
+  const { data: images, error: imagesError } = await db
+    .from("property_images")
+    .select("url")
+    .eq("property_id", id);
+
   // ON DELETE CASCADE en la DB elimina property_images y leads asociados.
-  // Las imágenes del Supabase Storage no se eliminan automáticamente.
   const { error: dbError } = await db
     .from("properties")
     .delete()
     .eq("id", id);
 
+  // Si la fila no se pudo borrar, NO se toca un solo archivo y se sale con el
+  // error de siempre. Es exactamente el beneficio de este orden: la propiedad
+  // queda intacta, con sus imágenes, y el agente puede reintentar.
   if (dbError) return { error: "No se pudo eliminar la propiedad" };
   revalidatePath("/dashboard/propiedades");
+
+  // La propiedad ya no existe: a partir de acá nada puede romperse, solo
+  // sobrar. Si las URLs no se pudieron leer, los archivos quedan y se avisa
+  // igual (no hay forma de localizarlos: la lectura era la única oportunidad).
+  const storageError = imagesError
+    ? "no se pudieron leer las imágenes"
+    : await removePropertyFiles(images ?? []);
+
+  // BEST-EFFORT, PERO NO SILENCIOSO. Un archivo que queda es basura inerte en
+  // un bucket; dejar viva una propiedad que el agente pidió borrar es peor, así
+  // que el borrado de archivos nunca aborta el de la fila. Pero el error no se
+  // traga: la propiedad ya no existe, con lo cual esto es un aviso y no un
+  // fallo. Misma forma que el cierre de deleteAgencyAction.
+  if (storageError) {
+    return {
+      error: `La propiedad se eliminó, pero quedaron archivos sin borrar en el almacenamiento (${storageError}).`,
+    };
+  }
 }
 
 // Traduce el error de la base a un mensaje propio. Sobre `properties` hay DOS

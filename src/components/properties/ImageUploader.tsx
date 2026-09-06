@@ -3,6 +3,10 @@
 import { useRef, useState } from "react";
 import { ImageOff, X, Upload, GripVertical } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  PROPERTY_IMAGES_BUCKET as BUCKET,
+  extractStoragePath,
+} from "@/lib/utils/storagePath";
 import type { PropertyImage } from "@/types";
 
 interface ImageUploaderProps {
@@ -13,13 +17,6 @@ interface ImageUploaderProps {
 }
 
 const MAX_IMAGES = 10;
-const BUCKET = "property-images";
-
-function extractStoragePath(url: string): string {
-  const marker = `/${BUCKET}/`;
-  const idx = url.indexOf(marker);
-  return idx >= 0 ? url.slice(idx + marker.length) : url;
-}
 
 export function ImageUploader({
   propertyId,
@@ -32,7 +29,7 @@ export function ImageUploader({
   // Nombres de los archivos que se están subiendo, en orden. Cada uno se
   // renderiza como un thumbnail en estado de carga y se quita al completar.
   const [pending, setPending] = useState<string[]>([]);
-  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [storageError, setStorageError] = useState<string | null>(null);
   const [draggingFileOver, setDraggingFileOver] = useState(false);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -55,7 +52,7 @@ export function ImageUploader({
 
     const queued = fileArr.slice(0, remaining);
     setUploading(true);
-    setUploadError(null);
+    setStorageError(null);
     // Mostrar un thumbnail de carga por cada archivo en cola
     setPending(queued.map((f) => f.name));
 
@@ -75,7 +72,7 @@ export function ImageUploader({
       setPending((prev) => prev.slice(1));
 
       if (error) {
-        setUploadError(`No se pudo subir "${file.name}". Probá con otra imagen.`);
+        setStorageError(`No se pudo subir "${file.name}". Probá con otra imagen.`);
         continue;
       }
 
@@ -106,12 +103,43 @@ export function ImageUploader({
 
   // ── Eliminar imagen ───────────────────────────────────────────
 
+  // Este camino se queda en el navegador a propósito: el path ya está a mano y
+  // la frontera por AGENCIA de las policies de Storage le da permiso al agente
+  // (incluso sobre una foto que subió un compañero de equipo). Una server
+  // action agregaría un viaje para hacer exactamente lo mismo.
+  //
+  // ⚠ EL ERROR SE CAPTURA Y SE AVISA. Antes esta llamada era un `await` pelado,
+  // sin `const { error } =` y sin chequeo: un rechazo de RLS, un 404 o una
+  // caída de red producían EXACTAMENTE la misma pantalla que el éxito. La fila
+  // de property_images desaparecía al guardar (updatePropertyAction borra todas
+  // y reinserta) y el archivo quedaba vivo en el bucket para siempre. Es el
+  // mecanismo por el que se acumulan huérfanos sin que nadie se entere.
+  //
+  // La imagen SE QUITA IGUAL de la grilla aunque el borrado falle: el agente
+  // pidió sacarla y eso se respeta. Lo único que cambia es que ahora se entera
+  // de que el archivo quedó en el almacenamiento.
   const handleRemove = async (index: number) => {
     const image = images[index];
     const path = extractStoragePath(image.url);
 
-    const supabase = createClient();
-    await supabase.storage.from(BUCKET).remove([path]);
+    let removeFailed: boolean;
+
+    if (path === null) {
+      // La URL no pertenece al bucket: no hay path que borrar. No se manda la
+      // URL entera a remove() —sería un path inexistente que no borra nada y
+      // tampoco da error, o sea un éxito mentiroso.
+      removeFailed = true;
+    } else {
+      const supabase = createClient();
+      const { error } = await supabase.storage.from(BUCKET).remove([path]);
+      removeFailed = !!error;
+    }
+
+    setStorageError(
+      removeFailed
+        ? "La imagen se quitó, pero no se pudo borrar el archivo del almacenamiento."
+        : null
+    );
 
     const updated = images
       .filter((_, i) => i !== index)
@@ -200,8 +228,8 @@ export function ImageUploader({
         </p>
       )}
 
-      {uploadError && (
-        <p className="font-sans text-xs text-error">{uploadError}</p>
+      {storageError && (
+        <p className="font-sans text-xs text-error">{storageError}</p>
       )}
 
       {/* Grilla de thumbnails */}
