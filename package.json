@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "storage:huerfanos": "node --env-file=.env.local scripts/storage-orphans.ts",
+    "storage:huerfanos:borrar": "node --env-file=.env.local scripts/storage-orphans.ts --borrar"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
