@@ -6,13 +6,17 @@ import type { Agent, Property } from "@/types";
 // ─── Tipos ───────────────────────────────────────────────────
 
 // Fila de la tabla de consultas: lo que la página le pasa al componente.
-// agent puede ser null (lead de una propiedad sin agente asignado).
+// agent es null cuando el agente que la atendió se fue de la agencia
+// (leads.agent_id quedó en NULL por el ON DELETE SET NULL de su FK). En ese caso
+// el nombre sale de agent_name, la copia congelada que guardó la base.
 export type LeadRow = {
   id: string;
   contact_name: string;
   created_at: string;
   source: string;
   agent: Pick<Agent, "id" | "full_name"> | null;
+  /** Copia CONGELADA del nombre del agente al momento de la consulta. */
+  agent_name: string | null;
   property: Pick<Property, "id" | "title" | "slug"> | null;
 };
 
@@ -32,6 +36,55 @@ function formatDate(value: string): string {
     month: "short",
     year: "numeric",
   });
+}
+
+// ─── Quién atendió la consulta ────────────────────────────────
+
+// Tres casos, en orden de preferencia. Vive en UN solo lugar a propósito: la
+// tabla de escritorio y las tarjetas de celular tienen que decidir lo mismo. El
+// precedente de por qué importa está en AgenciesTable, donde esta misma clase de
+// condición estaba escrita dos veces y las dos copias se desincronizaron.
+//
+// Devuelve SIEMPRE un solo elemento, así funciona igual dentro del <td> de la
+// tabla (flujo inline) y dentro del <p class="flex"> de la tarjeta (un flex item).
+function AgentCell({
+  agent,
+  agentName,
+}: {
+  agent: LeadRow["agent"];
+  agentName: string | null;
+}) {
+  // 1) El agente sigue en la agencia → su nombre ACTUAL (el de la fila viva, no
+  // la copia congelada: si se corrigió el nombre, lo que vale es el de hoy).
+  if (agent) {
+    return (
+      <span className="font-sans text-sm text-graphite">{agent.full_name}</span>
+    );
+  }
+
+  // 2) El agente se fue, pero la base guardó cómo se llamaba cuando atendió esta
+  // consulta. Se muestra el nombre + un badge que lo distingue de un agente
+  // activo: son dos situaciones distintas y no pueden leerse igual. El badge usa
+  // el tratamiento de "estado cerrado" de DESIGN §6 (fondo stone, texto
+  // graphite), el mismo de las propiedades vendidas/alquiladas.
+  if (agentName) {
+    return (
+      <span className="inline-flex items-center gap-2">
+        <span className="font-sans text-sm text-graphite">{agentName}</span>
+        <span className="font-sans text-[11px] font-semibold uppercase tracking-wide rounded-sm bg-stone px-2 py-0.5 text-graphite whitespace-nowrap">
+          Ya no está
+        </span>
+      </span>
+    );
+  }
+
+  // 3) Último recurso: consultas anteriores a la migración que quedaron sin la
+  // copia del nombre. Hoy no hay ninguna, pero el caso es representable.
+  return (
+    <span className="font-sans text-sm italic text-stone">
+      Sin agente asignado
+    </span>
+  );
 }
 
 // ─── Componente principal ─────────────────────────────────────
@@ -96,15 +149,7 @@ export function LeadsContent({ leads, isAgencyAdmin }: LeadsContentProps) {
                 {/* Agente (solo admin) */}
                 {isAgencyAdmin && (
                   <td className="px-5 py-3 whitespace-nowrap">
-                    {l.agent ? (
-                      <span className="font-sans text-sm text-graphite">
-                        {l.agent.full_name}
-                      </span>
-                    ) : (
-                      <span className="font-sans text-sm italic text-stone">
-                        Sin agente asignado
-                      </span>
-                    )}
+                    <AgentCell agent={l.agent} agentName={l.agent_name} />
                   </td>
                 )}
               </tr>
@@ -135,11 +180,7 @@ export function LeadsContent({ leads, isAgencyAdmin }: LeadsContentProps) {
             {isAgencyAdmin && (
               <p className="mt-2 pt-2 border-t border-stone flex items-center gap-2 font-sans text-sm text-graphite">
                 <User size={14} className="shrink-0" />
-                {l.agent ? (
-                  l.agent.full_name
-                ) : (
-                  <span className="italic text-stone">Sin agente asignado</span>
-                )}
+                <AgentCell agent={l.agent} agentName={l.agent_name} />
               </p>
             )}
           </div>

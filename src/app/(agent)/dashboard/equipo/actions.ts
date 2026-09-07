@@ -85,6 +85,14 @@ export async function createAgentAction(
 // Elimina un agente de la agencia (Modelo B: sus propiedades se REASIGNAN al
 // admin antes de borrar, nunca quedan huérfanas). Solo el admin de la agencia.
 //
+// DOS DESTINOS DISTINTOS, Y NO HAY QUE MEZCLARLOS:
+//   · PROPIEDADES → se REASIGNAN al admin (acá, antes de borrar). Una propiedad
+//     es un activo vivo de la agencia y tiene que seguir teniendo dueño.
+//   · CONSULTAS   → se DESVINCULAN solas (`agent_id` a NULL, por el ON DELETE
+//     SET NULL de la FK) y conservan el nombre en `leads.agent_name`. Una
+//     consulta es un hecho histórico: no se borra, no se reasigna a otra persona
+//     y no se le cambia quién la atendió. Ver el detalle en el paso 3.
+//
 // SEGURIDAD: role y agency_id del caller se leen del server (fila agents por
 // auth.uid()), nunca del cliente. El agente a borrar tiene que pertenecer a la
 // agencia del caller. No se permite el auto-borrado (la agencia no puede quedar
@@ -159,22 +167,47 @@ export async function deleteAgentAction(agentId: string): Promise<ActionResult> 
   // deleteUser cascadea sobre la fila de agents por `agents_id_fkey: FOREIGN KEY
   // (id) REFERENCES auth.users(id) ON DELETE CASCADE`.
   //
-  // ⚠ LOS LEADS NO SE VAN NI QUEDAN EN NULL. La FK real es `leads_agent_id_fkey:
-  // FOREIGN KEY (agent_id) REFERENCES agents(id)`, SIN cláusula ON DELETE (o
-  // sea NO ACTION), y `leads.agent_id` es NOT NULL (las dos cosas medidas contra
-  // la base). Consecuencia: hoy este deleteUser FALLA si el agente tiene
-  // consultas a su nombre, y el agente no se puede borrar hasta que se resuelva
-  // esa FK. Ver PENDIENTES.md.
+  // ⚠ LAS CONSULTAS NO SE BORRAN NI SE REASIGNAN: SE DESVINCULAN. Una consulta
+  // es un hecho histórico y sobrevive a la persona que la atendió. La FK real es
+  // `leads_agent_id_fkey: FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE
+  // SET NULL` y `leads.agent_id` es NULLABLE (las dos cosas medidas contra la
+  // base). Así que al borrar al agente, sus consultas quedan con `agent_id` en
+  // NULL, siguen perteneciendo a la agencia (`agency_id` es NOT NULL y no se
+  // toca) y siguen apareciendo en /dashboard/leads.
   //
-  // (Este comentario decía que la FK era ON DELETE SET NULL y que los leads
-  // viejos quedaban en NULL como historial. Era falso: esa cláusula no existe.)
+  // Quién las atendió no se pierde: `leads.agent_name` guarda una COPIA
+  // CONGELADA del nombre, que escribe la base con el trigger
+  // trg_set_lead_agent_name (BEFORE INSERT) y que este borrado no toca. La
+  // pantalla muestra ese nombre con un badge "Ya no está".
+  //
+  // Efecto de alcance que conviene saber: una consulta desvinculada deja de
+  // matchear la policy `Agent reads own leads` (`agent_id = auth.uid()`), así
+  // que pasa a verla SOLO el admin de la agencia, por `Admin reads agency
+  // leads`. Es lo correcto —el agente al que pertenecía ya no existe—, pero no
+  // es obvio.
+  //
+  // (Este comentario afirmaba que la FK no tenía cláusula ON DELETE y que por
+  // eso este deleteUser fallaba siempre si el agente tenía consultas. Era cierto
+  // hasta la migración que introdujo el SET NULL y la copia del nombre.)
   const { error: deleteError } = await admin.auth.admin.deleteUser(agentId);
   if (deleteError) {
-    // Estado consistente: las propiedades ya quedaron a nombre del admin. Solo
-    // falló el borrado de la cuenta; se puede reintentar.
+    // ⚠ EL ESTADO QUEDA A MEDIAS, NO "CONSISTENTE" (acá decía que sí lo era).
+    // Los pasos 1 y 2 ya se ejecutaron y NO se revierten:
+    //   · las propiedades del agente YA están a nombre del admin;
+    //   · su avatar YA se borró del Storage (agents.avatar_url quedó apuntando a
+    //     un archivo que no existe).
+    // Y el agente SIGUE EXISTIENDO: su fila de `agents` y su usuario de Auth
+    // están intactos, así que puede iniciar sesión y va a ver su listado de
+    // propiedades vacío y su foto de perfil rota, sin que nadie le haya avisado.
+    //
+    // Reintentar es seguro (los dos pasos son idempotentes: ya no queda nada que
+    // reasignar ni ningún archivo que borrar), pero puede no arreglar nada: la
+    // causa más frecuente —el choque contra la FK de `leads`— desapareció con el
+    // SET NULL, así que lo que quede acá es otra cosa. Por eso el mensaje dice
+    // qué pasó y qué quedó hecho, en vez de un "intentá de nuevo" pelado.
     return {
       error:
-        "Las propiedades pasaron a tu nombre, pero no se pudo eliminar la cuenta del agente. Intentá de nuevo.",
+        "No se pudo eliminar la cuenta del agente, así que sigue activa y puede ingresar. Sus propiedades ya pasaron a tu nombre y su foto de perfil ya se borró. Podés reintentar; si vuelve a fallar, escribinos.",
     };
   }
 

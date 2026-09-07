@@ -182,6 +182,9 @@ function ModalContent({
   const [showNameInput, setShowNameInput] = useState(false);
   const [userName, setUserName] = useState("");
   const [sending, setSending] = useState(false);
+  // El registro de la consulta puede fallar sin que eso impida contactar. Ver
+  // handleSendWA: el mensaje avisa, no bloquea.
+  const [leadError, setLeadError] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const fav = isFavorite(property.id);
   const images = (property.images ?? []).sort(
@@ -214,11 +217,31 @@ function ModalContent({
     if (!url) return;
 
     setSending(true);
+    setLeadError(false);
 
     const supabase = createClient();
 
-    // Registrar lead (la política RLS permite INSERT público)
-    await supabase.from("leads").insert({
+    // Registrar lead (la política RLS permite INSERT público).
+    //
+    // ⚠ EL ERROR SE CAPTURA, PERO NO BLOQUEA. Esto era un `await` pelado, sin
+    // `const { error } =`: un rechazo de la policy, una caída de red o una
+    // agencia que dejó de ser públicamente visible entre el render y el click
+    // producían EXACTAMENTE la misma pantalla que el éxito — se abría WhatsApp y
+    // la agencia nunca se enteraba de que hubo una consulta. Mismo defecto que
+    // ya se corrigió en ImageUploader.handleRemove, y misma forma de resolverlo:
+    // se captura el error y se muestra, sin abortar la operación principal.
+    //
+    // La operación principal ACÁ es el contacto, no el registro: el lead es para
+    // la agencia, no para el visitante, y no puede ser la razón por la que
+    // alguien no llegue a escribirle a una inmobiliaria. Por eso el window.open
+    // va después, incondicionalmente.
+    //
+    // NO se manda `agent_name`: lo escribe la base (trigger
+    // trg_set_lead_agent_name). Si viajara en este payload sería un dato que el
+    // visitante controla —`leads` no tiene ningún CHECK y la policy de inserción
+    // no puede validar una columna de texto—, o sea que cualquiera podría
+    // escribir lo que quisiera en la columna "Agente" del panel de una agencia.
+    const { error: leadInsertError } = await supabase.from("leads").insert({
       property_id: property.id,
       agent_id: property.agent_id,
       agency_id: property.agency_id,
@@ -229,8 +252,13 @@ function ModalContent({
     window.open(url, "_blank", "noopener,noreferrer");
 
     setSending(false);
-    setShowNameInput(false);
-    setUserName("");
+    setLeadError(!!leadInsertError);
+    // Con error, el flujo NO se cierra: el aviso se muestra donde el visitante
+    // está mirando. Sin error, vuelve al estado inicial como siempre.
+    if (!leadInsertError) {
+      setShowNameInput(false);
+      setUserName("");
+    }
   };
 
   return (
@@ -471,6 +499,19 @@ function ModalContent({
                 <Send size={16} />
                 {sending ? "Enviando..." : "Enviar mensaje"}
               </button>
+            )}
+
+            {/* El contacto salió (WhatsApp ya se abrió), pero la consulta no
+                quedó registrada. Se avisa para que un problema sistemático no
+                pase inadvertido, sin dramatizar: al visitante no le falta nada,
+                ya tiene abierto el chat. Mismo tratamiento discreto que el
+                storageError de ImageUploader (texto xs, sin caja ni ícono).
+                DESIGN §10: dice qué pasó y qué hacer, sin retar a nadie. */}
+            {leadError && (
+              <p className="font-sans text-xs text-graphite" role="status">
+                Se abrió WhatsApp, pero no pudimos avisarle a la inmobiliaria de
+                tu consulta. Escribile igual por el chat: te va a responder.
+              </p>
             )}
           </>
         )}

@@ -419,7 +419,11 @@ export interface Property {
 export interface Lead {
   id: string;
   property_id: string;
-  agent_id: string;
+  // NULLABLE en la base, y su FK es ON DELETE SET NULL: una consulta es un hecho
+  // histórico y sobrevive al agente que la atendió. Al borrarse el agente, la
+  // consulta NO se borra ni se reasigna: queda en el historial de la agencia,
+  // desvinculada, con el nombre congelado en agent_name.
+  agent_id: string | null;
   agency_id: string;     // incluido para queries del dashboard por agencia
   contact_name: string;
   contact_phone: string | null;
@@ -427,9 +431,30 @@ export interface Lead {
   message: string | null;
   source: string;
   created_at: string;
+  // ⚠ COPIA CONGELADA, NO COPIA DE LECTURA. Registra cómo se llamaba el agente
+  // CUANDO ATENDIÓ ESTA CONSULTA, y no debe volver a tocarse nunca más. Es lo
+  // que permite que la pantalla diga quién la atendió después de que esa persona
+  // se fue de la inmobiliaria.
+  //
+  // NO es el mismo caso que `Agent.email` (denormalizado de auth.users): aquel
+  // es una copia de LECTURA, que idealmente seguiría a su fuente si cambiara.
+  // Esta es lo contrario. Sincronizarla con agents.full_name —"para que no quede
+  // vieja"— DESTRUIRÍA el dato histórico, que es su única razón de existir.
+  //
+  // La escribe la BASE, nunca el cliente: la completa el trigger
+  // trg_set_lead_agent_name (BEFORE INSERT) desde agents.full_name. El camino
+  // que crea consultas es público y anónimo, `leads` no tiene ningún CHECK y la
+  // policy de inserción no puede validar una columna de texto: si el nombre
+  // viajara en el payload del navegador, un visitante podría escribir cualquier
+  // cosa en la columna "Agente" del panel de una agencia.
+  //
+  // Nullable: las consultas anteriores a la migración podrían no tenerlo (hoy
+  // todas lo tienen, por el backfill).
+  agent_name: string | null;
   // Relaciones opcionales (joins). Mismo patrón que Property.
-  // agent puede ser null si la propiedad quedó sin agente (agente desvinculado,
-  // hoy no ocurre). Se usan en la pantalla de Consultas (/dashboard/leads).
+  // agent es null cuando el agente se fue de la agencia (agent_id quedó en NULL
+  // por el ON DELETE SET NULL). En ese caso la pantalla cae a agent_name.
+  // Se usan en la pantalla de Consultas (/dashboard/leads).
   agent?: Pick<Agent, "id" | "full_name"> | null;
   property?: Pick<Property, "id" | "title" | "slug">;
 }
