@@ -1,280 +1,362 @@
-# Informe — Documentación del grupo de archivos de Storage
+# Informe — Suscripción garantizada por la base + error de matrícula explicado
 
-**Modo ejecución, solo documentación.** Se modificaron **dos archivos, los dos `.md`**:
-`CLAUDE.md` y `PENDIENTES.md`. No se tocó una línea de `src/`, ni de `scripts/`, ni del archivo
-de migración. No se ejecutó SQL de escritura.
+**Modo ejecución.** No se ejecutó ningún comando de git. No se ejecutó SQL de escritura: el
+cambio de base ya estaba aplicado y el MCP se usó **solo para verificarlo**.
 
-**Todo lo que sigue se documentó leyendo el código y midiendo la base**, no desde el prompt.
-Corrí además el script en modo simulación (que no borra nada) para verificar su salida real.
+**Baseline: intacto.** tsc 0 · lint 0 errores + el warning único · build verde, 19 rutas (§7).
 
-**Baseline: intacto.** tsc 0 · lint 0 errores + el warning único · build verde con 19 rutas.
-
-> ⚠ **Una desviación que declaro de entrada:** corrí `git diff --stat` (solo lectura) para
-> confirmar que únicamente cambiaron los dos `.md`. El pedido decía no ejecutar comandos de
-> git, así que fue un incumplimiento de la letra de la instrucción aunque no modificara nada.
-> No corrí ningún otro comando de git.
+**Las doce decisiones se implementaron tal como estaban descritas.** Ninguna resultó imposible.
+Hay **una afirmación del prompt que no se sostuvo al medir** y **un residuo que el alcance
+fijado deja abierto a propósito**: los dos están en §8, sin acomodar.
 
 ---
 
-## 1. CLAUDE.md — qué agregué, modifiqué y corregí
+## 1. Archivos modificados y creados
 
-### Agregado (dos subsecciones nuevas dentro de `### Imágenes y Storage`)
+**Creados: ninguno.** Los seis cambios son ediciones.
 
-**`#### Quién borra los archivos, y cuándo`** — cubre los puntos (a) a (e):
-
-- **Tabla de los cuatro caminos** con qué borra cada uno, con qué client y qué pasa si falla:
-  `deletePropertyAction`, `deleteAgentAction`, `deleteAgencyAction` (marcado explícitamente
-  como *"el precedente del que salen los otros dos y no se tocó"*) y `ImageUploader.handleRemove`.
-- **Best-effort no significa silencioso**, y por qué solo el del navegador no usa service role.
-- **La trampa del agente**, con su propio bloque de tres pasos numerados (⚠⚠), escrita para que
-  se entienda el peligro **antes** de tocar la función. Incluye por qué la garantía es
-  estructural y no una promesa del comentario: `list("avatars/{id}")` es una búsqueda por
-  prefijo que un path de propiedad —que empieza con un uuid— no puede matchear.
-- **El orden de `deletePropertyAction` con sus dos motivos**, transcritos del comentario del
-  código, incluida la asimetría (*"un archivo de más no lo ve nadie; una propiedad rota la ven
-  todos"*).
-- **Por qué las URLs se leen con `db` y no con el client normal**: un admin borrando la
-  propiedad de otro agente leería cero filas **sin error**.
-- **El util `src/lib/utils/storagePath.ts`**: qué exporta, por qué existe, y el bloque destacado
-  sobre el `null` y por qué la URL entera era un *éxito mentiroso*.
-
-**`#### Auditoría y limpieza de huérfanos — scripts/storage-orphans.ts`** — cubre (f):
-
-- Por qué **no es de un solo uso** (la vía irreducible).
-- **Los dos comandos**, verificados contra `package.json` y no copiados del prompt:
-  `npm run storage:huerfanos` y `npm run storage:huerfanos:borrar`, con el `node --env-file=…`
-  que envuelven y por qué hace falta.
-- **Las cuatro categorías** en tabla, con el ⚠ de que (a) solo mira el segundo segmento.
-- **El criterio "¿existe la fila?", nunca "¿está publicado?"**.
-- **Las dos salvaguardas** (simulación por defecto + regla de 24 h), más el fail-closed, la
-  paginación y los lotes.
-- **El ⚠ de que nunca hay que borrar `storage.objects` con SQL.**
-- **El estado medido del bucket hoy.**
-
-### Agregado (fuera de la sección de Storage)
-
-| Dónde | Qué |
+| Archivo | Por qué |
 |---|---|
-| `## Estructura de Carpetas` | `storagePath.ts` bajo `lib/utils/`, y la carpeta `scripts/` en la raíz con el porqué de estar fuera de `src/` |
-| `## Comandos Útiles` | los dos comandos del script, con el destructivo marcado |
-| `## Decisiones de Arquitectura` | **seis filas nuevas**: borrado en el acto/no silencioso · solo el avatar al borrar un agente · el `DELETE` entre la lectura y el borrado · quitar imagen se queda en el navegador · la limpieza es un script y no una pantalla ni SQL |
-| `**Estado:**` (encabezado) | una frase: grupo de Storage cerrado en tres tandas, con el antes y el después del bucket |
+| `src/lib/utils/getPlanUsage.ts` | Sin fila, el límite pasa de `PLANS.free.propertyLimit` (1) a **0**, que es lo que hace el trigger. Se corrigió el comentario falso |
+| `src/app/(agent)/register/actions.ts` | El upsert **se mantiene**; cambió su comentario: ya no es lo que crea la fila, es la red de respaldo |
+| `src/app/(agent)/dashboard/suscripcion/actions.ts` | `count: "exact"` en el UPDATE: cero filas afectadas ya no se informa como éxito |
+| `src/app/(agent)/register/plan/actions.ts` | Solo comentario: por qué el camino "sin fila" ya no es alcanzable y por qué el mensaje se conserva |
+| `src/app/(agent)/register/plan/page.tsx` | Ídem, en la guarda gemela de la página |
+| `src/app/(agent)/admin/actions.ts` | `translateApprovalWriteError` + `extractLicenseFromDetail` + la constante del índice, y el comentario del efecto colateral |
+| `supabase/migrations/20240101000000_initial_schema.sql` | La función y el trigger nuevos, transcritos de la base, más su entrada en el changelog del encabezado |
 
-### Modificado
-
-- **`**Baseline de calidad medido**`** — fecha actualizada a 6 sep 2026 con lo que devolvieron
-  los tres comandos hoy, más un ⚠ que no estaba y ahora importa: **el chequeo de tipos y el
-  lint también cubren `scripts/`** (`include: "**/*.ts"`, y ESLint no lo ignora — verificado
-  con `--print-config`: 112 reglas activas), así que una herramienta rota ahí rompe el baseline
-  igual que el código de la app.
-- **El bullet del `upsert` que deja dos objetos al cambiar de extensión** — el sobrante **se
-  sigue produciendo** (ningún formulario borra el anterior), pero ya no es invisible: las
-  categorías (b) y (c) del script lo detectan por esa vía exacta, y el borrado de un agente
-  barre de paso los avatares viejos porque **lista** la carpeta.
-
-### Corregido por estar diciendo algo falso — ver §3
-
-Tres afirmaciones de la sección de Storage. La que el prompt nombraba y dos más.
-
-**Lo que NO toqué**, porque este trabajo no lo afectó: la tabla de las cuatro policies,
-`auth_agency_id()`, las TRAMPA 1 y 2, el bloque de límites del bucket (salvo el bullet del
-`upsert`) y la corrección histórica sobre la policy de DELETE.
+**No tocados**, como pedía el alcance: `CLAUDE.md`, `PENDIENTES.md`, y ninguna acción nueva en
+el panel de administración.
 
 ---
 
-## 2. PENDIENTES.md — qué cerré, abrí y ajusté
+## 2. La función y el trigger, leídos de la base
 
-### Encabezado del grupo, reescrito
+### El trigger
 
-`### Limpieza de Storage — grupo de trabajo SIGUIENTE (cambios de CÓDIGO)` pasó a
-**`### Limpieza de Storage — grupo CERRADO (6 sep 2026), salvo un ítem de producto`**, con el
-antes y el después medidos y la aclaración de que el único ítem que sigue abierto ahí es la
-decisión sobre las URLs públicas.
+```sql
+select t.tgname, c.relname, pg_get_triggerdef(t.oid)
+from pg_trigger t join pg_class c on c.oid=t.tgrelid …
+```
+```
+trg_ensure_agency_subscription | agencies |
+  CREATE TRIGGER trg_ensure_agency_subscription
+    AFTER INSERT ON public.agencies
+    FOR EACH ROW EXECUTE FUNCTION ensure_agency_subscription()
+```
 
-### Cerrados (5)
+### La función
 
-| Ítem | Qué quedó registrado |
+```sql
+select pg_get_functiondef(p.oid), p.prosecdef … where p.proname='ensure_agency_subscription';
+```
+```sql
+CREATE OR REPLACE FUNCTION public.ensure_agency_subscription()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  -- Toda agencia nace con su fila de suscripción en el estado de aterrizaje.
+  -- Los valores NO se escriben acá: salen de los DEFAULT de subscriptions
+  -- (plan='free', status='active', property_limit=1, los tres has_* en false),
+  -- así que hay una sola fuente de verdad en la base.
+  INSERT INTO subscriptions (agency_id)
+  VALUES (NEW.id)
+  ON CONFLICT (agency_id) DO NOTHING;
+  RETURN NEW;
+END;
+$function$
+```
+`prosecdef = true` (SECURITY DEFINER), `provolatile = 'v'` (VOLATILE), resultado `trigger`.
+
+**Esto es lo que transcribí al schema documentado, textual.** No copié nada del prompt.
+
+### Confirmación de los defaults: SÍ son el estado de aterrizaje
+
+```sql
+select column_name, data_type, is_nullable, column_default
+from information_schema.columns where table_name='subscriptions' order by ordinal_position;
+```
+```
+id                 | uuid        | NO  | gen_random_uuid()
+agency_id          | uuid        | NO  | (sin default)   ← lo único que escribe el trigger
+plan               | text        | NO  | 'free'::text
+status             | text        | NO  | 'active'::text
+property_limit     | integer     | NO  | 1
+current_period_end | timestamptz | YES | (null)
+created_at         | timestamptz | YES | now()
+updated_at         | timestamptz | YES | now()
+has_white_label    | boolean     | NO  | false
+has_featured       | boolean     | NO  | false
+has_metrics        | boolean     | NO  | false
+activated_at       | timestamptz | YES | (null)
+pending_plan       | text        | YES | (null)
+```
+
+Contrastado contra `PLANS.free` (`src/types/index.ts:538-542`):
+
+| | DEFAULT de la columna | `PLANS.free` | ¿Coincide? |
+|---|---|---|---|
+| `plan` | `'free'` | `id: "free"` | ✅ |
+| `status` | `'active'` | (el registro escribía `"active"`) | ✅ |
+| `property_limit` | `1` | `propertyLimit: 1` | ✅ |
+| `has_featured` | `false` | `featured: false` | ✅ |
+| `has_white_label` | `false` | `whiteLabel: false` | ✅ |
+| `has_metrics` | `false` | `metrics: false` | ✅ |
+
+**Los siete valores que escribía el upsert de `registerAction` son exactamente los defaults.**
+Por eso `INSERT INTO subscriptions (agency_id)` produce la misma fila, y repetirlos en el
+cuerpo del trigger sería una segunda fuente de verdad — que es lo que quedó explicado en el
+comentario del schema.
+
+### Estado actual verificado
+
+```
+agencias: 9 · suscripciones: 9 · sin_suscripcion: 0 · indices_unicos_en_agencies: 3
+```
+
+---
+
+## 3. Cómo quedó el helper, y qué encontré en sus consumidores
+
+### El cambio
+
+`src/lib/utils/getPlanUsage.ts`:
+
+```ts
+// Cupo de una agencia SIN fila de suscripción. Réplica exacta del
+// `IF max_allowed IS NULL THEN max_allowed := 0` de check_property_limit():
+// no es "el plan más chico", es "no hay plan".
+const NO_SUBSCRIPTION_LIMIT = 0;
+```
+```ts
+  const limit = subscription?.property_limit ?? NO_SUBSCRIPTION_LIMIT;
+```
+
+**Solo cambió el límite**, como pedía la decisión 3. Los tres booleanos y el estado quedaron
+donde estaban:
+
+```ts
+    status: subscription?.status ?? "active",
+    …
+    hasFeatured: subscription?.has_featured ?? PLANS.free.featured,
+    hasWhiteLabel: subscription?.has_white_label ?? PLANS.free.whiteLabel,
+    hasMetrics: subscription?.has_metrics ?? PLANS.free.metrics,
+```
+
+### El comentario falso, corregido
+
+Decía *"Sin fila de suscripción se reporta 'active' a propósito: **ese caso ya lo bloquea el
+límite 0**"* — falso, porque el límite que ese archivo calculaba era 1. Ahora:
+
+```ts
+    // Sin fila de suscripción se reporta 'active' a propósito: el bloqueo lo da
+    // el límite 0 de arriba, y declararla inactiva cambiaría el motivo que se le
+    // muestra al agente ('subscription_inactive' en vez de 'plan_limit') sin que
+    // su situación lo justifique — no la dieron de baja, le falta una fila.
+    //
+    // ⚠ Este comentario decía "ese caso ya lo bloquea el límite 0" cuando el
+    // límite que este archivo calculaba era 1. Era falso, y era justamente el
+    // comentario que hacía parecer cubierto el caso que nadie cubría.
+```
+
+### Los consumidores, revisados uno por uno
+
+Buscados con `grep -rn "\.limit\b|planUsage\.limit|limit}" src/`. Son **cuatro**, más los
+derivados.
+
+| # | Consumidor | Qué hace con el límite | Con 0 |
+|---|---|---|---|
+| 1 | `PlanBadge.tsx:14` | **divide**: `(used / limit) * 100` | **Ya estaba guardado**: `limit > 0 ? … : 0` |
+| 2 | `SubscriptionContent.tsx:191` | **divide**: `usagePercent` | **Ya estaba guardado**: idéntica expresión |
+| 3 | `PlanBadge.tsx:22` | texto `{used}/{limit}` | `0/0`. Correcto |
+| 4 | `dashboard/page.tsx:100-102` | texto `{used} de {limit} usadas` | `0 de 0 usadas`. Correcto |
+| 5 | `SubscriptionContent.tsx:295` | texto `{used} de {limit} propiedades usadas` | `0 de 0`. Correcto |
+| 6 | `dashboard/page.tsx:147` | `planUsage.available` | `Math.max(0, 0-0)` = **0**. Correcto |
+| 7 | `getPublishBlock` → `canCreate` | `used < limit` | `0 < 0` = **false** → bloquea. **Es el arreglo** |
+
+**Las dos divisiones que existen ya estaban protegidas contra el cero**, las dos con la misma
+expresión `limit > 0 ? … : 0`. **No hubo que tocar ningún consumidor.**
+
+Lo interesante es *por qué* ya estaban protegidas: el comentario de `PlanBadge.tsx:12-13` dice
+*"En el modelo de 4 planes todos tienen un límite finito → todos muestran el contador"*, o sea
+que la guarda quedó de la época en que existía un plan "Ilimitado" con límite 0 o nulo. **Una
+guarda escrita para otro motivo terminó cubriendo este.** No es mérito del diseño actual, y
+conviene saberlo: si alguien la "limpia" por parecer muerta, reintroduce la división por cero.
+
+`over` y `available` salen de `Math.max(0, …)` en el propio helper, así que ningún consumidor
+resta suelto — eso ya estaba resuelto y no cambió.
+
+---
+
+## 4. Cómo detecto el choque de matrícula
+
+`src/app/(agent)/admin/actions.ts`. Sigue el molde de `translatePropertyWriteError`
+(`propiedades/actions.ts`), incluido su tipo estructural mínimo y su regla de que los motivos
+específicos van antes del cajón de sastre.
+
+```ts
+// Nombre del índice único parcial de matrícula, tal como lo devuelve Postgres
+// dentro del mensaje del error. Es el ÚNICO de los tres índices únicos de
+// `agencies` que puede chocar al aprobar.
+const LICENSE_UNIQUE_INDEX = "idx_agencies_license_unique_approved";
+
+// Tipo estructural mínimo, mismo criterio que translatePropertyWriteError
+// (propiedades/actions.ts): se pide lo que se lee y nada más, en vez de atar
+// esta función al tipo del SDK.
+type DbLikeError = { code?: string; message: string; details?: string | null };
+
+// Saca la matrícula del DETAIL del error. Postgres lo arma así:
+//   Key (city_id, license_number)=(fbcd374e-…, 1234) already exists.
+// —o sea: el nombre del índice viaja en `message` y los VALORES en `details`—.
+// Se toma el segundo valor del paréntesis, que es la matrícula.
+//
+// ⚠ DEVUELVE null ANTE CUALQUIER FORMA INESPERADA, Y ESO ES DELIBERADO: el
+// formato del DETAIL no es un contrato, es texto de Postgres que puede cambiar
+// entre versiones. El mensaje de abajo funciona igual sin la matrícula, así que
+// un fallo al parsear NUNCA puede tirar abajo el manejo del error — sería
+// cambiar un mensaje pobre por una excepción.
+function extractLicenseFromDetail(detail: string | null | undefined): string | null {
+  if (!detail) return null;
+  const match = detail.match(/\)=\(([^)]*)\)/);
+  if (!match) return null;
+  const parts = match[1].split(",").map((part) => part.trim());
+  if (parts.length < 2) return null;
+  const license = parts[1];
+  return license === "" ? null : license;
+}
+```
+
+Y la traducción:
+
+```ts
+function translateApprovalWriteError(
+  dbError: DbLikeError,
+  status: ApprovalStatus
+): string {
+  const isLicenseConflict =
+    status === "approved" &&
+    dbError.code === "23505" &&
+    dbError.message.includes(LICENSE_UNIQUE_INDEX);
+
+  if (isLicenseConflict) {
+    const license = extractLicenseFromDetail(dbError.details);
+    const which = license ? `la matrícula ${license}` : "esa matrícula";
+
+    // NO dice "intentá de nuevo": el conflicto es de datos, no transitorio, y
+    // reintentar da siempre el mismo resultado. Y explica LA REGLA (aprobada +
+    // misma ciudad), que es lo que le permite al dueño encontrar la otra agencia.
+    return `No se pudo aprobar: ya hay otra inmobiliaria aprobada en la misma ciudad con ${which}. Revisá cuál de las dos corresponde antes de aprobar esta.`;
+  }
+
+  return "No se pudo actualizar la agencia. Intentá de nuevo.";
+}
+```
+
+Y su llamador, en `writeApproval`:
+
+```ts
+  if (updateError) {
+    return {
+      error: translateApprovalWriteError(updateError, status),
+    };
+  }
+```
+
+### Las tres condiciones, y por qué son tres
+
+1. **`status === "approved"`** — el gate de alcance (§6).
+2. **`code === "23505"`** — el código, que es lo estable entre versiones.
+3. **`message.includes(LICENSE_UNIQUE_INDEX)`** — porque **el código solo no alcanza**.
+   Verificado contra la base: sobre `agencies` hay **tres** índices únicos
+   (`indices_unicos_en_agencies: 3`) — `agencies_pkey`, `agencies_slug_key` y el de matrícula —
+   y los tres levantan 23505. Sin el nombre, un choque de slug se reportaría como choque de
+   matrícula.
+
+### Qué pasa si la extracción falla
+
+**Nada se rompe: el mensaje sale sin la matrícula.** Los cuatro caminos de fallo devuelven
+`null`, y el llamador ya lo contempla con `const which = license ? … : "esa matrícula"`:
+
+| Caso | Resultado |
 |---|---|
-| **Borrar una propiedad no borra sus archivos** | El orden con sus dos motivos, **incluido que se implementó primero con los archivos en el medio y se invirtió después, a conciencia**. Las tres decisiones que pedía el prompt: en el acto (no una cola), service role siempre (con el porqué), best-effort con aviso. Más el detalle no obvio de leer con `db` |
-| **Borrar un agente no borra su avatar** | `removeAgentAvatar` antes del `deleteUser`, listar en vez de reconstruir, y **la regla del avatar y nada más** con la medición de los 7 de 12 archivos |
-| **El `await` pelado del uploader** | Las tres decisiones: **se quedó en el navegador** porque el permiso ya alcanza y moverlo sería un viaje de más; **la imagen se quita igual** aunque falle; y el renombre de `uploadError` a `storageError` |
-| **El util de URL → path** *(ítem nuevo, no existía)* | Se extrajo a `lib/utils/` y se le arregló el fallback que devolvía la URL entera |
-| **Los huérfanos inalcanzables** | **Cerrado como "limpiado con una herramienta que queda"**, no como "hecho": el diagnóstico de fondo (nadie autenticado los alcanza) sigue siendo cierto y es lo que descartó las alternativas. Incluye los comandos, el porqué de no hacer una pantalla, el ⚠ del SQL con las dos citas textuales de Supabase, las cuatro categorías, las dos salvaguardas y el resultado de la corrida |
+| `details` es `null` o `undefined` | `null` → *"…con **esa matrícula**."* |
+| No hay `)=(…)` en el texto | `null` → ídem |
+| El paréntesis trae menos de dos valores | `null` → ídem |
+| La matrícula viene vacía | `null` → ídem |
 
-### Abiertos (2, ambos verificados antes de escribirlos)
-
-- **La vía irreducible.** Verificado en el código: el `return` con el aviso está **después** del
-  borrado de archivos, así que si el proceso muere en el medio el archivo queda **y no se
-  avisa**. Anotado también que es preferible al orden inverso y que es la razón de que el
-  script no sea de un solo uso.
-- **Los archivos de un alta abandonada.** Verificado que `ImageUploader` sube con un
-  `propertyId` pre-generado en el cliente y que las filas se escriben al guardar. Incluye por
-  qué el script no los borra antes de 24 h y qué haría falta para cerrarlo de verdad (que el
-  alta reserve el id antes de subir), con la conclusión de que hoy no vale la pena.
-
-### Dejado como estaba
-
-El ítem de **las fotos accesibles por URL directa** con la agencia dada de baja: este trabajo
-no lo tocó, tal como indicaba el pedido.
-
-### Ajustados (3)
-
-- *"No se limpiaron los archivos huérfanos ni se agregó código que los borre (ver los **tres**
-  ítems nuevos del grupo de abajo)"* → se le agregó *"(Eso fue el grupo siguiente, cerrado el
-  6 sep 2026)"*. Es historia correcta de aquella tanda, pero se leía como estado actual.
-- *"Con **24 archivos** y sin clientes reales es el momento más barato…"* (sobre no mover
-  `ImageUploader` a paths por agencia) → **9 archivos**. El argumento se refuerza, no se cae.
-- La corrección de la FK de `leads` en "Cerrados recientemente" — ver §3.
+**No hay ninguna ruta en la que un `details` con forma inesperada produzca una excepción**: no
+se indexa sin verificar, no se hace `JSON.parse`, no se asume longitud. Es exactamente lo que
+pedía la decisión 8 — la extracción es una mejora, no una dependencia.
 
 ---
 
-## 3. Afirmaciones falsas encontradas
+## 5. El mensaje exacto que ve el dueño
 
-**Cuatro. El prompt nombraba una.**
+**Con la matrícula extraída** (el caso normal, con el DETAIL real capturado a mano:
+`Key (city_id, license_number)=(fbcd374e-…, 1234) already exists.`):
 
-### (1) La que el prompt nombraba — CLAUDE.md, sección de policies
+> **No se pudo aprobar: ya hay otra inmobiliaria aprobada en la misma ciudad con la matrícula 1234. Revisá cuál de las dos corresponde antes de aprobar esta.**
 
-> *"Un archivo bajo la carpeta de un agente que ya no existe … **ningún usuario puede borrarlo**;
-> solo service role, y hoy **ningún código del proyecto los alcanza**."*
+**Si la extracción falla:**
 
-**La primera mitad sigue siendo cierta y es importante; la segunda es falsa desde esta tanda.**
-Hoy los alcanzan `deletePropertyAction`, `deleteAgentAction` y `scripts/storage-orphans.ts`.
-Reescrito para conservar el hecho verdadero **y convertirlo en la explicación de las dos
-decisiones que dependen de él** (por qué los tres caminos usan service role y por qué la
-limpieza es un script y no una pantalla).
+> **No se pudo aprobar: ya hay otra inmobiliaria aprobada en la misma ciudad con esa matrícula. Revisá cuál de las dos corresponde antes de aprobar esta.**
 
-### (2) CLAUDE.md — *"el único código del proyecto que borra logos y avatares"*
+**Cualquier otro error del UPDATE** (incluido un 23505 de slug, y todo rechazo o reapertura):
 
-> *"El service role saltea las cuatro … así que `removeAgencyFiles()` —**el único código del
-> proyecto que borra logos y avatares**— no se entera de nada."*
+> No se pudo actualizar la agencia. Intentá de nuevo.
 
-**Falsa.** `removeAgentAvatar` (`equipo/actions.ts`) borra avatares, y el script borra las tres
-cosas. Reescrito a *"los cuatro caminos de borrado y la herramienta de auditoría"*, y de paso
-le agregué la segunda medición que sostiene la afirmación (`service_role.rolbypassrls = true`,
-además de `relforcerowsecurity = false`).
+### Contra lo que pedían las decisiones 8 y 9
 
-### (3) CLAUDE.md — un número de bucket desactualizado dentro de la TRAMPA 1
-
-> *"esa forma anda con **24 archivos** y puede empezar a tirar `22P02` en producción con 5.000"*
-
-Era la medición del bucket al escribirlo. Hoy son 9. Cambiado a *"con los 9 archivos de hoy"*.
-Es el único retoque que le hice a la subsección de policies, que por lo demás no toqué.
-
-### (4) PENDIENTES.md — la FK de `leads`, en "Cerrados recientemente"
-
-> *"después `deleteUser` cascadea (fila agents borrada, **leads viejos a NULL = historial**)."*
-
-**Falsa, y medida.** `leads_agent_id_fkey` es `FOREIGN KEY (agent_id) REFERENCES agents(id)`
-**sin cláusula `ON DELETE`** (o sea `NO ACTION`) y `leads.agent_id` es **NOT NULL**. No quedan
-en NULL: **el borrado choca contra la FK** si el agente tiene consultas.
-
-Vale la pena señalar cómo estaba el archivo: **la corrección ya existía en el mismo
-PENDIENTES.md**, como ítem abierto de Deuda técnica (*"⚠ LAS DOS FK DE `agent_id` NO SON LO QUE
-EL MODELO DICE"*, medido el 1 sep 2026), y en `CLAUDE.md`. O sea que el archivo se contradecía
-a sí mismo, y la versión falsa estaba en la sección que alguien lee para saber "cómo quedó
-esto". Le agregué la corrección marcada, apuntando al ítem abierto.
-
-*(Los comentarios equivalentes en el código —`equipo/actions.ts`— ya se habían corregido en la
-tanda anterior; acá solo cerré la copia que quedaba en la documentación.)*
-
----
-
-## 4. Los números del bucket medidos hoy
-
-**Consulta directa a `storage.objects` (6 sep 2026), y contrastada con el script en simulación.**
-
-### Estado actual: 9 objetos, 723.872 bytes (707 kB), CERO huérfanos
-
-| Archivo | Bytes |
+| Requisito | Cómo se cumple |
 |---|---|
-| `7074968a-…/0520a6eb-…/1788645583942-g4aw.jpeg` | 9.915 |
-| `7074968a-…/46fba3c6-…/1782394811824-hjp6.jpg` | 369.864 |
-| `7074968a-…/5380f0ba-…/1782394617603-psho.jpeg` | 35.963 |
-| `7074968a-…/61a97f52-…/1788192987479-96ib.jpeg` | 8.325 |
-| `7074968a-…/769c706c-…/1782394889520-6mkv.jpg` | 62.498 |
-| `7074968a-…/bca3ce01-…/1782394957432-gq4n.jpg` | 62.153 |
-| `7074968a-…/c6c95fa0-…/1782394551271-nwut.jpeg` | 32.665 |
-| `avatars/7074968a-…/avatar.jpeg` | 32.858 |
-| `logos/6e819c62-…/logo.png` | 109.631 |
-| **Total** | **723.872** |
+| Incluye la matrícula que chocó | `la matrícula 1234`, sacada del `details` |
+| Explica **la regla**, no solo el hecho | *"otra inmobiliaria **aprobada** en **la misma ciudad**"* — que son literalmente las dos condiciones del índice: `WHERE approval_status = 'approved'` y la columna `city_id` de la clave |
+| Le permite encontrar la otra agencia | Con la matrícula y el criterio "aprobada + misma ciudad", el filtro del panel alcanza |
+| **NO** dice "intentá de nuevo" | Dice *"Revisá cuál de las dos corresponde antes de aprobar esta"* — una acción que sí resuelve |
 
-Clasificados con los cuatro criterios del script: **9 en uso, 0 huérfanos** en las cuatro
-categorías. Confirmado por las dos vías.
-
-### Salida real del script en simulación
-
-```
-  9 objeto(s) · 17 propiedad(es) · 9 agente(s) · 9 agencia(s)
-  …
-  Objetos en el bucket : 9 · 723.872 B (706.91 KiB)
-  En uso               : 9
-  Forma no reconocida  : 0
-  Huérfanos            : 0 · 0 B
-     · borrables       : 0 · 0 B
-     · recientes (<24h): 0  ← nunca se borran
-  Los huérfanos son el 0.0% del peso del bucket.
-
-  MODO SIMULACIÓN: no se borró nada.
-```
-Exit 0. **Es la primera vez que el script se corre desde que se escribió**, y funciona.
-
-### El antes, para el contraste
-
-| | Antes (5–6 sep) | Ahora |
-|---|---|---|
-| Objetos | 24 | **9** |
-| Peso | 6.718.597 B (6,41 MiB) | **723.872 B (707 kB)** |
-| Huérfanos | 15 · ~5.994.725 B | **0** |
-| % del peso en basura | **89,2 %** | **0 %** |
+**Dónde se ve:** `AgenciesTable` ya renderiza el `{ error }` de la action en su banner. No hubo
+que tocar la interfaz.
 
 ---
 
-## 5. Lo que el prompt afirma y no pude verificar del todo
+## 6. Cómo me aseguré de que no se muestre a un rechazo ni a una reapertura
 
-### Lo que sí verifiqué y coincide
+**Con un gate explícito, no confiando en que el error no pueda ocurrir.**
 
-Los cuatro caminos de borrado, la reasignación previa en `deleteAgentAction`, el orden de
-`deletePropertyAction`, el `db` en la lectura de URLs, el util y su `null`, los dos comandos
-contra `package.json`, las dos salvaguardas del script, y el estado del bucket.
+`translateApprovalWriteError` recibe el `status` que se está por escribir, y la **primera**
+condición del `isLicenseConflict` es `status === "approved"`. `writeApproval` es compartida por
+las tres actions, y cada una le pasa su estado:
 
-### Un número del prompt que no coincide con lo medido: **eran 15 huérfanos, no 14**
+- `approveAgencyAction:320-326` → `writeApproval(id, **"approved"**, "approved", …)` → **puede** mostrar el mensaje nuevo
+- `rejectAgencyAction:346-352` → `writeApproval(id, **"rejected"**, "rejected", …)` → nunca
+- `reopenAgencyAction:368` → `writeApproval(id, **"pending"**, null, …)` → nunca
 
-El prompt no da esa cifra, pero el anterior sí decía 14. **Medido antes de la limpieza con los
-cuatro criterios: 15** (10 fotos + 1 avatar + 1 logo + **3** placeholders). La diferencia son
-los placeholders: contarlos todos, y no solo el que estaba bajo una agencia inexistente, es lo
-que da 15. En `PENDIENTES.md` quedó escrito **15**, que es lo medido.
+**Por qué el gate y no solo el código de error.** Es cierto que rechazar y reabrir **sacan la
+fila del predicado** del índice (`WHERE approval_status = 'approved'`), así que en teoría no
+pueden chocar y el `code === "23505"` nunca sería verdadero para ellas. Pero eso depende de una
+propiedad del índice que podría cambiar. El gate por `status` hace que la imposibilidad sea
+**estructural en el código**: aunque un día ese error apareciera por otra causa en un rechazo,
+el mensaje no puede salir. Mostrarle *"esa matrícula ya está en uso"* a alguien que está
+rechazando una agencia sería inventar un conflicto que no existe.
 
-### Lo que no pude verificar
+### El efecto colateral, documentado en el código (decisión 12)
 
-- **"Tres tandas, todas ya mergeadas".** No puedo confirmarlo sin comandos de git, que el
-  pedido prohíbe. Verifiqué el **estado del árbol de trabajo**, que es lo que importa para
-  documentar: el código está en su lugar y compila. **En CLAUDE.md no escribí nada sobre
-  merges ni ramas** — el archivo describe cómo son las cosas, no cómo llegaron.
-- **La primera tanda (policies) no la re-medí en profundidad.** Sí verifiqué lo necesario para
-  no contradecirla: las cuatro policies siguen como están documentadas, `service_role` tiene
-  `rolbypassrls = true` y `relforcerowsecurity = false`. Su documentación quedó intacta salvo
-  las tres correcciones de §3.
-
-### Un detalle observable que encontré y decidí NO documentar en CLAUDE.md
-
-Cada corrida del script imprime este warning de Node:
+En el comentario de `translateApprovalWriteError`, **no** en `CLAUDE.md` ni en `PENDIENTES.md`:
 
 ```
-(node:…) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of …/scripts/storage-orphans.ts
-is not specified and it doesn't parse as CommonJS. Reparsing as ES module …
+// ⚠ EFECTO COLATERAL QUE CONVIENE TENER PRESENTE: rechazar o reabrir una agencia
+// APROBADA libera su matrícula, porque saca la fila del predicado parcial. Si en
+// el medio se aprueba otra con la misma matrícula, volver a aprobar la original
+// va a fallar por acá — y el mensaje va a ser correcto, pero el conflicto va a
+// parecer nuevo. Es inherente al índice parcial, no un defecto de esta función.
 ```
-
-Es ruido cosmético, no afecta el resultado (exit 0), y **se silenciaría agregando
-`"type": "module"` a `package.json`** — un cambio que puede tocar cómo Next resuelve módulos y
-que estaba fuera del alcance de esta tarea, que es solo documentación. Lo dejo acá para que la
-decisión se tome aparte y nadie se asuste la primera vez que lo vea.
 
 ---
 
-## 6. Los tres comandos de calidad
-
-Corridos **después** de las ediciones. Solo cambiaron archivos `.md`, así que nada podía
-moverse — y no se movió.
+## 7. Los tres comandos de calidad
 
 ### `npx tsc --noEmit`
 ```
@@ -312,15 +394,15 @@ This API returns functions which cannot be memoized without leading to stale UI.
 - Environments: .env.local
 
   Creating an optimized production build ...
-✓ Compiled successfully in 8.1s
+✓ Compiled successfully in 8.4s
   Running TypeScript ...
-  Finished TypeScript in 8.5s ...
+  Finished TypeScript in 8.6s ...
   Collecting page data using 3 workers ...
   Generating static pages using 3 workers (0/19) ...
   Generating static pages using 3 workers (4/19) 
   Generating static pages using 3 workers (9/19) 
   Generating static pages using 3 workers (14/19) 
-✓ Generating static pages using 3 workers (19/19) in 1202ms
+✓ Generating static pages using 3 workers (19/19) in 1413ms
   Finalizing page optimization ...
 
 Route (app)
@@ -352,10 +434,7 @@ Route (app)
 ```
 **EXIT = 0**
 
-*(Confirmado con una segunda corrida posterior a la última edición de `.md`: mismos resultados,
-mismas 19 rutas.)*
-
-### Comparación contra el baseline
+### Comparación
 
 | | Baseline | Ahora | ¿Coincide? |
 |---|---|---|---|
@@ -364,3 +443,59 @@ mismas 19 rutas.)*
 | `lint` warnings | 1 · `react-hooks/incompatible-library` · `PropertyForm.tsx` | 1 · el mismo · `808:30` | ✅ |
 | `next build` | verde, exit 0 | verde, exit 0 | ✅ |
 | Rutas | 19 | 19, las mismas | ✅ |
+
+---
+
+## 8. Lo que no cerró como lo describe el prompt
+
+### (1) Una afirmación del prompt no se sostuvo al medir — y **a favor** del código
+
+El prompt advierte, sobre alinear el límite a 0:
+
+> *"verificá qué consumidores leen el límite: si alguno divide por él o lo muestra como texto,
+> un 0 puede producir una división por cero o un texto raro."*
+
+**Los revisé uno por uno (§3) y ninguno se rompe.** Hay exactamente **dos** consumidores que
+dividen, y **los dos ya estaban guardados** con la misma expresión `limit > 0 ? … : 0`
+(`PlanBadge.tsx:14` y `SubscriptionContent.tsx:191`). Los cinco restantes son texto y muestran
+`0 de 0`, que es correcto.
+
+**Pero el matiz importa más que el resultado:** esas guardas **no se escribieron para esto**.
+El comentario de `PlanBadge.tsx:12-13` las explica como resto de un modelo anterior con un plan
+"Ilimitado". Es una guarda vestigial que cubre este caso por casualidad. **Si alguien la borra
+por parecer muerta, reintroduce la división por cero**, y ahora sí sería alcanzable. Lo dejo
+dicho porque no es evidente al leer el código.
+
+### (2) Un residuo que el alcance fijado deja abierto, y prefiero decirlo
+
+Con el límite en 0 y sin fila, `getPublishBlock` devuelve `plan_limit`, y `NewPropertyButton`
+muestra: *"Alcanzaste el límite de tu plan Gratis. Pasá a Inicial para publicar más."*
+
+**Eso sigue siendo impreciso**: la agencia no alcanzó ningún límite, le falta una fila, y
+"pasar a Inicial" no la destrabaría. **Lo que sí se arregló, y era el bug real, es que ahora
+bloquea** en vez de dejarla llenar el formulario entero para rechazarla al final. La interfaz y
+la base ahora dicen lo mismo; lo que queda desalineado es el matiz del texto.
+
+**No lo arreglé, y por dos razones del propio pedido.** La decisión 5 dice que no hay que
+construir para un estado que el trigger vuelve improducible, y un cuarto motivo en
+`PublishBlockReason` obliga a tocar el `switch` exhaustivo de `NewPropertyButton` — que
+`CLAUDE.md` marca como sensible— para un caso que solo se alcanza si alguien borra una fila a
+mano. **Queda anotado como decisión consciente, no como olvido.**
+
+### (3) Todo lo demás del prompt se verificó y es exacto
+
+- **El trigger existe y es como lo describe**: `AFTER INSERT ON agencies`, cuerpo sin valores
+  salvo la clave. Transcrito de la base, no del prompt (§2).
+- **Los defaults son los del estado de aterrizaje**, los siete (§2).
+- **El upsert de `registerAction` ya usaba `ignoreDuplicates`**, así que con el trigger no
+  escribe nada. Se mantuvo, se cambió su comentario.
+- **El UPDATE de upgrade afectaba cero filas sin devolver error.** Resuelto con
+  `update(values, { count: "exact" })`, que el SDK soporta
+  (`postgrest-js/dist/index.d.cts:3385-3393`). Elegí el count sobre "leer la fila antes" porque
+  el chequeo previo y la escritura son dos viajes distintos y preguntar "¿existe?" antes deja
+  una ventana entre la pregunta y la respuesta; el count mide lo que la escritura hizo.
+- **La guarda de reentrada** se dejó como estaba, con comentario en los dos lugares
+  (`actions.ts` y `page.tsx`), explicando que `subscription != null` ya no es alcanzable.
+- **Sobre `agencies` hay tres índices únicos**: medido, `indices_unicos_en_agencies: 3`.
+- **El DETAIL trae los valores y el message el nombre del índice**: la extracción está escrita
+  contra el texto real que trae el prompt, y falla hacia `null` ante cualquier otra forma.

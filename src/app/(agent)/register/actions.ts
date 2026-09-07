@@ -131,7 +131,22 @@ export async function registerAction(
     return { error: "Error al crear el perfil del agente" };
   }
 
-  // Garantiza que la agencia tenga una suscripción.
+  // ⚠ ESTO YA NO ES LO QUE CREA LA SUSCRIPCIÓN: ES UNA RED DE RESPALDO.
+  // La fila la crea el trigger `trg_ensure_agency_subscription` (AFTER INSERT ON
+  // agencies → ensure_agency_subscription()), así que para cuando esta línea
+  // corre la suscripción YA EXISTE y el `ignoreDuplicates` la deja intacta: en
+  // el camino normal este upsert no escribe nada.
+  //
+  // Por qué la regla se mudó a la base: si este paso fallaba, quedaba una
+  // agencia funcionando SIN fila de suscripción, y ese paso era el único de los
+  // cuatro del registro sin rollback. Es la misma disciplina que el bloqueo de
+  // publicación —la regla vive en la base porque el código se olvida y la base
+  // no—, y ahora cubre también el SQL a mano y cualquier alta futura.
+  //
+  // Por qué NO se elimina igual: si algún día alguien deshabilita el trigger, el
+  // registro sigue creando la suscripción. Es redundante e inofensivo, y esa
+  // redundancia es el punto.
+  //
   // upsert con ignoreDuplicates: no pisa una suscripción existente (ej. una de pago).
   // Toda agencia nueva arranca en 'free'/'active' con los límites de free. La
   // selección de un plan pago es un paso posterior (/register/plan), no acá.

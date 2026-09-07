@@ -27,7 +27,12 @@ export default async function RegisterPlanPage() {
   // /dashboard/suscripcion (que pide confirmación y NO pisa el plan que rige).
   // Sin esta guarda, volver a esta URL y guardar degradaba la suscripción a free
   // (perdiendo white-label y quedando por encima del límite de propiedades).
-  // Sin fila de suscripción tampoco es un alta virgen: se deriva igual.
+  //
+  // ⚠ La rama `subscription != null` ya no es alcanzable: desde el trigger
+  // `trg_ensure_agency_subscription` (AFTER INSERT ON agencies) toda agencia
+  // nace con su fila de suscripción. Se conserva como guarda de tipo, y porque
+  // acá derivar es correcto igual (a diferencia de la action, cuyo MENSAJE sí
+  // era engañoso para ese caso — ver el comentario de actions.ts).
   const isPristineLanding =
     subscription != null &&
     subscription.plan === "free" &&

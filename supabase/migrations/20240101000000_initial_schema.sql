@@ -67,6 +67,13 @@
 --     users can upload property images", "Users can delete own property
 --     images") y a la de UPDATE laxa que se había agregado a mano. Incluidos
 --     abajo, con las dos trampas que hicieron falta para escribirlas.
+--   * ensure_agency_subscription() + trg_ensure_agency_subscription (AFTER
+--     INSERT ON agencies): YA MIGRADOS (6 sep 2026). Toda agencia nace con su
+--     fila de `subscriptions`, así que el estado "agencia sin suscripción" —que
+--     el registro podía producir si le fallaba el último de sus cuatro pasos, el
+--     único sin rollback— dejó de ser posible por cualquier camino. El cuerpo NO
+--     escribe valores: los toma de los DEFAULT de la tabla. Incluido abajo con
+--     el porqué.
 --   * ⚠ DISCREPANCIA CONOCIDA Y NO RESUELTA en dos claves foráneas
 --     (properties.agent_id y leads.agent_id): ver la nota en cada tabla. Este
 --     archivo ahora dice lo que la base TIENE, que NO es lo que el modelo
@@ -721,6 +728,66 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER trg_check_agency_subscription
   BEFORE INSERT ON properties
   FOR EACH ROW EXECUTE FUNCTION check_agency_subscription();
+
+-- ─── FUNCIÓN: toda agencia nace con su suscripción ───────────
+-- Garantiza que NO PUEDA EXISTIR una agencia sin fila en subscriptions.
+--
+-- POR QUÉ ESTÁ EN LA BASE Y NO EN LA APLICACIÓN. El registro escribe cuatro
+-- cosas en orden —usuario de Auth, agencia, agente admin, suscripción— y hacía
+-- rollback de las dos del medio, pero NO de la última: si fallaba el insert de
+-- la suscripción quedaba una agencia funcionando sin ella, y nadie reparaba ese
+-- estado. Es la misma disciplina que los tres gates de publicación de arriba: la
+-- regla vive en la base porque el código se olvida y la base no. Acá además cubre
+-- TODO camino de alta —el registro, un INSERT a mano en el SQL Editor, o
+-- cualquier flujo futuro—, no solo el que existe hoy.
+--
+-- ⚠ EL CUERPO NO ESCRIBE NINGÚN VALOR SALVO LA CLAVE, Y ES DELIBERADO.
+-- Los DEFAULT de las columnas de `subscriptions` YA SON el estado de aterrizaje
+-- (plan='free', status='active', property_limit=1, los tres has_* en false), así
+-- que `INSERT INTO subscriptions (agency_id)` produce exactamente esa fila.
+-- Repetir los valores acá crearía una SEGUNDA FUENTE DE VERDAD: el día que se
+-- cambie un default, la tabla y el trigger dirían cosas distintas y la
+-- divergencia no daría ningún síntoma —las agencias nuevas quedarían con un
+-- límite y las viejas con otro—. Si hay que cambiar el estado de aterrizaje, se
+-- cambia el DEFAULT de la columna y esto sigue siendo correcto solo.
+--
+-- ⚠ ON CONFLICT DO NOTHING lo hace IDEMPOTENTE: si la fila ya existe (por
+-- ejemplo porque el upsert de registerAction llegó primero) no pisa nada. Eso es
+-- lo que permite que el upsert de la aplicación siga en pie como red de respaldo
+-- —si alguien deshabilita este trigger, el registro sigue funcionando— sin que
+-- los dos caminos se peleen. Tiene respaldo real: subscriptions.agency_id es
+-- UNIQUE.
+--
+-- SECURITY DEFINER: el trigger corre en el contexto del INSERT sobre `agencies`,
+-- que hoy siempre va con service role, pero no hay que depender de eso — la
+-- policy de escritura de `subscriptions` es solo service role, así que sin
+-- SECURITY DEFINER un alta futura con otro rol crearía la agencia y no su
+-- suscripción, que es justo el estado que esto viene a hacer imposible.
+-- search_path fijo, igual que las otras funciones SECURITY DEFINER del proyecto.
+--
+-- AFTER INSERT y no BEFORE: la fila de `agencies` tiene que existir para que la
+-- FK subscriptions.agency_id → agencies(id) se satisfaga.
+CREATE OR REPLACE FUNCTION ensure_agency_subscription()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  -- Toda agencia nace con su fila de suscripción en el estado de aterrizaje.
+  -- Los valores NO se escriben acá: salen de los DEFAULT de subscriptions
+  -- (plan='free', status='active', property_limit=1, los tres has_* en false),
+  -- así que hay una sola fuente de verdad en la base.
+  INSERT INTO subscriptions (agency_id)
+  VALUES (NEW.id)
+  ON CONFLICT (agency_id) DO NOTHING;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_ensure_agency_subscription
+  AFTER INSERT ON agencies
+  FOR EACH ROW EXECUTE FUNCTION ensure_agency_subscription();
 
 -- ─── FUNCIÓN: visibilidad pública de una agencia ─────────────
 -- LA REGLA DE COBRO, y el único lugar donde vive: una agencia se muestra al
