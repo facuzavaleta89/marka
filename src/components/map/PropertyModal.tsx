@@ -160,8 +160,21 @@ function ModalSkeleton() {
           <div className="h-3 w-4/5 rounded-sm bg-stone/30" />
         </div>
       </div>
-      {/* Footer */}
-      <div className="px-5 py-4 border-t border-stone shrink-0">
+      {/* Footer — imita el layout real (DESIGN §5: "skeleton que imita el
+          layout"), o sea el bloque de quién publica ENCIMA del botón. Modelaba
+          solo el botón, y desde que abajo hay dos cosas eso dejaba el skeleton
+          ~42px más bajo que el contenido: al resolver la carga, el cuerpo se
+          encogía de golpe y todo saltaba. */}
+      <div className="px-5 py-4 border-t border-stone shrink-0 space-y-2.5">
+        {/* Quién publica: logo + las dos líneas de texto */}
+        <div className="flex items-center gap-2.5">
+          <div className="h-8 w-16 shrink-0 rounded-sm bg-stone/30" />
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <div className="h-3 w-32 rounded-sm bg-stone/30" />
+            <div className="h-2.5 w-24 rounded-sm bg-stone/30" />
+          </div>
+        </div>
+        {/* Botón de contacto */}
         <div className="h-11 w-full rounded-md bg-stone/30" />
       </div>
     </div>
@@ -199,6 +212,18 @@ function ModalContent({
     | undefined;
   const agentPhone = agent?.phone_wa ?? "";
   const hasPhone = agentPhone.trim() !== "";
+
+  // Quién publica. Mismo molde de cast que el agente de arriba, y por el mismo
+  // motivo: el embed trae DOS columnas (name, logo_url) pero `Property.agency`
+  // está declarado como `Agency` COMPLETO. Como el resultado de la consulta se
+  // castea por `unknown`, tipar esto como `Agency` haría que el compilador
+  // creyera que están las doce columnas: leer `agency.phone_wa` compilaría sin
+  // una queja y daría `undefined` en runtime. El cast al subconjunto REAL es lo
+  // único que mantiene el tipo alineado con lo que el select pide.
+  const agency = property.agency as
+    | { name: string; logo_url: string | null }
+    | undefined;
+  const agentName = agent?.full_name?.trim() ?? "";
 
   useEffect(() => {
     if (showNameInput) inputRef.current?.focus();
@@ -448,6 +473,74 @@ function ModalContent({
 
       {/* Flujo WhatsApp — fijo en la parte inferior */}
       <div className="px-5 py-4 border-t border-stone shrink-0 space-y-2.5">
+        {/* ── Quién publica ────────────────────────────────────────
+            La inmobiliaria y la persona que va a atender la consulta. Antes el
+            visitante veía fotos, precio y un botón verde, y con eso tenía que
+            decidir si le escribía a un número desconocido.
+
+            ⚠ VA ACÁ, HERMANO DEL TERNARIO DE ABAJO, NO ADENTRO DE UNA DE SUS
+            RAMAS. El ternario elige entre "se puede contactar" y "el agente no
+            cargó su número", y el bloque tiene que verse en LAS DOS: la agencia
+            cuyo agente no dejó teléfono es justamente de la que el visitante más
+            necesita saber quién es, porque va a tener que buscarla por otro lado.
+
+            Va abajo y no arriba a propósito: arriba competiría con el precio,
+            que es lo primero que el ojo tiene que encontrar (DESIGN §1).
+
+            El nombre de la agencia NO es un enlace. Solo algunos planes tienen
+            sitio propio y ese sitio se puede deshabilitar por varios motivos, así
+            que el enlace llevaría a veces a una página de "no disponible": un
+            nombre que a veces lleva a algún lado y a veces no es una
+            inconsistencia que el visitante ve.
+
+            SIN foto del agente, aunque la consulta traiga su avatar: decisión de
+            producto, no un olvido. */}
+        {agency && (
+          <div className="flex items-center gap-2.5">
+            {/* El logo solo existe si la agencia lo subió, y NUEVE DE CADA DIEZ no
+                lo hicieron: el caso sin logo es el normal, no el borde. Cuando
+                falta, el bloque de texto se corre solo a la izquierda y el nombre
+                ocupa el lugar que habría tenido el logo — sin hueco, sin caja
+                vacía y sin ningún cartel que anuncie la ausencia (eso es una
+                carencia administrativa de la agencia, no algo que al visitante le
+                sirva saber).
+
+                Dimensiones tomadas del header del sitio de marca
+                (AgencyMapView): altura fija + ancho automático + object-contain,
+                que tolera cualquier proporción de logo sin deformarlo ni alterar
+                el alto de la fila. Acá va h-8 y no h-9 porque este bloque le
+                resta altura al área que scrollea (el sheet de celular tiene alto
+                fijo), y max-w acota los logos muy anchos para que le dejen lugar
+                al texto. */}
+            {agency.logo_url && (
+              // alt vacío A PROPÓSITO: el nombre de la agencia está en el mismo
+              // bloque, a 10px de acá. Ponerle el nombre al alt —como sí hace
+              // AgencyMapView, donde el nombre vive lejos, en el centro del
+              // header— haría que un lector de pantalla lo dijera dos veces
+              // seguidas. La imagen acá es decorativa: el dato es el texto.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={agency.logo_url}
+                alt=""
+                className="h-8 w-auto max-w-[96px] shrink-0 object-contain"
+              />
+            )}
+
+            {/* min-w-0 + truncate: un nombre largo se corta con elipsis en vez de
+                empujar el logo fuera de la fila. */}
+            <div className="min-w-0">
+              <p className="font-serif text-sm font-semibold text-black leading-tight truncate">
+                {agency.name}
+              </p>
+              {agentName && (
+                <p className="font-sans text-xs text-graphite leading-tight truncate">
+                  Atiende {agentName}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
         {!hasPhone ? (
           // El agente no configuró su número → no se puede contactar por WA
           <div className="text-center">
@@ -550,8 +643,25 @@ export function PropertyModal() {
 
       const { data } = await supabase
         .from("properties")
+        // ⚠ DEL EMBED DE `agencies` SE NOMBRAN SOLO LAS DOS COLUMNAS QUE SE
+        // USAN, y no es prolijidad: la policy `Public read agencies` tiene
+        // `qual: true`, o sea que cualquiera con la anon key —la que va en el
+        // bundle de JavaScript— puede leer esa tabla entera, y Postgres no
+        // permite restringir columnas dentro de una policy. Lo único que acota
+        // qué se expone es esta lista. Ahí viven `phone_wa`, `license_number` y
+        // `approval_status`: un `agency:agencies(*)` los publicaría a cualquier
+        // visitante anónimo.
+        //
+        // Se embebe acá, en la consulta que el modal YA hace, y no en una
+        // consulta aparte: la segunda necesitaría el agency_id que sale de ésta,
+        // así que sería secuencial y el bloque aparecería recién después de que
+        // el resto del modal ya está pintado — además de estrenar un camino de
+        // red que puede fallar por su cuenta.
+        //
+        // La consulta del mapa (useProperties) NO se toca: es la query caliente
+        // y este dato solo se usa al abrir un modal.
         .select(
-          "*, images:property_images(id, property_id, url, is_cover, sort_order, created_at), agent:agents(full_name, phone_wa, avatar_url)"
+          "*, images:property_images(id, property_id, url, is_cover, sort_order, created_at), agent:agents(full_name, phone_wa, avatar_url), agency:agencies(name, logo_url)"
         )
         .eq("id", selectedPropertyId)
         .eq("status", "active")

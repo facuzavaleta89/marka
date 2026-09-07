@@ -351,10 +351,25 @@ El modal se abre al hacer click en un pin. En desktop es un drawer desde la dere
 │  ─────────────────────────────  │
 │  Amenities (chips)              │
 │  ─────────────────────────────  │
+│  [LOGO]  Inmobiliaria Demo      │  ← quién publica. Nombre: Noto Serif 14px semibold, black
+│          Atiende Juan Pérez     │  ← DM Sans 12px, graphite. SIN foto del agente
 │  [Input: tu nombre]             │  ← aparece solo si el usuario hace click en el botón
 │  [● Consultar por WhatsApp]     │  ← fondo whatsapp-green, full-width
 └─────────────────────────────────┘
 ```
+
+**Bloque "quién publica" (zona inferior):**
+
+Identifica a la inmobiliaria y a la persona que va a atender la consulta. Sin él, el visitante ve fotos, precio y un botón verde, y con eso tiene que decidir si le escribe a un número desconocido.
+
+- **Va abajo, junto al CTA, nunca arriba:** arriba competiría con el precio, que es lo primero que el ojo tiene que encontrar (§1).
+- **Es UNA fila compacta (~33px), no una tarjeta.** El bottom sheet de mobile tiene alto fijo (`h-[82vh]`) y esta zona no se comprime, así que cada píxel del bloque se lo resta al área que scrollea. No engordarlo.
+- **Logo:** `h-8 w-auto max-w-[96px] object-contain` — altura fija, ancho según la relación de aspecto, tolera cualquier proporción. Mismo tratamiento que el header de `AgencyMapView`, una talla más chico. Va con `alt=""`: el nombre está a 10px, en el mismo bloque, y repetirlo en el alt se lo haría decir dos veces a un lector de pantalla.
+- **⚠ Sin logo, el NOMBRE OCUPA EL LUGAR DEL LOGO** (el texto se corre solo a la izquierda). Sin hueco, sin caja vacía, sin cartel de "sin logo" — a diferencia de la preview de `AgencyLogoForm`, que sí lo dice porque ahí estás por subir un archivo. **Es el caso NORMAL: nueve de cada diez agencias no tienen logo**, así que un diseño que solo se vea bien con logo se va a ver mal casi siempre.
+- **El nombre de la agencia NO es un enlace.** Solo algunos planes tienen sitio propio y ese sitio se deshabilita por varios motivos, así que a veces llevaría a "no disponible": un nombre que a veces lleva a algún lado y a veces no es una inconsistencia visible.
+- **SIN foto del agente**, aunque la consulta ya traiga su avatar. Solo el nombre.
+- **Se muestra en LAS DOS vistas públicas**, también en el sitio de marca de la agencia. Ahí el encabezado ya es esa agencia, pero quien abre un enlace compartido cae directo en el modal y puede no ver el encabezado — y la propiedad se ve igual sin importar por dónde se entró.
+- **⚠ Es HERMANO del condicional que elige el botón, no hijo de una de sus ramas.** Hay dos ramas (el agente tiene teléfono / no lo cargó) y el bloque va en las dos: la agencia cuyo agente no dejó número es justamente de la que el visitante más necesita saber quién es.
 
 **Comportamiento del CTA de WhatsApp:**
 1. Botón visible desde el inicio con texto "Consultar por WhatsApp"
