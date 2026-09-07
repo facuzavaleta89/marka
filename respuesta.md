@@ -1,250 +1,515 @@
-# Informe — Documentación de la quinta tanda del grupo de blindaje
+# Informe — La consulta sobrevive al agente que la atendió
 
-**Modo ejecución, solo documentación.** Se modificaron **dos archivos, los dos `.md`**:
-`CLAUDE.md` y `PENDIENTES.md`. No se tocó `src/`, ni `scripts/`, ni el archivo de migración.
-No se ejecutó ningún comando de git. No se ejecutó SQL de escritura.
-
-**Todo se documentó leyendo el código y midiendo la base.** Lo que sigue está verificado con el
-MCP o citado del archivo, no tomado del prompt.
-
-**Baseline: intacto.** tsc 0 · lint 0 errores + el warning único · build verde, 19 rutas (§6).
-
-## Lo primero, porque cambia un número del prompt
-
-**La base tiene 10 agencias, no 9, y una de ellas es un alta de prueba del 7 sep que verifica
-el trigger de punta a punta.** Su fila de suscripción tiene `created_at` **idéntico al
-microsegundo** al de la agencia. Eso es evidencia dura de que la fila la creó el trigger dentro
-de la misma sentencia, no el upsert de la aplicación. Detalle en §4.
+> **Modo ejecución.** Escribí y modifiqué archivos del proyecto. **No ejecuté ningún comando de
+> git** ni ningún SQL de escritura: el MCP de Supabase se usó solo para **verificar** el estado
+> real de la base, que el dueño ya había migrado a mano.
+>
+> **Fecha de las mediciones:** 7 sep 2026.
+>
+> **Resultado:** las seis decisiones se implementaron tal como estaban descritas. Ninguna resultó
+> imposible y ninguna hubo que rediseñarla. Baseline de calidad **sin cambios**: 0 errores de
+> TypeScript, 0 errores de lint con el mismo warning único, build verde con las mismas 19 rutas.
 
 ---
 
-## 1. CLAUDE.md — qué agregué, modifiqué y corregí
+## 1. Archivos modificados
 
-### Agregado
-
-| Dónde | Qué |
+| Archivo | Qué cambió |
 |---|---|
-| `### Suscripciones y límites` → **`#### Toda agencia nace con su suscripción — el trigger, no el código`** (nuevo) | El trigger con su cuerpo textual, **por qué no escribe valores salvo la clave** (los `DEFAULT` ya son el estado de aterrizaje; repetirlos sería una segunda fuente de verdad que divergiría en silencio), la tabla de defaults contrastada contra `PLANS.free`, y **que el upsert del registro NO es lo que crea la fila** sino una red de respaldo que no se eliminó a propósito |
-| `### Suscripciones y límites` → **`#### Sin fila de suscripción el límite es 0`** (nuevo) | Los dos números lado a lado —`check_property_limit()` y `getPlanUsage`— y por qué tienen que coincidir. Incluye el bug que la divergencia producía y la aclaración de que **solo cambió el límite**: `status` y los tres `has_*` siguen cayendo a los de `PLANS.free` |
-| `### Aprobación de agencias` (cuatro bullets nuevos) | El mensaje literal del choque de matrícula; **las tres condiciones de la detección** y por qué el código solo no alcanza (tres índices únicos, medido); el gate a la aprobación; y **el efecto colateral de que rechazar/reabrir libera la matrícula** |
-| **`### ⚠ Un UPDATE acotado sobre una fila que no existe NO devuelve error`** (sección nueva, en Convenciones de Dominio) | La trampa, el caso que ya mordió, la solución con `count: "exact"` y **por qué es mejor que leer la fila antes**: leer y escribir son dos viajes distintos, el count mide lo que la escritura hizo |
-| **`### ⚠ La guarda contra el cero de las barras de uso es VESTIGIAL`** (sección nueva) | Los **dos** lugares citados con línea, que la guarda quedó del modelo con plan "Ilimitado", y que **hoy es lo único que evita la división por cero** |
-| `## Base de Datos — Referencia Rápida` | Párrafo **"Trigger de `agencies`"** y `ensure_agency_subscription()` en la lista de funciones |
-| `## Método de Diagnóstico` | Ver §5 |
-| `**Estado:**` (encabezado) | Una frase: grupo de blindaje cerrado, con sus dos resultados |
+| `src/types/index.ts` | `Lead.agent_id` pasa a `string \| null` y se agrega `agent_name: string \| null`, documentada como **copia congelada** y contrastada explícitamente contra `Agent.email`, que es copia de lectura |
+| `src/app/(agent)/dashboard/leads/page.tsx` | El select trae `agent_name`, se mapea a la fila, y el embed del agente lleva la advertencia de que **no puede llevar `!inner`** |
+| `src/components/dashboard/LeadsContent.tsx` | `LeadRow` gana `agent_name`; nuevo helper `AgentCell` con los tres casos, consumido por la tabla de escritorio y por las tarjetas de celular |
+| `src/app/(agent)/dashboard/equipo/actions.ts` | Reescrito el bloque que afirmaba que el borrado falla siempre; corregido el comentario que decía "Estado consistente"; nuevo mensaje de error que dice qué pasó y qué quedó a nombre del admin; agregado al encabezado el reparto propiedades-vs-consultas |
+| `src/app/(agent)/dashboard/equipo/page.tsx` | Cuenta las consultas por agente con el mismo patrón que ya usaba para las propiedades, y las pasa como `lead_count` |
+| `src/components/dashboard/TeamContent.tsx` | `TeamMember` gana `lead_count`; el aviso de borrado suma la frase de las consultas |
+| `src/components/map/PropertyModal.tsx` | El insert de la consulta captura su error y lo muestra **sin bloquear** la apertura de WhatsApp |
+| `supabase/migrations/20240101000000_initial_schema.sql` | Tabla `leads` (columna, FK y la columna nueva), función + trigger nuevos, nota de fidelidad de la policy reescrita, comentario de `Agent reads own leads`, y el bloque de discrepancias del encabezado |
 
-### Modificado / corregido por estar diciendo algo falso
-
-Ver §3. La corrección de fondo está en `### Suscripciones y límites`, donde el bullet de `free`
-afirmaba que `PLANS.free` era el fallback de `getPlanUsage` **sin distinguir el límite del
-resto** — y eso dejó de ser cierto para el límite.
-
-También actualicé la fecha del **baseline medido** (6 → 7 sep 2026).
-
-### Lo que NO toqué
-
-Las cuatro tandas anteriores (policies de Storage, límites del bucket, borrado de archivos,
-herramienta de auditoría). **Las revisé buscando contradicciones y no encontré ninguna**: el
-grupo de esta tanda toca suscripciones y aprobación, que no se cruzan con Storage. Sus cifras
-siguen vigentes — el bucket sigue en **9 objetos** (medido).
+**No toqué** `CLAUDE.md` ni `PENDIENTES.md` (se actualizan al cierre del grupo), ninguna policy,
+la FK de `properties` hacia `agents`, la reasignación de propiedades al admin, ni los conteos que
+autorizan eliminar una agencia.
 
 ---
 
-## 2. PENDIENTES.md — qué cerré, abrí y ajusté
+## 2. Lo que leí de la base
 
-### Cerrados (2 ítems + el grupo entero)
+Todo medido con el MCP en solo lectura, contra el proyecto real. **Los cinco puntos que el prompt
+pedía verificar dieron correctos.**
 
-**`El registro no deshace el upsert de subscriptions`** → cerrado **"RESUELTO POR LA BASE, y no
-como decía este ítem"**. El diagnóstico era correcto pero **las dos salidas que proponía se
-descartaron las dos**, y quedó registrado por qué:
-- **NO reintentar en el código** — solo cubre fallos transitorios; no cierra el agujero ni
-  cubre el SQL a mano.
-- **NO una acción de reparación en `/admin`** — reactiva, y con el trigger el estado deja de
-  ser producible: sería una décima acción de fila permanente para algo que no puede ocurrir.
-- **La barrera en la base es la única que cubre todos los caminos y no depende de que ningún
-  código se acuerde.**
+### La columna del agente ahora admite nulos
 
-Incluye además los dos síntomas que el ítem original no mencionaba (el límite 1 vs 0 y el
-éxito falso del pedido de upgrade) y la verificación por timestamps.
+```sql
+SELECT column_name, ordinal_position, data_type, is_nullable, column_default
+FROM information_schema.columns WHERE table_schema='public' AND table_name='leads';
+```
 
-**`Matrículas duplicadas entre agencias pendientes`** → cerrado, con las tres condiciones de la
-detección, la extracción de la matrícula del `details` **y la aclaración de que si esa
-extracción falla el mensaje funciona igual**, el gate a la aprobación, y el efecto colateral.
+| # | columna | tipo | nullable | default |
+|---|---|---|---|---|
+| 1 | `id` | `uuid` | NO | `gen_random_uuid()` |
+| 2 | `property_id` | `uuid` | NO | — |
+| 3 | **`agent_id`** | `uuid` | **YES** ✅ | — |
+| 4 | `agency_id` | `uuid` | **NO** | — |
+| 5 | `contact_name` | `text` | NO | — |
+| 6 | `contact_phone` | `text` | YES | — |
+| 7 | `contact_email` | `text` | YES | — |
+| 8 | `message` | `text` | YES | — |
+| 9 | `source` | `text` | NO | `'whatsapp'::text` |
+| 10 | `created_at` | `timestamptz` | YES | `now()` |
+| 11 | **`agent_name`** | **`text`** | **YES** ✅ | — |
 
-**El grupo entero** → cerrado en `## Cerrados recientemente`, con las cinco tandas resumidas
-una por una, lo que quedó abierto a propósito, y una nota de método.
+`agency_id` sigue **NOT NULL**, que es lo que hace que una consulta desvinculada de su agente siga
+perteneciendo a su agencia. De eso depende todo el resto (la pantalla, la policy del admin y los
+conteos de eliminación).
 
-> ⚠ **No existía un encabezado propio para el grupo de cinco tandas.** Lo que hay es
-> `### Limpieza de Storage — grupo CERRADO (6 sep 2026)`, que cubre las tandas 3 y 4, y los dos
-> ítems de esta tanda vivían sueltos en "Deuda técnica". Cerré el grupo donde el archivo
-> registra los cierres, y lo digo explícitamente en el ítem para que nadie lo busque arriba.
+### La clave foránea pasó a `ON DELETE SET NULL`
 
-### Abiertos (3, todos verificados antes de escribirlos)
+```sql
+SELECT con.conname, pg_get_constraintdef(con.oid), <confdeltype traducido>
+FROM pg_constraint con ... WHERE c.relname='leads';
+```
 
-1. **El residuo consciente del mensaje con límite 0** — el bloqueo funciona, el texto dice
-   "alcanzaste el límite de tu plan" cuando falta una fila. Verificado leyendo
-   `NewPropertyButton` → `PlanLimitMessage`. Anotado con la razón de no arreglarlo: exige un
-   cuarto motivo en `PublishBlockReason` y tocar el `switch` exhaustivo que ya se rompió una vez.
-2. **No verificado en pantalla** — el bloqueo con límite 0 se comprobó por lectura de código y
-   revisando los consumidores, **no en el navegador**, porque fabricar el caso exige dejar una
-   transacción abierta mientras se navega. Anotado como *no verificado, riesgo bajo*, con el
-   porqué del riesgo bajo.
-3. **Limpieza de datos previa al lanzamiento** — 8 de 10 agencias sin matrícula, **1 sola fila
-   dentro del predicado del índice**. Anotado explícitamente **como limpieza de datos, no como
-   deuda técnica**, junto a los 2 usuarios de Auth huérfanos.
-
-### Ajustados
-
-**Ninguno, y lo verifiqué en vez de asumirlo.** Repasé el archivo buscando cifras que esta
-tanda dejara viejas:
-
-| Afirmación existente | Medido hoy | ¿Sigue vigente? |
+| constraint | definición | ON DELETE |
 |---|---|---|
-| *"Quedan **2** usuarios de Auth huérfanos"* | `auth_users` 12, `agents` 10 → **2** | ✅ sin cambios |
-| *"Con **9 archivos** … el momento más barato para mover `ImageUploader`"* | 9 objetos en el bucket | ✅ sin cambios |
-| Cifras del grupo de Storage (24 → 9 objetos, 707 kB, cero huérfanos) | idem | ✅ sin cambios |
+| `leads_pkey` | `PRIMARY KEY (id)` | — |
+| **`leads_agent_id_fkey`** | **`FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE SET NULL`** ✅ | **SET NULL** |
+| `leads_agency_id_fkey` | `FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE` | CASCADE |
+| `leads_property_id_fkey` | `FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE` | CASCADE |
 
-No inventé trabajo donde no lo había.
+Sigue sin haber **ni un solo CHECK** sobre `leads` — que es, junto con el camino anónimo, la razón
+por la que el nombre no puede venir del cliente.
+
+### El trigger existe y es `BEFORE INSERT`
+
+```
+CREATE TRIGGER trg_set_lead_agent_name BEFORE INSERT ON public.leads
+  FOR EACH ROW EXECUTE FUNCTION set_lead_agent_name()
+```
+`tgenabled = 'O'` (habilitado). Es el **único** trigger sobre `leads`; los otros seis del esquema
+`public` están sobre `agencies`, `properties` y `subscriptions`, sin cambios.
+
+### La función
+
+`SECURITY DEFINER`, `provolatile = 'v'` (VOLATILE, correcto para un trigger), `proconfig =
+{search_path=public}`. Cuerpo tal como está en la base:
+
+```sql
+CREATE OR REPLACE FUNCTION public.set_lead_agent_name()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  -- El nombre se resuelve ACÁ y no en el payload del cliente. El camino que crea
+  -- consultas es público y anónimo, leads no tiene ningún CHECK, y la policy de
+  -- inserción no puede validar una columna de texto: si el nombre viajara desde
+  -- el navegador, un visitante podría escribir cualquier cosa en la columna
+  -- "Agente" del panel de una agencia.
+  IF NEW.agent_id IS NOT NULL THEN
+    SELECT full_name INTO NEW.agent_name
+    FROM agents WHERE id = NEW.agent_id;
+  END IF;
+  RETURN NEW;
+END;
+$function$
+```
+
+Lo transcribí **verbatim** al schema documentado, no reescrito.
+
+> **Detalle que verifiqué porque importa para la seguridad:** cuando `agent_id` no es nulo, el
+> `SELECT ... INTO NEW.agent_name` **pisa** cualquier valor que el cliente hubiera mandado. Y
+> cuando es nulo, el insert ni siquiera llega a escribirse: lo rechaza la policy (ver §6). O sea
+> que **no hay ninguna combinación en la que un `agent_name` enviado desde el navegador termine
+> en la tabla.** El diseño cierra por los dos lados.
+
+### Las consultas existentes tienen el nombre cargado
+
+```sql
+SELECT count(*) AS total_leads,
+       count(agent_id) AS con_agente_vinculado,
+       count(*) FILTER (WHERE agent_id IS NULL) AS desvinculadas,
+       count(agent_name) AS con_nombre_cargado,
+       count(*) FILTER (WHERE agent_name IS NULL) AS sin_nombre,
+       count(*) FILTER (WHERE agent_name IS NOT NULL
+              AND agent_name = (SELECT full_name FROM agents a WHERE a.id = leads.agent_id))
+              AS nombre_coincide_con_agente
+FROM leads;
+```
+```json
+[{"total_leads": 8, "con_agente_vinculado": 8, "desvinculadas": 0,
+  "con_nombre_cargado": 8, "sin_nombre": 0, "nombre_coincide_con_agente": 8}]
+```
+
+**8 de 8 con el nombre cargado, y las 8 coinciden con el `full_name` del agente vivo.** El
+backfill quedó completo y correcto. Todavía no hay ninguna consulta desvinculada (`desvinculadas:
+0`), lo cual es esperable: nadie borró un agente todavía.
+
+### Índices — sin cambios
+
+```
+leads_pkey        CREATE UNIQUE INDEX ... USING btree (id)
+idx_leads_agency  CREATE INDEX ... USING btree (agency_id, created_at DESC)
+```
+Los mismos dos de antes. Sigue sin haber índice sobre `agent_id`; es preexistente y no lo toqué.
 
 ---
 
-## 3. Afirmaciones falsas encontradas
+## 3. Cómo quedó la pantalla, en los tres casos
 
-**Dos**, las dos en `CLAUDE.md`. Menos que en las tandas anteriores, y por un motivo que vale
-la pena decir: **la afirmación falsa más cara de este grupo estaba en un comentario del código,
-no en un `.md`**, y ya se corrigió en la tanda de implementación.
+La lógica vive en **un solo lugar** (`LeadsContent.tsx`), consumido por los dos layouts. Lo hice
+así por el precedente que documenta `CLAUDE.md` sobre `AgenciesTable`: esta misma clase de
+condición estaba escrita dos veces ahí y **las dos copias se desincronizaron**, dejando una
+pantalla de celular que no mostraba botones que sí correspondían.
 
-### (1) El fallback de `PLANS.free` en `getPlanUsage` — falso desde esta tanda
+`AgentCell` devuelve **siempre un solo elemento**, para que funcione igual dentro del `<td>` de la
+tabla (flujo inline) y dentro del `<p className="flex items-center gap-2">` de la tarjeta (donde
+se convierte en un único flex item, sin romper la alineación con el ícono).
 
-> *"Los valores de `PLANS.free` (`propertyLimit: 1` + los tres flags en `false`) … son … los
-> que `getPlanUsage` usa de fallback si falta la fila."*
+```tsx
+function AgentCell({
+  agent,
+  agentName,
+}: {
+  agent: LeadRow["agent"];
+  agentName: string | null;
+}) {
+  // 1) El agente sigue en la agencia → su nombre ACTUAL (el de la fila viva, no
+  // la copia congelada: si se corrigió el nombre, lo que vale es el de hoy).
+  if (agent) {
+    return (
+      <span className="font-sans text-sm text-graphite">{agent.full_name}</span>
+    );
+  }
 
-**Falso para el límite.** Medido en `src/lib/utils/getPlanUsage.ts`: el límite cae a
-`NO_SUBSCRIPTION_LIMIT = 0`. Sigue siendo cierto para los tres `has_*` y para el `status`.
-Corregido distinguiendo los dos casos, con un ⚠ que remite a la subsección nueva.
+  // 2) El agente se fue, pero la base guardó cómo se llamaba cuando atendió esta
+  // consulta. Se muestra el nombre + un badge que lo distingue de un agente
+  // activo: son dos situaciones distintas y no pueden leerse igual. El badge usa
+  // el tratamiento de "estado cerrado" de DESIGN §6 (fondo stone, texto
+  // graphite), el mismo de las propiedades vendidas/alquiladas.
+  if (agentName) {
+    return (
+      <span className="inline-flex items-center gap-2">
+        <span className="font-sans text-sm text-graphite">{agentName}</span>
+        <span className="font-sans text-[11px] font-semibold uppercase tracking-wide rounded-sm bg-stone px-2 py-0.5 text-graphite whitespace-nowrap">
+          Ya no está
+        </span>
+      </span>
+    );
+  }
 
-### (2) `### Suscripciones y límites` no decía de dónde sale la fila
+  // 3) Último recurso: consultas anteriores a la migración que quedaron sin la
+  // copia del nombre. Hoy no hay ninguna, pero el caso es representable.
+  return (
+    <span className="font-sans text-sm italic text-stone">
+      Sin agente asignado
+    </span>
+  );
+}
+```
 
-No era una afirmación falsa sino una **omisión que se volvió engañosa**: la sección describía
-`subscriptions` sin mencionar que ahora su existencia está garantizada por la base, y el único
-lugar que hablaba de crearla era el bullet del registro con service role. Quien leyera solo eso
-concluiría que la fila la crea la aplicación. Resuelto con el bloque destacado al inicio de la
-sección y la subsección del trigger.
+Y los dos puntos de uso, que quedaron de una línea cada uno:
 
-### La que ya estaba corregida en el código, y que motiva la nota de método
+```tsx
+                {/* Agente (solo admin) */}
+                {isAgencyAdmin && (
+                  <td className="px-5 py-3 whitespace-nowrap">
+                    <AgentCell agent={l.agent} agentName={l.agent_name} />
+                  </td>
+                )}
+```
 
-`getPlanUsage` decía *"ese caso ya lo bloquea el límite 0"* mientras el límite que ese mismo
-archivo calculaba era **1**. Se corrigió en la tanda de implementación; acá quedó **elevada a
-regla de método** (§5), porque el patrón es el que más se repitió en todo el grupo.
+```tsx
+            {isAgencyAdmin && (
+              <p className="mt-2 pt-2 border-t border-stone flex items-center gap-2 font-sans text-sm text-graphite">
+                <User size={14} className="shrink-0" />
+                <AgentCell agent={l.agent} agentName={l.agent_name} />
+              </p>
+            )}
+```
+
+### Cómo se ve cada caso, y por qué
+
+| Caso | Qué muestra | Tratamiento |
+|---|---|---|
+| **Agente vinculado** | `Ana Gómez` | `text-sm text-graphite` — sin cambios respecto de hoy |
+| **Desvinculado con nombre** | `Ana Gómez` **[YA NO ESTÁ]** | El nombre igual que un agente activo + badge `bg-stone text-graphite`, `text-[11px] font-semibold uppercase tracking-wide rounded-sm` |
+| **Sin nombre** | *Sin agente asignado* | `italic text-stone` — la leyenda de hoy, intacta |
+
+**Por qué ese badge y no otra cosa.** DESIGN §6 tiene una tabla de badges y el par `stone` /
+`graphite` está asignado ahí literalmente a **"Estado vendido — propiedades `sold`/`rented`"**, o
+sea que en este sistema **es el tratamiento de "estado cerrado"**. Es exactamente la semántica que
+hace falta: una persona que ya no está. Un badge `mist`/`graphite` (el neutro de "Venta",
+"Alquiler") se leería como un atributo activo, y `terracota` está reservado para acentos y CTAs.
+
+**Y por qué el nombre no se atenúa.** La tentación era poner el nombre en `stone` para "marcar"
+que ya no está. Sería un error: el nombre **es el dato**, y es la única información que se
+conserva de quién atendió esa consulta. Atenuarlo lo haría más difícil de leer justo cuando es
+más valioso. Lo que cambia de estado es la persona, no el registro, así que el estado va en el
+badge. Las dos situaciones quedan igual de legibles pero inconfundibles entre sí, que es lo que
+pedía la decisión 2.
+
+**Nota sobre el caso 1:** cuando el agente sigue vinculado se muestra `agent.full_name` (la fila
+viva), **no** `agent_name`. Si alguien se corrigió una falta de ortografía en el nombre, lo que
+vale para un agente presente es cómo se llama hoy. La copia congelada solo entra en juego cuando
+ya no hay a quién preguntarle.
 
 ---
 
-## 4. Los números medidos
+## 4. El texto exacto del aviso antes de borrar un agente
 
-Todo con el MCP el 7 sep 2026.
+El diálogo ya avisaba de las propiedades. Le sumé una segunda frase para las consultas, en un
+párrafo aparte **porque son dos efectos distintos sobre dos cosas distintas** —las propiedades se
+reasignan, las consultas se desvinculan— y meterlos en la misma oración los haría parecer lo
+mismo.
 
-| Métrica | Valor |
-|---|---|
-| Agencias | **10** |
-| Filas en `subscriptions` | **10** |
-| **Agencias sin fila de suscripción** | **0** |
-| Agencias con `license_number` | **2** |
-| Agencias con `license_number` en `NULL` | **8** |
-| Agencias aprobadas | 9 |
-| **Filas dentro del predicado del índice** (`approved` + matrícula no nula) | **1** |
-| **Índices únicos sobre `agencies`** | **3** |
+**Título:** `¿Eliminar a {nombre del agente}?`
 
-Los tres índices, leídos de `pg_index`:
-```
-agencies_pkey                        | UNIQUE (id)
-agencies_slug_key                    | UNIQUE (slug)
-idx_agencies_license_unique_approved | UNIQUE (city_id, license_number)
-                                       WHERE approval_status='approved' AND license_number IS NOT NULL
-```
-**Los tres levantan `23505`.** Es exactamente por eso que la detección exige además el nombre
-del índice.
+**Cuerpo, con propiedades y con consultas** (el caso completo):
 
-### El trigger, verificado de punta a punta con datos reales
+> Sus **3 propiedades** pasan a tu nombre y vas a poder reasignarlas. La cuenta del agente se
+> elimina y no podrá ingresar.
+>
+> Sus **5 consultas** no se borran: quedan en el historial de la agencia con su nombre, para que
+> sepas quién las atendió.
 
-Apareció un alta de prueba posterior a la implementación, y es la mejor evidencia posible:
+**Sin propiedades pero con consultas:**
 
-```
-name          | approval_status | license | agency.created_at            | subscription.created_at
---------------+-----------------+---------+------------------------------+------------------------------
-Inmoprueba 1  | pending         | 1235    | 2026-09-07 02:32:41.767784+00 | 2026-09-07 02:32:41.767784+00
-Inmob. Gaio   | approved        | 1234    | 2026-08-28 21:42:14.714789+00 | 2026-08-28 21:42:15.133732+00
-```
+> La cuenta del agente se elimina y no podrá ingresar. No tiene propiedades a su nombre.
+>
+> Sus **5 consultas** no se borran: quedan en el historial de la agencia con su nombre, para que
+> sepas quién las atendió.
 
-**En el alta nueva los dos timestamps son idénticos al microsegundo** → la fila la creó el
-trigger **dentro de la misma sentencia**. En la agencia vieja hay **~419 ms** de diferencia →
-esa la creó el upsert de la aplicación, en un viaje aparte. La fila resultante:
-`plan='free'`, `status='active'`, `property_limit=1`, los tres `has_*` en `false` — el estado
-de aterrizaje exacto.
+**Sin consultas:** el segundo párrafo no se renderiza (no tiene sentido avisar de un efecto que no
+va a ocurrir; mismo criterio que ya tenía el bloque de propiedades).
 
-### Los defaults contrastados contra el catálogo (punto a del pedido)
+Los números van en `<strong className="text-black">`, igual que el de propiedades, y singular /
+plural resuelto (`consulta` / `consultas`).
 
-| | `DEFAULT` de la columna | `PLANS.free` (`src/types/index.ts`) | ¿Coincide? |
-|---|---|---|---|
-| `plan` | `'free'` | `id: "free"` | ✅ |
-| `status` | `'active'` | (el registro escribía `"active"`) | ✅ |
-| `property_limit` | `1` | `propertyLimit: 1` | ✅ |
-| `has_featured` | `false` | `featured: false` | ✅ |
-| `has_white_label` | `false` | `whiteLabel: false` | ✅ |
-| `has_metrics` | `false` | `metrics: false` | ✅ |
+**La frase arranca por "no se borran" a propósito.** El admin está mirando un diálogo rojo de
+eliminación: lo primero que necesita saber de sus consultas es que **no** las va a perder. Recién
+después viene dónde quedan y por qué le sirve.
 
-**Coinciden los seis.** Son los mismos valores que escribía el upsert del registro, que es lo
-que hace que el trigger pueda no escribirlos.
+El JSX:
 
-### Los dos números del límite (punto b del pedido) — leídos y confirmados
-
-| | Qué dice ante la ausencia de fila |
-|---|---|
-| `check_property_limit()` (base) | `IF max_allowed IS NULL THEN max_allowed := 0;` |
-| `getPlanUsage` (`lib/utils/`) | `const limit = subscription?.property_limit ?? NO_SUBSCRIPTION_LIMIT;` con `NO_SUBSCRIPTION_LIMIT = 0` |
-
-**Coinciden.**
-
-### Las dos guardas vestigiales (punto d del pedido) — citadas
-
-```
-src/components/dashboard/PlanBadge.tsx:14
-  const pct = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
-
-src/components/dashboard/SubscriptionContent.tsx:191
-  const usagePercent = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
+```tsx
+              {toDelete && toDelete.lead_count > 0 && (
+                <span className="block mt-2">
+                  Sus{" "}
+                  <strong className="text-black">
+                    {toDelete.lead_count}{" "}
+                    {toDelete.lead_count === 1 ? "consulta" : "consultas"}
+                  </strong>{" "}
+                  no se borran: quedan en el historial de la agencia con su
+                  nombre, para que sepas quién las atendió.
+                </span>
+              )}
 ```
 
-Y el comentario que revela que son vestigiales, `PlanBadge.tsx:12-13`:
-> *"En el modelo de 4 planes todos tienen un límite finito → todos muestran el contador +
-> micro-barra de proporción (used/limit). **Ya no hay 'Ilimitado'**."*
+**Cómo se cuenta**, siguiendo el patrón exacto que ya usaba para las propiedades (una lectura por
+agencia + un conteo en memoria, no N queries), en `equipo/page.tsx`:
+
+```ts
+      supabase
+        .from("leads")
+        .select("agent_id")
+        .eq("agency_id", agent.agency_id),
+```
+```ts
+  const leadsByAgent = new Map<string, number>();
+  for (const l of agencyLeads ?? []) {
+    if (l.agent_id) {
+      leadsByAgent.set(l.agent_id, (leadsByAgent.get(l.agent_id) ?? 0) + 1);
+    }
+  }
+```
+
+⚠ **La guarda `if (l.agent_id)` es load-bearing ahora, no una formalidad copiada.** En el conteo
+de propiedades era defensiva (esa columna es NOT NULL); acá **las filas con `agent_id` nulo
+existen de verdad** y no deben contarse para nadie: son consultas de agentes que ya se fueron y no
+pertenecen a ningún miembro vivo del equipo.
+
+**Sobre la RLS:** la lectura de `leads` desde esta página funciona porque `/dashboard/equipo` es
+solo-admin (`if (agent.role !== "admin") redirect("/dashboard")`, línea 13), así que el caller
+siempre pasa la policy `Admin reads agency leads`. Un agente común nunca llega a ejecutar esa
+query.
 
 ---
 
-## 5. La sección de método: **existía**, y le agregué la línea
+## 5. Que el registro de la consulta no falle en silencio, sin bloquear al visitante
 
-`## Método de Diagnóstico` (`CLAUDE.md`) ya existía, con un párrafo sobre inspeccionar el DOM
-real antes de teorizar sobre el build. **No creé nada nuevo: agregué un párrafo ahí**, como
-pedía la instrucción.
+El defecto era un `await` pelado, sin capturar el resultado: un rechazo de la policy, una caída de
+red o una agencia que dejó de ser visible entre el render y el click producían **exactamente la
+misma pantalla que el éxito**.
 
-Lo que dice, en resumen: **los comentarios que afirman que un caso ESTÁ CUBIERTO son los más
-peligrosos, porque desactivan la sospecha.** Con el ejemplo que lo cerró —*"ese caso ya lo
-bloquea el límite 0"* en un archivo cuyo límite era 1— y los otros tres del mismo grupo (dos
-cláusulas `ON DELETE` que la base no tenía, y un *"el único código que borra logos y avatares"*
-que había dejado de ser único). La regla: **un comentario que afirma una propiedad de la base o
-de otro archivo hay que medirlo antes de creerle**, sobre todo si es la razón por la que algo
-no se está revisando.
+**Busqué cómo se había resuelto la misma familia de defecto** en `ImageUploader.handleRemove`
+(`CLAUDE.md` lo menciona textualmente: *"era un `await` pelado sin `const { error } ="*). La forma
+allá es: capturar el error → guardarlo en estado → mostrarlo en un `<p className="font-sans
+text-xs text-error">` → **y seguir adelante con la operación principal igual** (la imagen se quita
+de la grilla aunque el archivo no se haya podido borrar). Seguí ese molde.
+
+**La distinción que gobierna el diseño acá: la operación principal es el CONTACTO, no el
+registro.** El lead es para la agencia, no para el visitante. Por eso el `window.open` va después
+del insert pero **incondicionalmente**, fuera de cualquier rama de error.
+
+```ts
+    const { error: leadInsertError } = await supabase.from("leads").insert({
+      property_id: property.id,
+      agent_id: property.agent_id,
+      agency_id: property.agency_id,
+      contact_name: userName.trim(),
+      source: "whatsapp",
+    });
+
+    window.open(url, "_blank", "noopener,noreferrer");
+
+    setSending(false);
+    setLeadError(!!leadInsertError);
+    // Con error, el flujo NO se cierra: el aviso se muestra donde el visitante
+    // está mirando. Sin error, vuelve al estado inicial como siempre.
+    if (!leadInsertError) {
+      setShowNameInput(false);
+      setUserName("");
+    }
+```
+
+Y el aviso, en el pie del modal, junto al botón:
+
+```tsx
+            {leadError && (
+              <p className="font-sans text-xs text-graphite" role="status">
+                Se abrió WhatsApp, pero no pudimos avisarle a la inmobiliaria de
+                tu consulta. Escribile igual por el chat: te va a responder.
+              </p>
+            )}
+```
+
+**Tres decisiones concretas, con su razón:**
+
+1. **El WhatsApp se abre antes de mirar el error.** No hay ninguna rama donde el visitante se
+   quede sin poder contactar. Es la restricción que pedía el prompt y es la correcta: nadie debería
+   perder un contacto porque una tabla interna no aceptó una fila.
+2. **El flujo NO se cierra cuando hay error** (`showNameInput` y `userName` se conservan). Si se
+   reseteara, el aviso quedaría flotando al lado de un botón "Consultar por WhatsApp" en estado
+   inicial, sin contexto de a qué se refiere. Dejándolo abierto, el mensaje aparece exactamente
+   donde el visitante acaba de hacer click. Un reintento limpia el estado (`setLeadError(false)` al
+   arrancar `handleSendWA`).
+3. **El aviso va en `graphite`, no en `error`** — y es la única desviación del molde de
+   `ImageUploader`. Allá el rojo es correcto porque quien lo lee es el agente y **algo suyo quedó
+   mal**. Acá quien lo lee es un visitante al que **no le falta nada**: ya tiene el chat abierto y
+   su consulta va a llegar igual, por WhatsApp. Pintarle un texto rojo de error le comunicaría un
+   problema que no es suyo y lo empujaría a no escribir. DESIGN §10 pide mensajes que digan qué
+   pasó y qué hacer, sin dramatizar; el mensaje cierra con la acción concreta ("escribile igual").
+   `role="status"` en vez de `role="alert"` por lo mismo: es información, no una alarma.
+
+**Cómo un problema sistemático deja de pasar inadvertido:** si la policy empieza a rechazar
+inserts —una agencia que dejó de estar al día, una propiedad que se pausó— **todos** los visitantes
+que intenten contactar van a ver esa línea. Antes no la veía nadie y la agencia tampoco: las
+consultas simplemente no aparecían, sin ninguna señal en ningún lado.
+
+**Lo que NO hice:** no agregué `console.error`. Medí que **no hay ni una sola llamada a `console`
+en todo `src/`** (`grep -rn "console\." src/` → cero resultados), así que introducirla sería
+estrenar una convención en un archivo que no es el lugar para discutirla. El molde del repo para
+este problema es el mensaje visible, y eso es lo que apliqué.
 
 ---
 
-## 6. Los tres comandos de calidad
+## 6. Qué encontré al verificar la policy de inserción y los conteos
+
+### La policy de inserción: **el prompt tiene razón y no la toqué**
+
+Las tres policies de `leads` siguen **exactamente iguales**, verificadas contra `pg_policies`
+después de la migración:
+
+| policy | cmd | expresión |
+|---|---|---|
+| `Public insert lead` | INSERT | `EXISTS (SELECT 1 FROM properties p WHERE p.id = leads.property_id AND p.status = 'active' AND p.agent_id = leads.agent_id AND p.agency_id = leads.agency_id AND agency_is_publicly_visible(p.agency_id))` |
+| `Agent reads own leads` | SELECT | `(agent_id = auth.uid())` |
+| `Admin reads agency leads` | SELECT | `(agency_id IN (SELECT agents.agency_id FROM agents WHERE agents.id = auth.uid() AND agents.role = 'admin'))` |
+
+**El comentario que había en el schema decía esto** (lo cito porque es lo que había que revisar):
+
+> *"Si algún día se implementa 'agente desvinculado', primero hay que resolver esa discrepancia y
+> después actualizar esta policy para aceptar `(p.agent_id IS NULL AND leads.agent_id IS NULL)` y
+> rutear el contacto al phone_wa de la agencia. Recién entonces, no antes."*
+
+**Confirmo que esa instrucción NO corresponde seguirla, por dos motivos, los dos medidos:**
+
+**(a) Apunta a otro caso.** Habla de una **propiedad** sin agente (`properties.agent_id IS NULL`).
+Eso sigue sin poder existir: `properties.agent_id` es NOT NULL con `ON DELETE CASCADE`, y
+`deleteAgentAction` reasigna las propiedades al admin antes de borrar. Lo que esta tanda produce
+es una **consulta** sin agente, y esas **no nacen así**: se desvinculan después, cuando el agente
+se borra, sin pasar por esta policy (que solo corre en INSERT).
+
+**(b) Aflojarla abriría la única barrera de escritura pública de la tabla.** Lo medí en el motor,
+no lo razoné:
+
+```sql
+SELECT (NULL::uuid = '7074968a-…'::uuid)                          AS null_eq_uid,
+       ((NULL::uuid = '7074968a-…'::uuid) IS TRUE)                AS policy_would_pass,
+       EXISTS (SELECT 1 FROM properties p WHERE p.agent_id = NULL::uuid)
+                                                                  AS exists_con_null;
+```
+```json
+[{"null_eq_uid": null, "policy_would_pass": false, "exists_con_null": false}]
+```
+
+O sea: **con `agent_id` nulo, el `EXISTS` da `false` y el INSERT se rechaza.** Ese es justamente
+el comportamiento que queremos — el camino es anónimo, y sin esa barrera cualquiera podría
+fabricar consultas sin agente contra cualquier propiedad, con el `agent_name` que se le antojara.
+**La nullabilidad de la columna no abre nada mientras la policy quede como está.**
+
+Reescribí esa nota en el schema para que diga lo que la base tiene ahora **conservando y
+reforzando la advertencia**, encabezada por `⚠⚠ ESTA POLICY NO SE TOCA, Y MENOS AHORA. NO
+AFLOJARLA PARA ACEPTAR NULOS.`, con los dos motivos y con la aclaración de que la instrucción
+vieja se evaluó y se descartó (para que nadie la vuelva a proponer creyendo que quedó pendiente).
+
+También le agregué una nota a `Agent reads own leads`, porque **su alcance efectivo cambió sin que
+su texto cambie**: una consulta desvinculada ya no la matchea (`NULL = auth.uid()` da `NULL`, no
+`TRUE`), así que pasa a verla solo el admin de la agencia. Es lo correcto —el agente al que
+pertenecía ya no existe— pero es exactamente el tipo de cosa que alguien "arreglaría" agregando un
+`OR agent_id IS NULL`, lo cual le mostraría a **cualquier** agente las consultas de todos los que
+se fueron. Queda advertido en el archivo.
+
+### Los conteos de eliminación de agencia: **no los afecta, y lo confirmo**
+
+Los dos, releídos después del cambio y **sin tocar**:
+
+`src/app/(agent)/admin/actions.ts` (la barrera real, dentro de `deleteAgencyAction`):
+```ts
+      admin
+        .from("leads")
+        .select("*", { count: "exact", head: true })
+        .eq("agency_id", input.agencyId),
+```
+
+`src/app/(agent)/admin/page.tsx` (solo decide si el botón aparece):
+```ts
+    admin.from("leads").select("agency_id"),
+```
+
+**Los dos filtran por `agency_id`, no por `agent_id`.** Y `leads.agency_id` sigue siendo **NOT
+NULL** con su FK `ON DELETE CASCADE` sobre `agencies` (medido en §2), así que **una consulta
+desvinculada de su agente sigue perteneciendo a su agencia y sigue contando**. La protección se
+mantiene intacta: una agencia con consultas huérfanas sigue sin poder eliminarse.
+
+Esto no es una casualidad afortunada, es el diseño previo pagando: la decisión de denormalizar
+`agency_id` en la consulta (`types/index.ts`: *"incluido para queries del dashboard por
+agencia"*) es lo que permite que la consulta sobreviva a su agente sin perder a quién pertenece.
+
+---
+
+## 7. Baseline de calidad
 
 ### `npx tsc --noEmit`
+
 ```
 (sin salida)
+EXIT_TSC=0
 ```
-**EXIT = 0**
+**0 errores.** ✅ Igual al baseline.
 
 ### `npm run lint`
+
 ```
 > marka@0.1.0 lint
 > eslint
@@ -265,20 +530,24 @@ This API returns functions which cannot be memoized without leading to stale UI.
   811 |   const address = watch("address") ?? "";  react-hooks/incompatible-library
 
 ✖ 1 problem (0 errors, 1 warning)
+
+EXIT_LINT=0
 ```
-**EXIT = 0**
+**0 errores, 1 warning** — el mismo `react-hooks/incompatible-library` en `PropertyForm.tsx:808`,
+en la misma línea y por la misma causa. ✅ Igual al baseline, ningún warning nuevo.
 
 ### `npx next build`
+
 ```
 ▲ Next.js 16.2.6 (Turbopack)
 - Environments: .env.local
 
   Creating an optimized production build ...
-✓ Compiled successfully in 7.9s
+✓ Compiled successfully in 7.8s
   Running TypeScript ...
-  Finished TypeScript in ~8s ...
+  Finished TypeScript in 8.2s ...
   Collecting page data using 3 workers ...
-✓ Generating static pages using 3 workers (19/19) in 1154ms
+✓ Generating static pages using 3 workers (19/19) in 1549ms
   Finalizing page optimization ...
 
 Route (app)
@@ -307,61 +576,87 @@ Route (app)
 
 ○  (Static)   prerendered as static content
 ƒ  (Dynamic)  server-rendered on demand
+
+EXIT_BUILD=0
 ```
-**EXIT = 0**
+**Verde, 19 rutas.** ✅ Igual al baseline, ninguna ruta nueva.
 
-*(Confirmado con una segunda corrida posterior a la última edición de `.md`: mismos resultados,
-mismas 19 rutas.)*
+### Comparación
 
-### Comparación contra el baseline
-
-| | Baseline | Ahora | ¿Coincide? |
+| Comando | Baseline | Ahora | |
 |---|---|---|---|
-| `tsc --noEmit` | 0 errores, exit 0 | 0 errores, exit 0 | ✅ |
-| `lint` errores | 0 | 0 | ✅ |
-| `lint` warnings | 1 · `react-hooks/incompatible-library` · `PropertyForm.tsx` | 1 · el mismo · `808:30` | ✅ |
-| `next build` | verde, exit 0 | verde, exit 0 | ✅ |
-| Rutas | 19 | 19, las mismas | ✅ |
+| `npx tsc --noEmit` | 0 errores, exit 0 | 0 errores, exit 0 | ✅ |
+| `npm run lint` | 0 errores, 1 warning, exit 0 | 0 errores, **el mismo** 1 warning, exit 0 | ✅ |
+| `npx next build` | verde, 19 rutas, exit 0 | verde, 19 rutas, exit 0 | ✅ |
+
+**Cambio esperado: ninguno. Cambio observado: ninguno.**
+
+> ⚠ **Una advertencia sobre esto que conviene leer:** el compilador **no verificó** el cambio más
+> importante de tipos. `Lead.agent_id` pasó de `string` a `string | null` y `Lead` **no lo importa
+> nadie** en todo el proyecto (el único consumidor de la forma de una consulta es `LeadRow`, que se
+> declara aparte y no deriva de `Lead`). O sea que el `tsc` en verde **no es evidencia** de que ese
+> tipo esté bien: lo hice a mano y a mano habría que revisarlo. El prompt ya lo anticipaba y lo
+> confirmo medido.
 
 ---
 
-## 7. Lo que el prompt afirma y no coincide con lo medido
+## 8. Qué resultó falso, o imposible
 
-**Los hechos centrales de las dos partes son correctos**, y los verifiqué uno por uno: el
-trigger existe y dispara AFTER INSERT sobre `agencies`; su cuerpo no escribe valores salvo la
-clave; los defaults son los del estado de aterrizaje y coinciden con `PLANS.free`;
-`getPlanUsage` reporta 0 y coincide con `check_property_limit()`; el mensaje de matrícula nombra
-la matrícula y explica la regla; las tres condiciones de la detección están en el código; y las
-dos guardas vestigiales existen donde el prompt dice.
+**Nada resultó imposible.** Las seis decisiones se implementaron tal como estaban descritas, sin
+improvisar alternativas.
 
-**Tres cosas donde lo medido dice algo distinto o más:**
+**Nada de lo que el prompt afirma resultó falso.** Verifiqué los cinco puntos del cambio de base
+(columna nullable, FK `SET NULL`, columna de texto nueva, trigger `BEFORE INSERT`, backfill
+completo) y los cinco dieron correctos. La advertencia sobre el comentario del schema que pide
+aflojar la policy también resultó exacta: apunta a otro caso y seguirlo abriría la única barrera
+de escritura pública de la tabla (§6).
 
-### (1) El encabezado del "grupo de blindaje de cinco tandas" NO existe en PENDIENTES.md
+Cuatro cosas que decidí yo y que conviene que alguien confirme, porque el prompt las dejaba
+abiertas o son consecuencias que no estaban enunciadas:
 
-El prompt dice *"Buscá el encabezado de ese grupo y dejalo cerrado"*. **Lo busqué y no está.**
-Lo que hay es `### Limpieza de Storage — grupo CERRADO (6 sep 2026)`, que cubre las tandas 3 y
-4, y los dos ítems de esta tanda estaban **sueltos en "Deuda técnica"**, sin agrupar. El grupo
-de cinco tandas es una lectura del prompt, no una estructura del archivo.
+1. **La lógica de los tres casos vive en un helper (`AgentCell`), no duplicada en los dos
+   layouts.** El prompt decía "no hay que crear estructura nueva: hay que cambiar qué se muestra
+   ahí", y estrictamente esto es un componente nuevo. Lo hice igual porque el condicional pasó de
+   dos ramas a tres, y duplicar tres ramas es exactamente cómo se produjo el bug de `AgenciesTable`
+   que `CLAUDE.md` documenta. El JSX de cada layout quedó más corto que antes, no más largo.
 
-**Qué hice:** cerré el grupo en `## Cerrados recientemente`, que es donde el archivo registra
-los cierres, con las cinco tandas enumeradas — y **dejé escrito en el propio ítem que el grupo
-no tenía encabezado propio**, para que nadie lo busque arriba y crea que se perdió.
+2. **El aviso del visitante va en `graphite` y no en `error`.** Es la única desviación consciente
+   del molde de `ImageUploader`, y la razón está en §5: allá quien lee es el agente y algo suyo
+   quedó mal; acá quien lee es un visitante al que no le falta nada.
 
-### (2) La base tiene 10 agencias, no las 9 de la medición anterior
+3. **Un efecto de alcance que ninguna decisión enunciaba y que ya está en producción:** una
+   consulta desvinculada **deja de ser visible para los agentes comunes**, porque `agent_id =
+   auth.uid()` no matchea un nulo. Pasa a verla solo el admin de la agencia. Encaja con "queda en
+   el historial de la agencia", pero es un cambio real de quién ve qué, así que lo dejé anotado en
+   el schema y en `deleteAgentAction` en vez de darlo por sobreentendido.
 
-Apareció un alta de prueba **posterior a la implementación** ("Inmoprueba 1", 7 sep 02:32).
-Lejos de ser un problema, es **la verificación end-to-end del trigger que faltaba** (§4): sus
-timestamps prueban que la fila la creó el trigger y no la aplicación. Lo usé como evidencia en
-el ítem cerrado de PENDIENTES.
+4. **El estado intermedio del borrado sigue existiendo: lo documenté con precisión, no lo
+   eliminé.** El prompt pedía corregir el comentario que lo llamaba "consistente" y el mensaje, y
+   eso hice. Pero **el estado a medias no desapareció**: si el `deleteUser` falla por cualquier
+   otra causa, las propiedades ya están a nombre del admin y el avatar ya se borró, sobre un agente
+   que sigue pudiendo iniciar sesión. Con el `SET NULL` la causa frecuente se fue, así que hoy es
+   mucho menos probable — pero **no es imposible**, y quien lea el código tiene que saberlo. El
+   comentario ahora enumera los tres hechos y aclara que reintentar es seguro (los dos pasos son
+   idempotentes) aunque pueda no arreglar nada. **Cerrarlo de verdad requeriría reordenar los pasos
+   o compensarlos, que es un cambio de comportamiento que estas seis decisiones no autorizan.**
 
-Consecuencia menor: **8 de 10 sin matrícula**, no 8 de 9. El ítem nuevo de limpieza de datos
-lleva los números medidos hoy.
+**El texto exacto del mensaje nuevo de ese fallo**, para que quede a la vista:
 
-### (3) *"varios comentarios y notas que afirmaban cosas que la base desmentía"* — en esta tanda fueron **dos**, y ninguno era del código
+> No se pudo eliminar la cuenta del agente, así que sigue activa y puede ingresar. Sus propiedades
+> ya pasaron a tu nombre y su foto de perfil ya se borró. Podés reintentar; si vuelve a fallar,
+> escribinos.
 
-El prompt advierte sobre el patrón y dice que ya pasó cuatro veces. **Es cierto como historia
-del grupo**, pero conviene la precisión: **las dos afirmaciones falsas que encontré en esta
-pasada estaban en `CLAUDE.md`, no en el código** (§3). La del código —el *"ya lo bloquea el
-límite 0"*— ya había sido corregida en la tanda de implementación. Lo digo porque la advertencia
-podría hacer buscar en el lugar equivocado: **el código quedó limpio; lo que faltaba alinear era
-la documentación.**
+Dice qué falló, qué quedó activo, qué quedó a nombre del admin, y no promete que reintentar
+alcance.
+
+---
+
+## Verificación pendiente, a mano
+
+El caso central **no se puede ejercitar con los datos actuales**, y conviene saberlo antes de dar
+esto por probado: las 8 consultas pertenecen a un único agente que además es el **admin** de su
+agencia, y `deleteAgentAction` prohíbe el auto-borrado. Para ver el flujo completo hay que
+fabricarlo: crear un agente común, generarle una consulta desde el mapa público (que ejercita de
+paso el trigger y el nuevo manejo de error del modal), y recién ahí borrarlo desde `/dashboard/equipo`.
+Eso verifica, en un solo movimiento, el aviso previo con el conteo, el `SET NULL`, la copia
+congelada del nombre y el badge "Ya no está" en la pantalla de Consultas.

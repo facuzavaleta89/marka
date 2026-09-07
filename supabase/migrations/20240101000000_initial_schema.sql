@@ -74,10 +74,23 @@
 --     único sin rollback— dejó de ser posible por cualquier camino. El cuerpo NO
 --     escribe valores: los toma de los DEFAULT de la tabla. Incluido abajo con
 --     el porqué.
---   * ⚠ DISCREPANCIA CONOCIDA Y NO RESUELTA en dos claves foráneas
---     (properties.agent_id y leads.agent_id): ver la nota en cada tabla. Este
---     archivo ahora dice lo que la base TIENE, que NO es lo que el modelo
---     pretendía. Resolverlo es la próxima tanda de trabajo (ver PENDIENTES.md).
+--   * leads.agent_id NULLABLE + ON DELETE SET NULL, columna leads.agent_name y
+--     set_lead_agent_name() + trg_set_lead_agent_name (BEFORE INSERT ON leads):
+--     YA MIGRADOS (7 sep 2026). Una consulta es un HECHO HISTÓRICO: si el agente
+--     que la atendió se va, la consulta no se borra ni se reasigna — se
+--     desvincula y conserva el nombre en una copia CONGELADA que escribe la
+--     base. Cierra el bug de que no se pudiera borrar un agente con consultas a
+--     su nombre. Incluidos abajo con el porqué de cada pieza.
+--   * ⚠ DISCREPANCIA CONOCIDA Y NO RESUELTA en UNA clave foránea
+--     (properties.agent_id: NOT NULL + ON DELETE CASCADE, cuando el modelo
+--     escrito pretendía nullable + SET NULL): ver la nota en esa tabla. Este
+--     archivo dice lo que la base TIENE. La otra mitad de esa deuda
+--     —leads.agent_id— quedó resuelta el 7 sep 2026, ver el punto anterior.
+--     Ojo: properties.agent_id NO es un olvido pendiente de arreglar sin pensar.
+--     Con CASCADE, la reasignación previa de deleteAgentAction es lo ÚNICO que
+--     impide perder las propiedades, y el reparto actual es deliberado: las
+--     propiedades se REASIGNAN (activo vivo, tiene que tener dueño), las
+--     consultas se DESVINCULAN (hecho histórico, no cambia de dueño).
 -- ============================================================
 
 -- Extensiones necesarias (PostGIS ya viene activado en Supabase)
@@ -498,25 +511,60 @@ CREATE TABLE property_images (
 );
 
 -- ─── TABLA: leads ────────────────────────────────────────────
--- Se registra cada vez que alguien hace click en "Consultar por WhatsApp"
+-- Se registra cada vez que alguien hace click en "Consultar por WhatsApp".
+--
+-- UNA CONSULTA ES UN HECHO HISTÓRICO. Si el agente que la atendió se va de la
+-- inmobiliaria, la consulta NO se borra ni se reasigna a otra persona: queda en
+-- el historial de la agencia, desvinculada del agente (agent_id a NULL) y
+-- conservando el nombre de quien la atendió en agent_name. Es el reparto opuesto
+-- al de las propiedades, que SÍ se reasignan al admin (son un activo vivo y
+-- tienen que seguir teniendo dueño). No mezclar los dos destinos.
 CREATE TABLE leads (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   property_id    UUID NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
-  -- ⚠ MISMA DISCREPANCIA que properties.agent_id, y peor: acá la FK real NO
-  -- TIENE cláusula ON DELETE, o sea NO ACTION. Medido el 1 sep 2026.
-  -- Consecuencia viva, hoy, en producción: NO SE PUEDE BORRAR UN AGENTE QUE
-  -- TENGA CONSULTAS A SU NOMBRE — el DELETE de auth.users cascadea a `agents` y
-  -- ahí choca contra esta FK. deleteAgentAction reasigna las propiedades, pero
-  -- NO los leads (el comentario de CLAUDE.md que decía que los leads viejos
-  -- quedaban en agent_id NULL describía el modelo escrito, no la base).
-  agent_id       UUID NOT NULL REFERENCES agents(id),
+  -- NULLABLE + ON DELETE SET NULL (medido contra la base el 7 sep 2026).
+  -- Es lo que hace que borrar un agente desvincule sus consultas en vez de
+  -- abortar. HISTÓRICO: hasta esta migración la columna era NOT NULL y la FK no
+  -- tenía cláusula ON DELETE (o sea NO ACTION), así que el DELETE de auth.users
+  -- cascadeaba a `agents` y ahí chocaba: NO SE PODÍA BORRAR UN AGENTE QUE
+  -- TUVIERA CONSULTAS A SU NOMBRE. Esa discrepancia entre el modelo escrito y la
+  -- base quedó cerrada.
+  --
+  -- ⚠ EFECTO DE ALCANCE, no obvio: una consulta desvinculada deja de matchear la
+  -- policy `Agent reads own leads` (agent_id = auth.uid(); NULL = uuid da NULL,
+  -- no TRUE), así que pasa a verla SOLO el admin de la agencia, por `Admin reads
+  -- agency leads`. Es lo correcto —el agente al que pertenecía ya no existe—
+  -- pero conviene saberlo antes de escribir una pantalla nueva de consultas.
+  agent_id       UUID REFERENCES agents(id) ON DELETE SET NULL,
   agency_id      UUID NOT NULL REFERENCES agencies(id) ON DELETE CASCADE,
   contact_name   TEXT NOT NULL,
   contact_phone  TEXT,
   contact_email  TEXT,
   message        TEXT,
   source         TEXT NOT NULL DEFAULT 'whatsapp',
-  created_at     TIMESTAMPTZ DEFAULT now()
+  created_at     TIMESTAMPTZ DEFAULT now(),
+  -- ⚠ COPIA CONGELADA DEL NOMBRE DEL AGENTE, NO COPIA DE LECTURA. Registra cómo
+  -- se llamaba el agente CUANDO ATENDIÓ ESTA CONSULTA, y no se vuelve a tocar
+  -- nunca más. Es lo único que permite que la pantalla de Consultas diga quién
+  -- la atendió después de que esa persona se fue de la inmobiliaria.
+  --
+  -- NO ES EL MISMO CASO QUE agents.email (denormalizado de auth.users): aquel es
+  -- una copia de LECTURA, que idealmente seguiría a su fuente si cambiara. Esta
+  -- es lo contrario. Agregarle una sincronización con agents.full_name —"para
+  -- que no quede vieja"— DESTRUIRÍA el dato histórico, que es su única razón de
+  -- existir. Quien lea por analogía con email va a asumir justo lo opuesto.
+  --
+  -- LA ESCRIBE LA BASE, NUNCA EL CLIENTE: la completa el trigger
+  -- trg_set_lead_agent_name (BEFORE INSERT, más abajo). El camino que crea
+  -- consultas es PÚBLICO Y ANÓNIMO, esta tabla no tiene ningún CHECK y la policy
+  -- `Public insert lead` no puede validar una columna de texto: si el nombre
+  -- viajara en el payload del navegador, un visitante podría escribir cualquier
+  -- cosa en la columna "Agente" del panel de una agencia.
+  --
+  -- Nullable porque las consultas anteriores a la migración podrían no tenerlo.
+  -- El backfill las llenó todas (8 de 8, medido), pero el caso "sin nombre"
+  -- sigue siendo representable y la pantalla lo contempla como último recurso.
+  agent_name     TEXT
 );
 
 -- ─── TABLA: agency_reviews ───────────────────────────────────
@@ -788,6 +836,72 @@ $$;
 CREATE TRIGGER trg_ensure_agency_subscription
   AFTER INSERT ON agencies
   FOR EACH ROW EXECUTE FUNCTION ensure_agency_subscription();
+
+-- ─── FUNCIÓN: el nombre del agente en la consulta ────────────
+-- Completa leads.agent_name con el nombre del agente que atiende la consulta.
+-- Es la copia CONGELADA que permite decir quién la atendió después de que esa
+-- persona se fue de la inmobiliaria (ver el comentario de la columna).
+--
+-- ⚠ POR QUÉ LO RESUELVE LA BASE Y NO EL CLIENTE. Es la razón de que esto sea un
+-- trigger y no dos líneas en el insert del PropertyModal, que era mucho más
+-- barato de escribir:
+--   · el único camino que crea consultas es PÚBLICO Y ANÓNIMO (el modal del
+--     mapa inserta con la anon key, sin sesión);
+--   · `leads` no tiene NI UN SOLO CHECK;
+--   · y `Public insert lead` valida los tres uuid contra la propiedad real, pero
+--     NO PUEDE validar una columna de texto: compararla contra agents.full_name
+--     sería verificar contra la fuente que esta columna existe para no consultar.
+-- O sea que si el nombre viajara en el payload del navegador no habría NINGUNA
+-- barrera: un visitante podría escribir cualquier cosa y la pantalla de
+-- Consultas de una agencia lo mostraría en la columna "Agente" — y ahí se lee
+-- como un dato del sistema, no como texto que escribió un desconocido.
+-- El cliente NO debe mandar agent_name. Si lo mandara, este trigger lo pisa.
+--
+-- Misma disciplina que los tres gates de publicación y que
+-- ensure_agency_subscription: la regla vive en la base porque el código se
+-- olvida y la base no.
+--
+-- SECURITY DEFINER + search_path fijo: el INSERT lo hace `anon`, y `Public read
+-- agents` hoy tiene USING (true), pero no hay que depender de eso — es una
+-- policy que conviene restringir algún día (expone email y teléfono de todos los
+-- agentes a la anon key, ver la nota de auth_agency_id más abajo). Sin SECURITY
+-- DEFINER, el día que se restrinja, este SELECT no vería la fila y toda consulta
+-- nueva quedaría sin nombre EN SILENCIO: sin error, sin síntoma, y sin forma de
+-- reconstruirlo después.
+--
+-- BEFORE INSERT y no AFTER: se modifica NEW antes de que la fila se escriba, así
+-- no hace falta un UPDATE posterior. Solo INSERT: la copia es congelada, así que
+-- no debe recalcularse en ningún UPDATE.
+--
+-- La guarda `IF NEW.agent_id IS NOT NULL` está por completitud: hoy una consulta
+-- no puede nacer sin agente (`Public insert lead` exige p.agent_id =
+-- leads.agent_id, y con NULL esa comparación da NULL, o sea que la policy
+-- rechaza el insert). El NULL en agent_id aparece DESPUÉS, cuando el agente se
+-- borra — y ahí el trigger ya no corre, que es exactamente lo que se quiere:
+-- agent_name conserva el valor que se escribió al nacer la consulta.
+CREATE OR REPLACE FUNCTION set_lead_agent_name()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  -- El nombre se resuelve ACÁ y no en el payload del cliente. El camino que crea
+  -- consultas es público y anónimo, leads no tiene ningún CHECK, y la policy de
+  -- inserción no puede validar una columna de texto: si el nombre viajara desde
+  -- el navegador, un visitante podría escribir cualquier cosa en la columna
+  -- "Agente" del panel de una agencia.
+  IF NEW.agent_id IS NOT NULL THEN
+    SELECT full_name INTO NEW.agent_name
+    FROM agents WHERE id = NEW.agent_id;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_set_lead_agent_name
+  BEFORE INSERT ON leads
+  FOR EACH ROW EXECUTE FUNCTION set_lead_agent_name();
 
 -- ─── FUNCIÓN: visibilidad pública de una agencia ─────────────
 -- LA REGLA DE COBRO, y el único lugar donde vive: una agencia se muestra al
@@ -1113,7 +1227,13 @@ CREATE POLICY "Agent manages own property images"
     )
   );
 
--- LEADS: el agente dueño puede ver sus leads
+-- LEADS: el agente dueño puede ver sus leads.
+-- ⚠ Desde que agent_id es nullable (7 sep 2026), esta policy NO alcanza las
+-- consultas desvinculadas: `NULL = auth.uid()` da NULL, no TRUE, así que la fila
+-- no pasa. Esas consultas quedan visibles solo por `Admin reads agency leads`,
+-- que filtra por agency_id. Es lo correcto —el agente al que pertenecían ya no
+-- existe— y no hay que "arreglarlo" agregándole un OR con IS NULL: eso le
+-- mostraría a CUALQUIER agente las consultas de todos los que se fueron.
 CREATE POLICY "Agent reads own leads"
   ON leads FOR SELECT USING (agent_id = auth.uid());
 
@@ -1136,14 +1256,35 @@ CREATE POLICY "Admin reads agency leads"
 -- Lead válido solo si property_id y agency_id corresponden a una propiedad
 -- activa real, y el agent_id del lead coincide con el de la propiedad. Previene
 -- spam e inconsistencias.
--- NOTA DE FIDELIDAD: esta es la policy REAL en producción hoy. NO contempla el
--- caso agent_id IS NULL (agente desvinculado), y hoy ese caso NO PUEDE EXISTIR:
--- properties.agent_id es NOT NULL en la base (ver la nota de esa columna, que es
--- justamente la discrepancia abierta con el modelo escrito). Si algún día se
--- implementa "agente desvinculado", primero hay que resolver esa discrepancia y
--- después actualizar esta policy para aceptar
--- (p.agent_id IS NULL AND leads.agent_id IS NULL) y rutear el contacto al
--- phone_wa de la agencia. Recién entonces, no antes.
+--
+-- ⚠⚠ ESTA POLICY NO SE TOCA, Y MENOS AHORA. NO AFLOJARLA PARA ACEPTAR NULOS.
+--
+-- Acá había una nota que decía que al implementar "agente desvinculado" había
+-- que actualizar esta policy para aceptar
+-- (p.agent_id IS NULL AND leads.agent_id IS NULL). El agente desvinculado YA
+-- está implementado (7 sep 2026: leads.agent_id pasó a nullable con ON DELETE
+-- SET NULL, y leads.agent_name guarda el nombre congelado), y esa instrucción
+-- resultó NO CORRESPONDER. Dos motivos, los dos medidos:
+--
+--   1) Apuntaba a OTRO caso: una PROPIEDAD sin agente (properties.agent_id IS
+--      NULL). Eso sigue sin poder existir — properties.agent_id es NOT NULL con
+--      ON DELETE CASCADE, y deleteAgentAction reasigna las propiedades al admin
+--      antes de borrar. Lo que ahora existe es una CONSULTA sin agente, y esas
+--      no nacen así: se desvinculan DESPUÉS, cuando el agente se borra, sin
+--      pasar por esta policy (que solo corre en INSERT).
+--
+--   2) Aflojarla ABRIRÍA LA ÚNICA BARRERA DE ESCRITURA PÚBLICA DE LA TABLA. Hoy
+--      un `agent_id` nulo entrante hace que `p.agent_id = leads.agent_id` dé
+--      NULL, el EXISTS dé false y el INSERT se rechace (medido en el motor). Esa
+--      es exactamente la protección que queremos: el camino es anónimo, y sin
+--      ella cualquiera podría fabricar consultas sin agente contra cualquier
+--      propiedad. La nullabilidad de la columna NO abre nada mientras esta
+--      policy quede como está.
+--
+-- La combinación con trg_set_lead_agent_name es lo que cierra el circuito: la
+-- policy garantiza que toda consulta NACE con un agente real de esa propiedad, y
+-- el trigger le copia el nombre desde `agents`. Ninguna de las dos cosas la
+-- decide el cliente.
 CREATE POLICY "Public insert lead"
   ON leads FOR INSERT
   WITH CHECK (

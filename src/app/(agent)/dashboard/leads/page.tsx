@@ -20,10 +20,20 @@ export default async function LeadsPage() {
   // Filtramos por agency_id y dejamos que la RLS recorte: un agente normal solo
   // ve sus propios leads (policy agent_id = auth.uid()), un admin ve los de toda
   // su agencia (policy Admin reads agency leads). Misma query, distinto resultado.
+  // ⚠ EL EMBED DEL AGENTE NO PUEDE LLEVAR `!inner`, NUNCA. `leads.agent_id` es
+  // nullable (ON DELETE SET NULL: la consulta sobrevive al agente que se fue), y
+  // un inner join descartaría justo esas filas — las consultas desvinculadas
+  // desaparecerían de esta pantalla EN SILENCIO, sin error y sin síntoma, que es
+  // exactamente lo que este modelo existe para impedir. Sin `!inner`, PostgREST
+  // resuelve el embed como LEFT JOIN: la fila viene igual, con `agent` en null,
+  // y la pantalla cae a `agent_name`.
+  //
+  // `agent_name` (la copia congelada del nombre) hay que nombrarla acá: el
+  // select es una lista explícita de columnas y lo que no se nombra no llega.
   const { data: leads } = await supabase
     .from("leads")
     .select(
-      "id, contact_name, created_at, source, agent:agents(id, full_name), property:properties(id, title, slug)"
+      "id, contact_name, created_at, source, agent_name, agent:agents(id, full_name), property:properties(id, title, slug)"
     )
     .eq("agency_id", agent.agency_id)
     .order("created_at", { ascending: false });
@@ -33,6 +43,7 @@ export default async function LeadsPage() {
     contact_name: l.contact_name,
     created_at: l.created_at,
     source: l.source,
+    agent_name: l.agent_name,
     agent: firstOrSelf(l.agent),
     property: firstOrSelf(l.property),
   }));

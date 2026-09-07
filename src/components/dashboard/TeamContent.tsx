@@ -33,6 +33,12 @@ export type TeamMember = Pick<
   // Cuántas propiedades tiene el agente. Se muestra en el aviso de borrado
   // (esas propiedades pasan al admin). La calcula la página.
   property_count: number;
+  // Cuántas consultas tiene el agente. También se muestra en el aviso de
+  // borrado, pero el efecto es OTRO: no se reasignan, se desvinculan y quedan en
+  // el historial de la agencia con el nombre de quien las atendió. Es igual de
+  // irreversible que la reasignación, así que el admin tiene que verlo antes de
+  // confirmar. La calcula la página.
+  lead_count: number;
 };
 
 interface TeamContentProps {
@@ -136,6 +142,12 @@ export function TeamContent({ members, currentUserId }: TeamContentProps) {
             <AlertDialogTitle>
               ¿Eliminar a {toDelete?.full_name}?
             </AlertDialogTitle>
+            {/* Dos efectos DISTINTOS sobre dos cosas distintas, y por eso van en
+                dos frases separadas: las propiedades se REASIGNAN al admin, las
+                consultas se DESVINCULAN y quedan en el historial. Los dos son
+                irreversibles, así que los dos se muestran antes de confirmar.
+                (Nota de marcado: AlertDialogDescription ya es un <p>, así que el
+                segundo párrafo va como <span className="block">.) */}
             <AlertDialogDescription>
               {toDelete && toDelete.property_count > 0 ? (
                 <>
@@ -152,6 +164,18 @@ export function TeamContent({ members, currentUserId }: TeamContentProps) {
                   La cuenta del agente se elimina y no podrá ingresar. No tiene
                   propiedades a su nombre.
                 </>
+              )}
+
+              {toDelete && toDelete.lead_count > 0 && (
+                <span className="block mt-2">
+                  Sus{" "}
+                  <strong className="text-black">
+                    {toDelete.lead_count}{" "}
+                    {toDelete.lead_count === 1 ? "consulta" : "consultas"}
+                  </strong>{" "}
+                  no se borran: quedan en el historial de la agencia con su
+                  nombre, para que sepas quién las atendió.
+                </span>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
