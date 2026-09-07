@@ -1,103 +1,189 @@
-# Informe — Suscripción garantizada por la base + error de matrícula explicado
+# Informe — Documentación de la quinta tanda del grupo de blindaje
 
-**Modo ejecución.** No se ejecutó ningún comando de git. No se ejecutó SQL de escritura: el
-cambio de base ya estaba aplicado y el MCP se usó **solo para verificarlo**.
+**Modo ejecución, solo documentación.** Se modificaron **dos archivos, los dos `.md`**:
+`CLAUDE.md` y `PENDIENTES.md`. No se tocó `src/`, ni `scripts/`, ni el archivo de migración.
+No se ejecutó ningún comando de git. No se ejecutó SQL de escritura.
 
-**Baseline: intacto.** tsc 0 · lint 0 errores + el warning único · build verde, 19 rutas (§7).
+**Todo se documentó leyendo el código y midiendo la base.** Lo que sigue está verificado con el
+MCP o citado del archivo, no tomado del prompt.
 
-**Las doce decisiones se implementaron tal como estaban descritas.** Ninguna resultó imposible.
-Hay **una afirmación del prompt que no se sostuvo al medir** y **un residuo que el alcance
-fijado deja abierto a propósito**: los dos están en §8, sin acomodar.
+**Baseline: intacto.** tsc 0 · lint 0 errores + el warning único · build verde, 19 rutas (§6).
+
+## Lo primero, porque cambia un número del prompt
+
+**La base tiene 10 agencias, no 9, y una de ellas es un alta de prueba del 7 sep que verifica
+el trigger de punta a punta.** Su fila de suscripción tiene `created_at` **idéntico al
+microsegundo** al de la agencia. Eso es evidencia dura de que la fila la creó el trigger dentro
+de la misma sentencia, no el upsert de la aplicación. Detalle en §4.
 
 ---
 
-## 1. Archivos modificados y creados
+## 1. CLAUDE.md — qué agregué, modifiqué y corregí
 
-**Creados: ninguno.** Los seis cambios son ediciones.
+### Agregado
 
-| Archivo | Por qué |
+| Dónde | Qué |
 |---|---|
-| `src/lib/utils/getPlanUsage.ts` | Sin fila, el límite pasa de `PLANS.free.propertyLimit` (1) a **0**, que es lo que hace el trigger. Se corrigió el comentario falso |
-| `src/app/(agent)/register/actions.ts` | El upsert **se mantiene**; cambió su comentario: ya no es lo que crea la fila, es la red de respaldo |
-| `src/app/(agent)/dashboard/suscripcion/actions.ts` | `count: "exact"` en el UPDATE: cero filas afectadas ya no se informa como éxito |
-| `src/app/(agent)/register/plan/actions.ts` | Solo comentario: por qué el camino "sin fila" ya no es alcanzable y por qué el mensaje se conserva |
-| `src/app/(agent)/register/plan/page.tsx` | Ídem, en la guarda gemela de la página |
-| `src/app/(agent)/admin/actions.ts` | `translateApprovalWriteError` + `extractLicenseFromDetail` + la constante del índice, y el comentario del efecto colateral |
-| `supabase/migrations/20240101000000_initial_schema.sql` | La función y el trigger nuevos, transcritos de la base, más su entrada en el changelog del encabezado |
+| `### Suscripciones y límites` → **`#### Toda agencia nace con su suscripción — el trigger, no el código`** (nuevo) | El trigger con su cuerpo textual, **por qué no escribe valores salvo la clave** (los `DEFAULT` ya son el estado de aterrizaje; repetirlos sería una segunda fuente de verdad que divergiría en silencio), la tabla de defaults contrastada contra `PLANS.free`, y **que el upsert del registro NO es lo que crea la fila** sino una red de respaldo que no se eliminó a propósito |
+| `### Suscripciones y límites` → **`#### Sin fila de suscripción el límite es 0`** (nuevo) | Los dos números lado a lado —`check_property_limit()` y `getPlanUsage`— y por qué tienen que coincidir. Incluye el bug que la divergencia producía y la aclaración de que **solo cambió el límite**: `status` y los tres `has_*` siguen cayendo a los de `PLANS.free` |
+| `### Aprobación de agencias` (cuatro bullets nuevos) | El mensaje literal del choque de matrícula; **las tres condiciones de la detección** y por qué el código solo no alcanza (tres índices únicos, medido); el gate a la aprobación; y **el efecto colateral de que rechazar/reabrir libera la matrícula** |
+| **`### ⚠ Un UPDATE acotado sobre una fila que no existe NO devuelve error`** (sección nueva, en Convenciones de Dominio) | La trampa, el caso que ya mordió, la solución con `count: "exact"` y **por qué es mejor que leer la fila antes**: leer y escribir son dos viajes distintos, el count mide lo que la escritura hizo |
+| **`### ⚠ La guarda contra el cero de las barras de uso es VESTIGIAL`** (sección nueva) | Los **dos** lugares citados con línea, que la guarda quedó del modelo con plan "Ilimitado", y que **hoy es lo único que evita la división por cero** |
+| `## Base de Datos — Referencia Rápida` | Párrafo **"Trigger de `agencies`"** y `ensure_agency_subscription()` en la lista de funciones |
+| `## Método de Diagnóstico` | Ver §5 |
+| `**Estado:**` (encabezado) | Una frase: grupo de blindaje cerrado, con sus dos resultados |
 
-**No tocados**, como pedía el alcance: `CLAUDE.md`, `PENDIENTES.md`, y ninguna acción nueva en
-el panel de administración.
+### Modificado / corregido por estar diciendo algo falso
+
+Ver §3. La corrección de fondo está en `### Suscripciones y límites`, donde el bullet de `free`
+afirmaba que `PLANS.free` era el fallback de `getPlanUsage` **sin distinguir el límite del
+resto** — y eso dejó de ser cierto para el límite.
+
+También actualicé la fecha del **baseline medido** (6 → 7 sep 2026).
+
+### Lo que NO toqué
+
+Las cuatro tandas anteriores (policies de Storage, límites del bucket, borrado de archivos,
+herramienta de auditoría). **Las revisé buscando contradicciones y no encontré ninguna**: el
+grupo de esta tanda toca suscripciones y aprobación, que no se cruzan con Storage. Sus cifras
+siguen vigentes — el bucket sigue en **9 objetos** (medido).
 
 ---
 
-## 2. La función y el trigger, leídos de la base
+## 2. PENDIENTES.md — qué cerré, abrí y ajusté
 
-### El trigger
+### Cerrados (2 ítems + el grupo entero)
 
-```sql
-select t.tgname, c.relname, pg_get_triggerdef(t.oid)
-from pg_trigger t join pg_class c on c.oid=t.tgrelid …
+**`El registro no deshace el upsert de subscriptions`** → cerrado **"RESUELTO POR LA BASE, y no
+como decía este ítem"**. El diagnóstico era correcto pero **las dos salidas que proponía se
+descartaron las dos**, y quedó registrado por qué:
+- **NO reintentar en el código** — solo cubre fallos transitorios; no cierra el agujero ni
+  cubre el SQL a mano.
+- **NO una acción de reparación en `/admin`** — reactiva, y con el trigger el estado deja de
+  ser producible: sería una décima acción de fila permanente para algo que no puede ocurrir.
+- **La barrera en la base es la única que cubre todos los caminos y no depende de que ningún
+  código se acuerde.**
+
+Incluye además los dos síntomas que el ítem original no mencionaba (el límite 1 vs 0 y el
+éxito falso del pedido de upgrade) y la verificación por timestamps.
+
+**`Matrículas duplicadas entre agencias pendientes`** → cerrado, con las tres condiciones de la
+detección, la extracción de la matrícula del `details` **y la aclaración de que si esa
+extracción falla el mensaje funciona igual**, el gate a la aprobación, y el efecto colateral.
+
+**El grupo entero** → cerrado en `## Cerrados recientemente`, con las cinco tandas resumidas
+una por una, lo que quedó abierto a propósito, y una nota de método.
+
+> ⚠ **No existía un encabezado propio para el grupo de cinco tandas.** Lo que hay es
+> `### Limpieza de Storage — grupo CERRADO (6 sep 2026)`, que cubre las tandas 3 y 4, y los dos
+> ítems de esta tanda vivían sueltos en "Deuda técnica". Cerré el grupo donde el archivo
+> registra los cierres, y lo digo explícitamente en el ítem para que nadie lo busque arriba.
+
+### Abiertos (3, todos verificados antes de escribirlos)
+
+1. **El residuo consciente del mensaje con límite 0** — el bloqueo funciona, el texto dice
+   "alcanzaste el límite de tu plan" cuando falta una fila. Verificado leyendo
+   `NewPropertyButton` → `PlanLimitMessage`. Anotado con la razón de no arreglarlo: exige un
+   cuarto motivo en `PublishBlockReason` y tocar el `switch` exhaustivo que ya se rompió una vez.
+2. **No verificado en pantalla** — el bloqueo con límite 0 se comprobó por lectura de código y
+   revisando los consumidores, **no en el navegador**, porque fabricar el caso exige dejar una
+   transacción abierta mientras se navega. Anotado como *no verificado, riesgo bajo*, con el
+   porqué del riesgo bajo.
+3. **Limpieza de datos previa al lanzamiento** — 8 de 10 agencias sin matrícula, **1 sola fila
+   dentro del predicado del índice**. Anotado explícitamente **como limpieza de datos, no como
+   deuda técnica**, junto a los 2 usuarios de Auth huérfanos.
+
+### Ajustados
+
+**Ninguno, y lo verifiqué en vez de asumirlo.** Repasé el archivo buscando cifras que esta
+tanda dejara viejas:
+
+| Afirmación existente | Medido hoy | ¿Sigue vigente? |
+|---|---|---|
+| *"Quedan **2** usuarios de Auth huérfanos"* | `auth_users` 12, `agents` 10 → **2** | ✅ sin cambios |
+| *"Con **9 archivos** … el momento más barato para mover `ImageUploader`"* | 9 objetos en el bucket | ✅ sin cambios |
+| Cifras del grupo de Storage (24 → 9 objetos, 707 kB, cero huérfanos) | idem | ✅ sin cambios |
+
+No inventé trabajo donde no lo había.
+
+---
+
+## 3. Afirmaciones falsas encontradas
+
+**Dos**, las dos en `CLAUDE.md`. Menos que en las tandas anteriores, y por un motivo que vale
+la pena decir: **la afirmación falsa más cara de este grupo estaba en un comentario del código,
+no en un `.md`**, y ya se corrigió en la tanda de implementación.
+
+### (1) El fallback de `PLANS.free` en `getPlanUsage` — falso desde esta tanda
+
+> *"Los valores de `PLANS.free` (`propertyLimit: 1` + los tres flags en `false`) … son … los
+> que `getPlanUsage` usa de fallback si falta la fila."*
+
+**Falso para el límite.** Medido en `src/lib/utils/getPlanUsage.ts`: el límite cae a
+`NO_SUBSCRIPTION_LIMIT = 0`. Sigue siendo cierto para los tres `has_*` y para el `status`.
+Corregido distinguiendo los dos casos, con un ⚠ que remite a la subsección nueva.
+
+### (2) `### Suscripciones y límites` no decía de dónde sale la fila
+
+No era una afirmación falsa sino una **omisión que se volvió engañosa**: la sección describía
+`subscriptions` sin mencionar que ahora su existencia está garantizada por la base, y el único
+lugar que hablaba de crearla era el bullet del registro con service role. Quien leyera solo eso
+concluiría que la fila la crea la aplicación. Resuelto con el bloque destacado al inicio de la
+sección y la subsección del trigger.
+
+### La que ya estaba corregida en el código, y que motiva la nota de método
+
+`getPlanUsage` decía *"ese caso ya lo bloquea el límite 0"* mientras el límite que ese mismo
+archivo calculaba era **1**. Se corrigió en la tanda de implementación; acá quedó **elevada a
+regla de método** (§5), porque el patrón es el que más se repitió en todo el grupo.
+
+---
+
+## 4. Los números medidos
+
+Todo con el MCP el 7 sep 2026.
+
+| Métrica | Valor |
+|---|---|
+| Agencias | **10** |
+| Filas en `subscriptions` | **10** |
+| **Agencias sin fila de suscripción** | **0** |
+| Agencias con `license_number` | **2** |
+| Agencias con `license_number` en `NULL` | **8** |
+| Agencias aprobadas | 9 |
+| **Filas dentro del predicado del índice** (`approved` + matrícula no nula) | **1** |
+| **Índices únicos sobre `agencies`** | **3** |
+
+Los tres índices, leídos de `pg_index`:
 ```
+agencies_pkey                        | UNIQUE (id)
+agencies_slug_key                    | UNIQUE (slug)
+idx_agencies_license_unique_approved | UNIQUE (city_id, license_number)
+                                       WHERE approval_status='approved' AND license_number IS NOT NULL
 ```
-trg_ensure_agency_subscription | agencies |
-  CREATE TRIGGER trg_ensure_agency_subscription
-    AFTER INSERT ON public.agencies
-    FOR EACH ROW EXECUTE FUNCTION ensure_agency_subscription()
-```
+**Los tres levantan `23505`.** Es exactamente por eso que la detección exige además el nombre
+del índice.
 
-### La función
+### El trigger, verificado de punta a punta con datos reales
 
-```sql
-select pg_get_functiondef(p.oid), p.prosecdef … where p.proname='ensure_agency_subscription';
-```
-```sql
-CREATE OR REPLACE FUNCTION public.ensure_agency_subscription()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-BEGIN
-  -- Toda agencia nace con su fila de suscripción en el estado de aterrizaje.
-  -- Los valores NO se escriben acá: salen de los DEFAULT de subscriptions
-  -- (plan='free', status='active', property_limit=1, los tres has_* en false),
-  -- así que hay una sola fuente de verdad en la base.
-  INSERT INTO subscriptions (agency_id)
-  VALUES (NEW.id)
-  ON CONFLICT (agency_id) DO NOTHING;
-  RETURN NEW;
-END;
-$function$
-```
-`prosecdef = true` (SECURITY DEFINER), `provolatile = 'v'` (VOLATILE), resultado `trigger`.
+Apareció un alta de prueba posterior a la implementación, y es la mejor evidencia posible:
 
-**Esto es lo que transcribí al schema documentado, textual.** No copié nada del prompt.
-
-### Confirmación de los defaults: SÍ son el estado de aterrizaje
-
-```sql
-select column_name, data_type, is_nullable, column_default
-from information_schema.columns where table_name='subscriptions' order by ordinal_position;
 ```
-```
-id                 | uuid        | NO  | gen_random_uuid()
-agency_id          | uuid        | NO  | (sin default)   ← lo único que escribe el trigger
-plan               | text        | NO  | 'free'::text
-status             | text        | NO  | 'active'::text
-property_limit     | integer     | NO  | 1
-current_period_end | timestamptz | YES | (null)
-created_at         | timestamptz | YES | now()
-updated_at         | timestamptz | YES | now()
-has_white_label    | boolean     | NO  | false
-has_featured       | boolean     | NO  | false
-has_metrics        | boolean     | NO  | false
-activated_at       | timestamptz | YES | (null)
-pending_plan       | text        | YES | (null)
+name          | approval_status | license | agency.created_at            | subscription.created_at
+--------------+-----------------+---------+------------------------------+------------------------------
+Inmoprueba 1  | pending         | 1235    | 2026-09-07 02:32:41.767784+00 | 2026-09-07 02:32:41.767784+00
+Inmob. Gaio   | approved        | 1234    | 2026-08-28 21:42:14.714789+00 | 2026-08-28 21:42:15.133732+00
 ```
 
-Contrastado contra `PLANS.free` (`src/types/index.ts:538-542`):
+**En el alta nueva los dos timestamps son idénticos al microsegundo** → la fila la creó el
+trigger **dentro de la misma sentencia**. En la agencia vieja hay **~419 ms** de diferencia →
+esa la creó el upsert de la aplicación, en un viaje aparte. La fila resultante:
+`plan='free'`, `status='active'`, `property_limit=1`, los tres `has_*` en `false` — el estado
+de aterrizaje exacto.
 
-| | DEFAULT de la columna | `PLANS.free` | ¿Coincide? |
+### Los defaults contrastados contra el catálogo (punto a del pedido)
+
+| | `DEFAULT` de la columna | `PLANS.free` (`src/types/index.ts`) | ¿Coincide? |
 |---|---|---|---|
 | `plan` | `'free'` | `id: "free"` | ✅ |
 | `status` | `'active'` | (el registro escribía `"active"`) | ✅ |
@@ -106,257 +192,51 @@ Contrastado contra `PLANS.free` (`src/types/index.ts:538-542`):
 | `has_white_label` | `false` | `whiteLabel: false` | ✅ |
 | `has_metrics` | `false` | `metrics: false` | ✅ |
 
-**Los siete valores que escribía el upsert de `registerAction` son exactamente los defaults.**
-Por eso `INSERT INTO subscriptions (agency_id)` produce la misma fila, y repetirlos en el
-cuerpo del trigger sería una segunda fuente de verdad — que es lo que quedó explicado en el
-comentario del schema.
+**Coinciden los seis.** Son los mismos valores que escribía el upsert del registro, que es lo
+que hace que el trigger pueda no escribirlos.
 
-### Estado actual verificado
+### Los dos números del límite (punto b del pedido) — leídos y confirmados
 
-```
-agencias: 9 · suscripciones: 9 · sin_suscripcion: 0 · indices_unicos_en_agencies: 3
-```
-
----
-
-## 3. Cómo quedó el helper, y qué encontré en sus consumidores
-
-### El cambio
-
-`src/lib/utils/getPlanUsage.ts`:
-
-```ts
-// Cupo de una agencia SIN fila de suscripción. Réplica exacta del
-// `IF max_allowed IS NULL THEN max_allowed := 0` de check_property_limit():
-// no es "el plan más chico", es "no hay plan".
-const NO_SUBSCRIPTION_LIMIT = 0;
-```
-```ts
-  const limit = subscription?.property_limit ?? NO_SUBSCRIPTION_LIMIT;
-```
-
-**Solo cambió el límite**, como pedía la decisión 3. Los tres booleanos y el estado quedaron
-donde estaban:
-
-```ts
-    status: subscription?.status ?? "active",
-    …
-    hasFeatured: subscription?.has_featured ?? PLANS.free.featured,
-    hasWhiteLabel: subscription?.has_white_label ?? PLANS.free.whiteLabel,
-    hasMetrics: subscription?.has_metrics ?? PLANS.free.metrics,
-```
-
-### El comentario falso, corregido
-
-Decía *"Sin fila de suscripción se reporta 'active' a propósito: **ese caso ya lo bloquea el
-límite 0**"* — falso, porque el límite que ese archivo calculaba era 1. Ahora:
-
-```ts
-    // Sin fila de suscripción se reporta 'active' a propósito: el bloqueo lo da
-    // el límite 0 de arriba, y declararla inactiva cambiaría el motivo que se le
-    // muestra al agente ('subscription_inactive' en vez de 'plan_limit') sin que
-    // su situación lo justifique — no la dieron de baja, le falta una fila.
-    //
-    // ⚠ Este comentario decía "ese caso ya lo bloquea el límite 0" cuando el
-    // límite que este archivo calculaba era 1. Era falso, y era justamente el
-    // comentario que hacía parecer cubierto el caso que nadie cubría.
-```
-
-### Los consumidores, revisados uno por uno
-
-Buscados con `grep -rn "\.limit\b|planUsage\.limit|limit}" src/`. Son **cuatro**, más los
-derivados.
-
-| # | Consumidor | Qué hace con el límite | Con 0 |
-|---|---|---|---|
-| 1 | `PlanBadge.tsx:14` | **divide**: `(used / limit) * 100` | **Ya estaba guardado**: `limit > 0 ? … : 0` |
-| 2 | `SubscriptionContent.tsx:191` | **divide**: `usagePercent` | **Ya estaba guardado**: idéntica expresión |
-| 3 | `PlanBadge.tsx:22` | texto `{used}/{limit}` | `0/0`. Correcto |
-| 4 | `dashboard/page.tsx:100-102` | texto `{used} de {limit} usadas` | `0 de 0 usadas`. Correcto |
-| 5 | `SubscriptionContent.tsx:295` | texto `{used} de {limit} propiedades usadas` | `0 de 0`. Correcto |
-| 6 | `dashboard/page.tsx:147` | `planUsage.available` | `Math.max(0, 0-0)` = **0**. Correcto |
-| 7 | `getPublishBlock` → `canCreate` | `used < limit` | `0 < 0` = **false** → bloquea. **Es el arreglo** |
-
-**Las dos divisiones que existen ya estaban protegidas contra el cero**, las dos con la misma
-expresión `limit > 0 ? … : 0`. **No hubo que tocar ningún consumidor.**
-
-Lo interesante es *por qué* ya estaban protegidas: el comentario de `PlanBadge.tsx:12-13` dice
-*"En el modelo de 4 planes todos tienen un límite finito → todos muestran el contador"*, o sea
-que la guarda quedó de la época en que existía un plan "Ilimitado" con límite 0 o nulo. **Una
-guarda escrita para otro motivo terminó cubriendo este.** No es mérito del diseño actual, y
-conviene saberlo: si alguien la "limpia" por parecer muerta, reintroduce la división por cero.
-
-`over` y `available` salen de `Math.max(0, …)` en el propio helper, así que ningún consumidor
-resta suelto — eso ya estaba resuelto y no cambió.
-
----
-
-## 4. Cómo detecto el choque de matrícula
-
-`src/app/(agent)/admin/actions.ts`. Sigue el molde de `translatePropertyWriteError`
-(`propiedades/actions.ts`), incluido su tipo estructural mínimo y su regla de que los motivos
-específicos van antes del cajón de sastre.
-
-```ts
-// Nombre del índice único parcial de matrícula, tal como lo devuelve Postgres
-// dentro del mensaje del error. Es el ÚNICO de los tres índices únicos de
-// `agencies` que puede chocar al aprobar.
-const LICENSE_UNIQUE_INDEX = "idx_agencies_license_unique_approved";
-
-// Tipo estructural mínimo, mismo criterio que translatePropertyWriteError
-// (propiedades/actions.ts): se pide lo que se lee y nada más, en vez de atar
-// esta función al tipo del SDK.
-type DbLikeError = { code?: string; message: string; details?: string | null };
-
-// Saca la matrícula del DETAIL del error. Postgres lo arma así:
-//   Key (city_id, license_number)=(fbcd374e-…, 1234) already exists.
-// —o sea: el nombre del índice viaja en `message` y los VALORES en `details`—.
-// Se toma el segundo valor del paréntesis, que es la matrícula.
-//
-// ⚠ DEVUELVE null ANTE CUALQUIER FORMA INESPERADA, Y ESO ES DELIBERADO: el
-// formato del DETAIL no es un contrato, es texto de Postgres que puede cambiar
-// entre versiones. El mensaje de abajo funciona igual sin la matrícula, así que
-// un fallo al parsear NUNCA puede tirar abajo el manejo del error — sería
-// cambiar un mensaje pobre por una excepción.
-function extractLicenseFromDetail(detail: string | null | undefined): string | null {
-  if (!detail) return null;
-  const match = detail.match(/\)=\(([^)]*)\)/);
-  if (!match) return null;
-  const parts = match[1].split(",").map((part) => part.trim());
-  if (parts.length < 2) return null;
-  const license = parts[1];
-  return license === "" ? null : license;
-}
-```
-
-Y la traducción:
-
-```ts
-function translateApprovalWriteError(
-  dbError: DbLikeError,
-  status: ApprovalStatus
-): string {
-  const isLicenseConflict =
-    status === "approved" &&
-    dbError.code === "23505" &&
-    dbError.message.includes(LICENSE_UNIQUE_INDEX);
-
-  if (isLicenseConflict) {
-    const license = extractLicenseFromDetail(dbError.details);
-    const which = license ? `la matrícula ${license}` : "esa matrícula";
-
-    // NO dice "intentá de nuevo": el conflicto es de datos, no transitorio, y
-    // reintentar da siempre el mismo resultado. Y explica LA REGLA (aprobada +
-    // misma ciudad), que es lo que le permite al dueño encontrar la otra agencia.
-    return `No se pudo aprobar: ya hay otra inmobiliaria aprobada en la misma ciudad con ${which}. Revisá cuál de las dos corresponde antes de aprobar esta.`;
-  }
-
-  return "No se pudo actualizar la agencia. Intentá de nuevo.";
-}
-```
-
-Y su llamador, en `writeApproval`:
-
-```ts
-  if (updateError) {
-    return {
-      error: translateApprovalWriteError(updateError, status),
-    };
-  }
-```
-
-### Las tres condiciones, y por qué son tres
-
-1. **`status === "approved"`** — el gate de alcance (§6).
-2. **`code === "23505"`** — el código, que es lo estable entre versiones.
-3. **`message.includes(LICENSE_UNIQUE_INDEX)`** — porque **el código solo no alcanza**.
-   Verificado contra la base: sobre `agencies` hay **tres** índices únicos
-   (`indices_unicos_en_agencies: 3`) — `agencies_pkey`, `agencies_slug_key` y el de matrícula —
-   y los tres levantan 23505. Sin el nombre, un choque de slug se reportaría como choque de
-   matrícula.
-
-### Qué pasa si la extracción falla
-
-**Nada se rompe: el mensaje sale sin la matrícula.** Los cuatro caminos de fallo devuelven
-`null`, y el llamador ya lo contempla con `const which = license ? … : "esa matrícula"`:
-
-| Caso | Resultado |
+| | Qué dice ante la ausencia de fila |
 |---|---|
-| `details` es `null` o `undefined` | `null` → *"…con **esa matrícula**."* |
-| No hay `)=(…)` en el texto | `null` → ídem |
-| El paréntesis trae menos de dos valores | `null` → ídem |
-| La matrícula viene vacía | `null` → ídem |
+| `check_property_limit()` (base) | `IF max_allowed IS NULL THEN max_allowed := 0;` |
+| `getPlanUsage` (`lib/utils/`) | `const limit = subscription?.property_limit ?? NO_SUBSCRIPTION_LIMIT;` con `NO_SUBSCRIPTION_LIMIT = 0` |
 
-**No hay ninguna ruta en la que un `details` con forma inesperada produzca una excepción**: no
-se indexa sin verificar, no se hace `JSON.parse`, no se asume longitud. Es exactamente lo que
-pedía la decisión 8 — la extracción es una mejora, no una dependencia.
+**Coinciden.**
 
----
-
-## 5. El mensaje exacto que ve el dueño
-
-**Con la matrícula extraída** (el caso normal, con el DETAIL real capturado a mano:
-`Key (city_id, license_number)=(fbcd374e-…, 1234) already exists.`):
-
-> **No se pudo aprobar: ya hay otra inmobiliaria aprobada en la misma ciudad con la matrícula 1234. Revisá cuál de las dos corresponde antes de aprobar esta.**
-
-**Si la extracción falla:**
-
-> **No se pudo aprobar: ya hay otra inmobiliaria aprobada en la misma ciudad con esa matrícula. Revisá cuál de las dos corresponde antes de aprobar esta.**
-
-**Cualquier otro error del UPDATE** (incluido un 23505 de slug, y todo rechazo o reapertura):
-
-> No se pudo actualizar la agencia. Intentá de nuevo.
-
-### Contra lo que pedían las decisiones 8 y 9
-
-| Requisito | Cómo se cumple |
-|---|---|
-| Incluye la matrícula que chocó | `la matrícula 1234`, sacada del `details` |
-| Explica **la regla**, no solo el hecho | *"otra inmobiliaria **aprobada** en **la misma ciudad**"* — que son literalmente las dos condiciones del índice: `WHERE approval_status = 'approved'` y la columna `city_id` de la clave |
-| Le permite encontrar la otra agencia | Con la matrícula y el criterio "aprobada + misma ciudad", el filtro del panel alcanza |
-| **NO** dice "intentá de nuevo" | Dice *"Revisá cuál de las dos corresponde antes de aprobar esta"* — una acción que sí resuelve |
-
-**Dónde se ve:** `AgenciesTable` ya renderiza el `{ error }` de la action en su banner. No hubo
-que tocar la interfaz.
-
----
-
-## 6. Cómo me aseguré de que no se muestre a un rechazo ni a una reapertura
-
-**Con un gate explícito, no confiando en que el error no pueda ocurrir.**
-
-`translateApprovalWriteError` recibe el `status` que se está por escribir, y la **primera**
-condición del `isLicenseConflict` es `status === "approved"`. `writeApproval` es compartida por
-las tres actions, y cada una le pasa su estado:
-
-- `approveAgencyAction:320-326` → `writeApproval(id, **"approved"**, "approved", …)` → **puede** mostrar el mensaje nuevo
-- `rejectAgencyAction:346-352` → `writeApproval(id, **"rejected"**, "rejected", …)` → nunca
-- `reopenAgencyAction:368` → `writeApproval(id, **"pending"**, null, …)` → nunca
-
-**Por qué el gate y no solo el código de error.** Es cierto que rechazar y reabrir **sacan la
-fila del predicado** del índice (`WHERE approval_status = 'approved'`), así que en teoría no
-pueden chocar y el `code === "23505"` nunca sería verdadero para ellas. Pero eso depende de una
-propiedad del índice que podría cambiar. El gate por `status` hace que la imposibilidad sea
-**estructural en el código**: aunque un día ese error apareciera por otra causa en un rechazo,
-el mensaje no puede salir. Mostrarle *"esa matrícula ya está en uso"* a alguien que está
-rechazando una agencia sería inventar un conflicto que no existe.
-
-### El efecto colateral, documentado en el código (decisión 12)
-
-En el comentario de `translateApprovalWriteError`, **no** en `CLAUDE.md` ni en `PENDIENTES.md`:
+### Las dos guardas vestigiales (punto d del pedido) — citadas
 
 ```
-// ⚠ EFECTO COLATERAL QUE CONVIENE TENER PRESENTE: rechazar o reabrir una agencia
-// APROBADA libera su matrícula, porque saca la fila del predicado parcial. Si en
-// el medio se aprueba otra con la misma matrícula, volver a aprobar la original
-// va a fallar por acá — y el mensaje va a ser correcto, pero el conflicto va a
-// parecer nuevo. Es inherente al índice parcial, no un defecto de esta función.
+src/components/dashboard/PlanBadge.tsx:14
+  const pct = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
+
+src/components/dashboard/SubscriptionContent.tsx:191
+  const usagePercent = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
 ```
+
+Y el comentario que revela que son vestigiales, `PlanBadge.tsx:12-13`:
+> *"En el modelo de 4 planes todos tienen un límite finito → todos muestran el contador +
+> micro-barra de proporción (used/limit). **Ya no hay 'Ilimitado'**."*
 
 ---
 
-## 7. Los tres comandos de calidad
+## 5. La sección de método: **existía**, y le agregué la línea
+
+`## Método de Diagnóstico` (`CLAUDE.md`) ya existía, con un párrafo sobre inspeccionar el DOM
+real antes de teorizar sobre el build. **No creé nada nuevo: agregué un párrafo ahí**, como
+pedía la instrucción.
+
+Lo que dice, en resumen: **los comentarios que afirman que un caso ESTÁ CUBIERTO son los más
+peligrosos, porque desactivan la sospecha.** Con el ejemplo que lo cerró —*"ese caso ya lo
+bloquea el límite 0"* en un archivo cuyo límite era 1— y los otros tres del mismo grupo (dos
+cláusulas `ON DELETE` que la base no tenía, y un *"el único código que borra logos y avatares"*
+que había dejado de ser único). La regla: **un comentario que afirma una propiedad de la base o
+de otro archivo hay que medirlo antes de creerle**, sobre todo si es la razón por la que algo
+no se está revisando.
+
+---
+
+## 6. Los tres comandos de calidad
 
 ### `npx tsc --noEmit`
 ```
@@ -394,15 +274,11 @@ This API returns functions which cannot be memoized without leading to stale UI.
 - Environments: .env.local
 
   Creating an optimized production build ...
-✓ Compiled successfully in 8.4s
+✓ Compiled successfully in 7.9s
   Running TypeScript ...
-  Finished TypeScript in 8.6s ...
+  Finished TypeScript in ~8s ...
   Collecting page data using 3 workers ...
-  Generating static pages using 3 workers (0/19) ...
-  Generating static pages using 3 workers (4/19) 
-  Generating static pages using 3 workers (9/19) 
-  Generating static pages using 3 workers (14/19) 
-✓ Generating static pages using 3 workers (19/19) in 1413ms
+✓ Generating static pages using 3 workers (19/19) in 1154ms
   Finalizing page optimization ...
 
 Route (app)
@@ -434,7 +310,10 @@ Route (app)
 ```
 **EXIT = 0**
 
-### Comparación
+*(Confirmado con una segunda corrida posterior a la última edición de `.md`: mismos resultados,
+mismas 19 rutas.)*
+
+### Comparación contra el baseline
 
 | | Baseline | Ahora | ¿Coincide? |
 |---|---|---|---|
@@ -446,56 +325,43 @@ Route (app)
 
 ---
 
-## 8. Lo que no cerró como lo describe el prompt
+## 7. Lo que el prompt afirma y no coincide con lo medido
 
-### (1) Una afirmación del prompt no se sostuvo al medir — y **a favor** del código
+**Los hechos centrales de las dos partes son correctos**, y los verifiqué uno por uno: el
+trigger existe y dispara AFTER INSERT sobre `agencies`; su cuerpo no escribe valores salvo la
+clave; los defaults son los del estado de aterrizaje y coinciden con `PLANS.free`;
+`getPlanUsage` reporta 0 y coincide con `check_property_limit()`; el mensaje de matrícula nombra
+la matrícula y explica la regla; las tres condiciones de la detección están en el código; y las
+dos guardas vestigiales existen donde el prompt dice.
 
-El prompt advierte, sobre alinear el límite a 0:
+**Tres cosas donde lo medido dice algo distinto o más:**
 
-> *"verificá qué consumidores leen el límite: si alguno divide por él o lo muestra como texto,
-> un 0 puede producir una división por cero o un texto raro."*
+### (1) El encabezado del "grupo de blindaje de cinco tandas" NO existe en PENDIENTES.md
 
-**Los revisé uno por uno (§3) y ninguno se rompe.** Hay exactamente **dos** consumidores que
-dividen, y **los dos ya estaban guardados** con la misma expresión `limit > 0 ? … : 0`
-(`PlanBadge.tsx:14` y `SubscriptionContent.tsx:191`). Los cinco restantes son texto y muestran
-`0 de 0`, que es correcto.
+El prompt dice *"Buscá el encabezado de ese grupo y dejalo cerrado"*. **Lo busqué y no está.**
+Lo que hay es `### Limpieza de Storage — grupo CERRADO (6 sep 2026)`, que cubre las tandas 3 y
+4, y los dos ítems de esta tanda estaban **sueltos en "Deuda técnica"**, sin agrupar. El grupo
+de cinco tandas es una lectura del prompt, no una estructura del archivo.
 
-**Pero el matiz importa más que el resultado:** esas guardas **no se escribieron para esto**.
-El comentario de `PlanBadge.tsx:12-13` las explica como resto de un modelo anterior con un plan
-"Ilimitado". Es una guarda vestigial que cubre este caso por casualidad. **Si alguien la borra
-por parecer muerta, reintroduce la división por cero**, y ahora sí sería alcanzable. Lo dejo
-dicho porque no es evidente al leer el código.
+**Qué hice:** cerré el grupo en `## Cerrados recientemente`, que es donde el archivo registra
+los cierres, con las cinco tandas enumeradas — y **dejé escrito en el propio ítem que el grupo
+no tenía encabezado propio**, para que nadie lo busque arriba y crea que se perdió.
 
-### (2) Un residuo que el alcance fijado deja abierto, y prefiero decirlo
+### (2) La base tiene 10 agencias, no las 9 de la medición anterior
 
-Con el límite en 0 y sin fila, `getPublishBlock` devuelve `plan_limit`, y `NewPropertyButton`
-muestra: *"Alcanzaste el límite de tu plan Gratis. Pasá a Inicial para publicar más."*
+Apareció un alta de prueba **posterior a la implementación** ("Inmoprueba 1", 7 sep 02:32).
+Lejos de ser un problema, es **la verificación end-to-end del trigger que faltaba** (§4): sus
+timestamps prueban que la fila la creó el trigger y no la aplicación. Lo usé como evidencia en
+el ítem cerrado de PENDIENTES.
 
-**Eso sigue siendo impreciso**: la agencia no alcanzó ningún límite, le falta una fila, y
-"pasar a Inicial" no la destrabaría. **Lo que sí se arregló, y era el bug real, es que ahora
-bloquea** en vez de dejarla llenar el formulario entero para rechazarla al final. La interfaz y
-la base ahora dicen lo mismo; lo que queda desalineado es el matiz del texto.
+Consecuencia menor: **8 de 10 sin matrícula**, no 8 de 9. El ítem nuevo de limpieza de datos
+lleva los números medidos hoy.
 
-**No lo arreglé, y por dos razones del propio pedido.** La decisión 5 dice que no hay que
-construir para un estado que el trigger vuelve improducible, y un cuarto motivo en
-`PublishBlockReason` obliga a tocar el `switch` exhaustivo de `NewPropertyButton` — que
-`CLAUDE.md` marca como sensible— para un caso que solo se alcanza si alguien borra una fila a
-mano. **Queda anotado como decisión consciente, no como olvido.**
+### (3) *"varios comentarios y notas que afirmaban cosas que la base desmentía"* — en esta tanda fueron **dos**, y ninguno era del código
 
-### (3) Todo lo demás del prompt se verificó y es exacto
-
-- **El trigger existe y es como lo describe**: `AFTER INSERT ON agencies`, cuerpo sin valores
-  salvo la clave. Transcrito de la base, no del prompt (§2).
-- **Los defaults son los del estado de aterrizaje**, los siete (§2).
-- **El upsert de `registerAction` ya usaba `ignoreDuplicates`**, así que con el trigger no
-  escribe nada. Se mantuvo, se cambió su comentario.
-- **El UPDATE de upgrade afectaba cero filas sin devolver error.** Resuelto con
-  `update(values, { count: "exact" })`, que el SDK soporta
-  (`postgrest-js/dist/index.d.cts:3385-3393`). Elegí el count sobre "leer la fila antes" porque
-  el chequeo previo y la escritura son dos viajes distintos y preguntar "¿existe?" antes deja
-  una ventana entre la pregunta y la respuesta; el count mide lo que la escritura hizo.
-- **La guarda de reentrada** se dejó como estaba, con comentario en los dos lugares
-  (`actions.ts` y `page.tsx`), explicando que `subscription != null` ya no es alcanzable.
-- **Sobre `agencies` hay tres índices únicos**: medido, `indices_unicos_en_agencies: 3`.
-- **El DETAIL trae los valores y el message el nombre del índice**: la extracción está escrita
-  contra el texto real que trae el prompt, y falla hacia `null` ante cualquier otra forma.
+El prompt advierte sobre el patrón y dice que ya pasó cuatro veces. **Es cierto como historia
+del grupo**, pero conviene la precisión: **las dos afirmaciones falsas que encontré en esta
+pasada estaban en `CLAUDE.md`, no en el código** (§3). La del código —el *"ya lo bloquea el
+límite 0"*— ya había sido corregida en la tanda de implementación. Lo digo porque la advertencia
+podría hacer buscar en el lugar equivocado: **el código quedó limpio; lo que faltaba alinear era
+la documentación.**
