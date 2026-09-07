@@ -55,16 +55,43 @@ export async function requestPlanUpgradeAction(
 
   // Solo pending_plan + status. `plan` (el que rige), property_limit, has_* y
   // activated_at quedan como están.
-  const { error } = await admin
+  //
+  // ⚠ `count: "exact"` NO ES TELEMETRÍA: es la única forma de distinguir "se
+  // guardó" de "no había nada que guardar". Un UPDATE acotado con .eq() sobre
+  // una fila que no existe afecta CERO filas y devuelve `error: null`, así que
+  // mirar solo el error informaba éxito y el pedido no existía: la agencia veía
+  // la confirmación, volvía a la pantalla y el plan seguía igual, sin ningún
+  // rastro de qué había pasado.
+  //
+  // Se cuenta en el UPDATE y no se lee la fila antes a propósito: el chequeo
+  // previo (el de la baja, arriba) y la escritura son dos viajes distintos, y
+  // preguntar "¿existe?" antes deja una ventana entre la pregunta y la
+  // respuesta. El count mide lo que la escritura hizo de verdad.
+  const { error, count } = await admin
     .from("subscriptions")
-    .update({
-      pending_plan: plan,
-      status: "pending",
-    })
+    .update(
+      {
+        pending_plan: plan,
+        status: "pending",
+      },
+      { count: "exact" }
+    )
     .eq("agency_id", agent.agency_id);
 
   if (error) {
     return { error: "No se pudo registrar el pedido. Intentá de nuevo." };
+  }
+
+  // Cero filas afectadas = la agencia no tiene fila de suscripción. Desde el
+  // trigger `trg_ensure_agency_subscription` ese estado no se produce por
+  // ningún camino de alta, así que llegar acá significa que la fila se borró a
+  // mano: no es algo que la agencia pueda resolver cambiando de plan, y por eso
+  // el mensaje NO habla de planes.
+  if (count === 0) {
+    return {
+      error:
+        "Hay un problema con la configuración de tu cuenta. Escribinos a hola@marka.app y lo resolvemos.",
+    };
   }
 
   // Sin redirect: el client refresca la vista (router.refresh()).

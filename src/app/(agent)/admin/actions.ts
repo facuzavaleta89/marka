@@ -230,7 +230,9 @@ async function writeApproval(
     .eq("id", agencyId);
 
   if (updateError) {
-    return { error: "No se pudo actualizar la agencia. Intentá de nuevo." };
+    return {
+      error: translateApprovalWriteError(updateError, status),
+    };
   }
 
   if (decision) {
@@ -239,6 +241,91 @@ async function writeApproval(
   }
 
   revalidatePath("/admin");
+}
+
+// Nombre del índice único parcial de matrícula, tal como lo devuelve Postgres
+// dentro del mensaje del error. Es el ÚNICO de los tres índices únicos de
+// `agencies` que puede chocar al aprobar.
+const LICENSE_UNIQUE_INDEX = "idx_agencies_license_unique_approved";
+
+// Tipo estructural mínimo, mismo criterio que translatePropertyWriteError
+// (propiedades/actions.ts): se pide lo que se lee y nada más, en vez de atar
+// esta función al tipo del SDK.
+type DbLikeError = { code?: string; message: string; details?: string | null };
+
+// Saca la matrícula del DETAIL del error. Postgres lo arma así:
+//   Key (city_id, license_number)=(fbcd374e-…, 1234) already exists.
+// —o sea: el nombre del índice viaja en `message` y los VALORES en `details`—.
+// Se toma el segundo valor del paréntesis, que es la matrícula.
+//
+// ⚠ DEVUELVE null ANTE CUALQUIER FORMA INESPERADA, Y ESO ES DELIBERADO: el
+// formato del DETAIL no es un contrato, es texto de Postgres que puede cambiar
+// entre versiones. El mensaje de abajo funciona igual sin la matrícula, así que
+// un fallo al parsear NUNCA puede tirar abajo el manejo del error — sería
+// cambiar un mensaje pobre por una excepción.
+function extractLicenseFromDetail(detail: string | null | undefined): string | null {
+  if (!detail) return null;
+  const match = detail.match(/\)=\(([^)]*)\)/);
+  if (!match) return null;
+  const parts = match[1].split(",").map((part) => part.trim());
+  if (parts.length < 2) return null;
+  const license = parts[1];
+  return license === "" ? null : license;
+}
+
+// Traduce el error del UPDATE de `agencies.approval_status` a un mensaje propio.
+//
+// El único choque real es el índice único PARCIAL de matrícula:
+//   CREATE UNIQUE INDEX idx_agencies_license_unique_approved
+//     ON agencies (city_id, license_number)
+//     WHERE approval_status = 'approved' AND license_number IS NOT NULL
+// Dos agencias PENDIENTES pueden reclamar la misma matrícula —el índice no las
+// alcanza, y eso es deliberado: si el alta rechazara una matrícula ya usada, el
+// formulario le confirmaría a un impostor cuáles existen—, así que el choque
+// aparece recién acá, frente a una persona que puede resolverlo.
+//
+// ⚠ SE VERIFICAN DOS COSAS, Y EL CÓDIGO SOLO NO ALCANZA. Sobre `agencies` hay
+// TRES índices únicos —`agencies_pkey`, `agencies_slug_key` y el de matrícula— y
+// los tres levantan 23505. Un matcher que mirara solo el código le reportaría al
+// dueño un choque de matrícula ante un choque de slug. Por eso se exige además
+// que el mensaje nombre ESTE índice.
+//
+// ⚠ Y SOLO APLICA A LA APROBACIÓN. `writeApproval` es compartida por aprobar,
+// rechazar y reabrir, pero el predicado del índice es
+// `approval_status = 'approved'`: rechazar y reabrir SACAN la fila del
+// predicado, así que no pueden chocar nunca. Por eso el mensaje se gatea con
+// `status === "approved"` y no solo con el código de error: mostrarle "esa
+// matrícula ya está en uso" a alguien que está rechazando una agencia sería
+// inventar un conflicto que no existe.
+//
+// ⚠ EFECTO COLATERAL QUE CONVIENE TENER PRESENTE: rechazar o reabrir una agencia
+// APROBADA libera su matrícula, porque saca la fila del predicado parcial. Si en
+// el medio se aprueba otra con la misma matrícula, volver a aprobar la original
+// va a fallar por acá — y el mensaje va a ser correcto, pero el conflicto va a
+// parecer nuevo. Es inherente al índice parcial, no un defecto de esta función.
+//
+// Lección tomada de translatePropertyWriteError: el motivo ESPECÍFICO va ANTES
+// del cajón de sastre. Acá el cajón de sastre es el mensaje genérico del final.
+function translateApprovalWriteError(
+  dbError: DbLikeError,
+  status: ApprovalStatus
+): string {
+  const isLicenseConflict =
+    status === "approved" &&
+    dbError.code === "23505" &&
+    dbError.message.includes(LICENSE_UNIQUE_INDEX);
+
+  if (isLicenseConflict) {
+    const license = extractLicenseFromDetail(dbError.details);
+    const which = license ? `la matrícula ${license}` : "esa matrícula";
+
+    // NO dice "intentá de nuevo": el conflicto es de datos, no transitorio, y
+    // reintentar da siempre el mismo resultado. Y explica LA REGLA (aprobada +
+    // misma ciudad), que es lo que le permite al dueño encontrar la otra agencia.
+    return `No se pudo aprobar: ya hay otra inmobiliaria aprobada en la misma ciudad con ${which}. Revisá cuál de las dos corresponde antes de aprobar esta.`;
+  }
+
+  return "No se pudo actualizar la agencia. Intentá de nuevo.";
 }
 
 // Registra una decisión del dueño en agency_reviews.

@@ -32,6 +32,15 @@ export async function selectPlanAction(
   // degradaría a free (perdiendo entitlements y dejándola sobre el límite), así
   // que se rechaza sin escribir nada y se la deriva a /dashboard/suscripcion,
   // que es la pantalla correcta para cambiar de plan.
+  //
+  // ⚠ `subscription != null` YA NO ES ALCANZABLE, y por eso el mensaje de abajo
+  // sigue hablando solo de planes. Antes, una agencia sin fila caía en este
+  // mismo `else` y leía "Tu cuenta ya tiene un plan definido" —exactamente lo
+  // contrario de su situación—. Desde el trigger `trg_ensure_agency_subscription`
+  // (AFTER INSERT ON agencies) toda agencia nace con su suscripción, así que
+  // "sin fila" y "con un plan ya definido" dejaron de coexistir: el null se
+  // conserva solo como guarda de tipo. Si el caso volviera a ser posible habría
+  // que separarlo, porque los dos mensajes no pueden ser el mismo.
   const admin = createAdminClient();
   const { data: subscription } = await admin
     .from("subscriptions")
