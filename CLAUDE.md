@@ -20,9 +20,9 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 
 **Distribución:** web responsive + PWA instalable. No hay app nativa ni stores.
 
-**Estado:** Deployado en Vercel, **sin datos reales todavía** (lo cargado es de prueba; el lanzamiento con inmobiliarias fundadoras se apunta a octubre). MVP + multi-agente completos. **Fase White-label cerrada** en lo esencial: Sub-pieza A (ruta `/[slug]` + mapa filtrado + gate de plan), B1 (subir logo) y B2a (mostrar logo + nombre + "powered by Marka." en el header) hechas y probadas. **B2b (variante admin en `disabled`) y C (slug editable) quedan EN PAUSA**. **Fase de modelo de agencias CERRADA** (ago 2026): solo-agencias, matrícula + aprobación manual, bloqueo de publicación en la base, sesión unificada. Ver "Aprobación de agencias" abajo. **Fase de cobrabilidad CERRADA** (31 ago – 1 sep 2026): la visibilidad pública ahora depende de que la agencia esté al día (ver "Visibilidad pública de las propiedades") y el panel `/admin` dejó de ser de una sola vía —cancelar solicitud, vencimiento, baja/reactivación, eliminación y cambio de plan (ver "Panel de plataforma")—. **Ese era el bloqueante para poder cobrar y ya no lo es.** **Fase de modelo de la propiedad CERRADA** (3 sep 2026): una propiedad puede ofrecerse en **varias operaciones a la vez** con precio y moneda propios por operación, el **precio es opcional** ("a convenir") y las propiedades en alquiler llevan **requisitos para el inquilino**. Ver "Operaciones, precios y requisitos de la propiedad". **Grupo de archivos de Storage CERRADO** (5–6 sep 2026), en tres tandas: policies finas por agencia, borrado de archivos en los caminos que no lo hacían, y una herramienta de línea de comandos que audita y limpia huérfanos. El bucket quedó en **9 objetos y 707 kB, sin un solo huérfano**; venía de 24 objetos y 6,4 MB con el 89 % del peso en basura. Ver "Imágenes y Storage".
+**Estado:** Deployado en Vercel, **sin datos reales todavía** (lo cargado es de prueba; el lanzamiento con inmobiliarias fundadoras se apunta a octubre). MVP + multi-agente completos. **Fase White-label cerrada** en lo esencial: Sub-pieza A (ruta `/[slug]` + mapa filtrado + gate de plan), B1 (subir logo) y B2a (mostrar logo + nombre + "powered by Marka." en el header) hechas y probadas. **B2b (variante admin en `disabled`) y C (slug editable) quedan EN PAUSA**. **Fase de modelo de agencias CERRADA** (ago 2026): solo-agencias, matrícula + aprobación manual, bloqueo de publicación en la base, sesión unificada. Ver "Aprobación de agencias" abajo. **Fase de cobrabilidad CERRADA** (31 ago – 1 sep 2026): la visibilidad pública ahora depende de que la agencia esté al día (ver "Visibilidad pública de las propiedades") y el panel `/admin` dejó de ser de una sola vía —cancelar solicitud, vencimiento, baja/reactivación, eliminación y cambio de plan (ver "Panel de plataforma")—. **Ese era el bloqueante para poder cobrar y ya no lo es.** **Fase de modelo de la propiedad CERRADA** (3 sep 2026): una propiedad puede ofrecerse en **varias operaciones a la vez** con precio y moneda propios por operación, el **precio es opcional** ("a convenir") y las propiedades en alquiler llevan **requisitos para el inquilino**. Ver "Operaciones, precios y requisitos de la propiedad". **Grupo de archivos de Storage CERRADO** (5–6 sep 2026), en tres tandas: policies finas por agencia, borrado de archivos en los caminos que no lo hacían, y una herramienta de línea de comandos que audita y limpia huérfanos. El bucket quedó en **9 objetos y 707 kB, sin un solo huérfano**; venía de 24 objetos y 6,4 MB con el 89 % del peso en basura. Ver "Imágenes y Storage". **Grupo de blindaje CERRADO** (7 sep 2026, última de sus cinco tandas): una agencia **ya no puede existir sin fila de suscripción** —lo garantiza un trigger en la base— y el choque de matrícula duplicada al aprobar **se explica**, con la matrícula en conflicto y la regla, en vez de un "no se pudo" genérico. Ver "Suscripciones y límites" y "Aprobación de agencias".
 
-**Baseline de calidad medido (no documentado de memoria; última medición: 6 sep 2026):** `npx tsc --noEmit` 0 errores (exit 0), `npm run lint` **0 errores y 1 warning** (`PropertyForm.tsx:808`, exit 0), `npx next build` verde (exit 0) con **19 rutas**. Cualquier error nuevo, un warning distinto del único conocido, o una ruta que aparezca sin motivo, es una regresión. Ver "ESLint". ⚠ El chequeo de tipos y el lint **también cubren `scripts/`** (el `include` de `tsconfig.json` es `**/*.ts` y ESLint no lo ignora): una herramienta rota ahí rompe el baseline igual que el código de la app.
+**Baseline de calidad medido (no documentado de memoria; última medición: 7 sep 2026):** `npx tsc --noEmit` 0 errores (exit 0), `npm run lint` **0 errores y 1 warning** (`PropertyForm.tsx:808`, exit 0), `npx next build` verde (exit 0) con **19 rutas**. Cualquier error nuevo, un warning distinto del único conocido, o una ruta que aparezca sin motivo, es una regresión. Ver "ESLint". ⚠ El chequeo de tipos y el lint **también cubren `scripts/`** (el `include` de `tsconfig.json` es `**/*.ts` y ESLint no lo ignora): una herramienta rota ahí rompe el baseline igual que el código de la app.
 
 > **⚠️ Hoja de ruta de modelo (tras validación con el rubro y el colegio de corredores).** **Ya aplicado:** los particulares se eliminaron (la app es solo-agencias); las agencias requieren **número de matrícula + aprobación manual** del dueño de la plataforma (ver "Aprobación de agencias"); y el formulario de propiedad tiene el **atajo de sugerencia de ubicación desde la dirección** (ver "Ubicación de la propiedad"), que era el ítem D1 de la hoja de ruta; y **el mapa público ya filtra por agencia habilitada** (era el bloqueante para cobrar: ver "Visibilidad pública de las propiedades"); y **una propiedad puede estar en venta y en alquiler a la vez**, con **precio opcional** ("a convenir") y **requisitos de alquiler** (ver "Operaciones, precios y requisitos de la propiedad"). **Pendiente:** registro opcional de visitantes; página y link por propiedad. Ver PENDIENTES.md → "Nueva fase".
 
@@ -84,6 +84,18 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 - **La nota del rechazo vive en `agency_reviews`, NO en `agencies`.** Dos motivos, los dos load-bearing: (1) `agencies` tiene la policy `Public read agencies` con `qual: true`, o sea que **cualquiera con la anon key puede leer la tabla entera**, y Postgres no permite restringir columnas dentro de una policy — la nota es un texto que el dueño escribe sobre un tercero y no puede ser pública; (2) como el rechazo no es definitivo, cada decisión es una fila y no pisa a la anterior. **`agency_reviews` tiene RLS habilitada y CERO policies a propósito**: solo se accede con service role desde el server. No agregarle policies "por prolijidad".
 - **Leer la nota:** `getLatestRejectionNote(agencyId)` (`src/lib/utils/`). Usa service role (no hay alternativa) y **la barrera de pertenencia la pone el código**: el `agencyId` se compara contra el de la sesión antes de consultar, así que pedir la nota de otra agencia devuelve `null`.
 - **Índice único de matrícula: PARCIAL a propósito** — `(city_id, license_number) WHERE approval_status = 'approved' AND license_number IS NOT NULL`. Si fuera un UNIQUE común, una solicitud con una matrícula ya usada reventaría en el registro: la solicitud legítima (un tipeo, una agencia que rehace el alta) nunca llegaría al panel, y **un impostor que probara matrículas ajenas recibiría del propio formulario la confirmación de cuáles existen**. Con el índice parcial la solicitud entra, queda pendiente, y el choque ocurre al aprobar la segunda — frente a una persona que puede resolverlo. ⚠ **Limitación conocida:** los colegios de corredores son **PROVINCIALES**, no municipales; revisar el día que se abra una segunda ciudad de la misma provincia.
+- **El choque de matrícula se explica, no se reporta como "no se pudo".** Cuando el dueño intenta aprobar una agencia cuya matrícula ya usa otra **aprobada de la misma ciudad**, `writeApproval` traduce el error con `translateApprovalWriteError` (`admin/actions.ts`) y muestra:
+  > **No se pudo aprobar: ya hay otra inmobiliaria aprobada en la misma ciudad con la matrícula 1234. Revisá cuál de las dos corresponde antes de aprobar esta.**
+
+  (Sin la matrícula: *"…con **esa matrícula**."*) El mensaje **explica la regla** —aprobada + misma ciudad, que son literalmente las dos condiciones del índice— porque eso es lo que le permite al dueño encontrar la otra agencia. Y **no dice "intentá de nuevo"**: el conflicto es de datos, no transitorio, y reintentar da siempre el mismo resultado.
+- **⚠ LA DETECCIÓN EXIGE TRES CONDICIONES, Y EL CÓDIGO DE ERROR SOLO NO ALCANZA.** Sobre `agencies` hay **TRES índices únicos** (medido): `agencies_pkey`, `agencies_slug_key` y `idx_agencies_license_unique_approved`. **Los tres levantan `23505`**, así que un matcher que mirara solo el código reportaría un choque de matrícula ante un choque de slug. Las tres condiciones:
+  1. `status === "approved"` — el gate de alcance (ver el punto siguiente);
+  2. `code === "23505"` — el código, que es lo estable entre versiones;
+  3. `message.includes("idx_agencies_license_unique_approved")` — **el nombre del índice viaja en el `message`**; los valores en conflicto viajan en el `details` (`Key (city_id, license_number)=(…, 1234) already exists.`), de donde se extrae la matrícula.
+
+  La extracción del `details` es **una mejora, no una dependencia**: ante cualquier forma inesperada devuelve `null` y el mensaje sale sin el número. El formato del `details` es texto de Postgres, no un contrato.
+- **⚠ EL MENSAJE ESTÁ GATEADO A LA APROBACIÓN, aunque el error no pueda ocurrir en los otros dos caminos.** `writeApproval` es compartida por aprobar, rechazar y reabrir. Rechazar y reabrir **sacan la fila del predicado** del índice (`WHERE approval_status = 'approved'`), así que no pueden chocar — pero eso depende de una propiedad del índice que podría cambiar. El gate por `status` vuelve la imposibilidad **estructural en el código**: decirle *"esa matrícula ya está en uso"* a alguien que está rechazando una agencia sería inventar un conflicto que no existe.
+- **⚠ RECHAZAR O REABRIR UNA AGENCIA APROBADA LIBERA SU MATRÍCULA.** Es consecuencia directa de que el índice sea parcial: al salir de `approval_status = 'approved'`, la fila sale del predicado y su par `(city_id, license_number)` queda libre. **Si en el medio se aprueba otra con la misma matrícula, volver a aprobar la original va a fallar** — con el mensaje correcto, pero el conflicto va a parecer nuevo. Es inherente al índice parcial, no un defecto del código.
 - **Nombre y matrícula son editables SOLO mientras está `pending` o `rejected`; se bloquean al aprobar.** El nombre está semi-regulado por el colegio, así que cambiarlo después de la aprobación tendría que ser otro flujo de aprobación que hoy no existe. ⚠ **`agencies` NO tiene policy de UPDATE**, así que la escritura va con service role y **deshabilitar los inputs es cosmético**: la regla la aplica `updateAgencyIdentityAction`, que relee `approval_status` de la fila real (no del que trae la sesión ni del cliente). Guardar con la agencia rechazada además la devuelve a `'pending'` (es el reenvío de la solicitud). El `slug` NO se toca nunca desde ahí.
 
 ### Visibilidad pública de las propiedades — LA REGLA DE COBRO
@@ -168,13 +180,81 @@ En el cambio de plan el campo viene **precargado** con el valor vigente, justame
 **Detalle de interfaz que es una restricción, no un gusto: los formularios del panel son PANELES INLINE, no `AlertDialog`.** El `AlertDialog` de shadcn **cierra al hacer click en su botón de acción**, así que un error de validación (fecha mal formada, nombre que no coincide, plan que no entra) **no tendría dónde mostrarse**. Los cuatro que piden escribir o elegir algo —rechazo, activación, cambio de plan y eliminación— son paneles inline; los sí/no puros (dar de baja, reactivar) sí van en `AlertDialog`.
 
 ### Suscripciones y límites
+
+> **Toda agencia tiene fila en `subscriptions`, y eso lo garantiza la BASE.** El trigger
+> `trg_ensure_agency_subscription` (AFTER INSERT ON `agencies` → `ensure_agency_subscription()`)
+> la crea junto con la agencia. **El estado "agencia sin suscripción" ya no es producible por
+> ningún camino** — ni el registro, ni un INSERT a mano, ni un flujo futuro. Ver "Toda agencia
+> nace con su suscripción" abajo.
+
 - Cada agencia tiene una fila en `subscriptions` con `plan` (`free`/`inicial`/`profesional`/`premium`), `property_limit` y los entitlements `has_featured`/`has_white_label`/`has_metrics`.
-- **`free` es estado de aterrizaje, no producto.** No se vende, no se ofrece y no se puede elegir. Los valores de `PLANS.free` (`propertyLimit: 1` + los tres flags en `false`) son los que **escriben** el registro y la selección de plan como estado inicial, y los que `getPlanUsage` usa de fallback si falta la fila. Su `name` (`"Gratis"`) es solo la etiqueta que ve una agencia que todavía no paga (badge del sidebar, card de plan actual, columna "Plan" de `/admin`). **Cambiar los números de `PLANS.free` cambia el andamio del modelo, no una etiqueta.**
+- **`free` es estado de aterrizaje, no producto.** No se vende, no se ofrece y no se puede elegir. Los valores de `PLANS.free` (`propertyLimit: 1` + los tres flags en `false`) son los que **escriben** el registro y la selección de plan como estado inicial, y los que `getPlanUsage` usa de fallback **para los tres entitlements y el estado** si falta la fila. ⚠ **PARA EL LÍMITE NO**: sin fila, `getPlanUsage` reporta **0**, no 1 — ver "Sin fila de suscripción el límite es 0". Su `name` (`"Gratis"`) es solo la etiqueta que ve una agencia que todavía no paga (badge del sidebar, card de plan actual, columna "Plan" de `/admin`). **Cambiar los números de `PLANS.free` cambia el andamio del modelo, no una etiqueta.**
 - **Bajar de plan existe, pero SOLO desde el panel del dueño** (`changePlanAction`, ver "Panel de plataforma"): se aplica directo sobre `plan`. Lo que sigue sin ser expresable es una **SOLICITUD de bajada del cliente**: el CHECK de `pending_plan` solo admite planes pagos y el andamio `plan`/`pending_plan` solo modela subidas. **Es deliberado y así debe quedar**: el autoservicio de bajada habilitaría pagar un mes de plan grande, cargar muchas propiedades y bajar al más barato conservándolas visibles. Ver PENDIENTES.md.
 - El límite se valida **en la DB** (trigger `check_property_limit`). El frontend lo anticipa pero la DB es la fuente de verdad.
 - El conteo de propiedades usa **siempre `agency_id`**, nunca `agent_id`. Usar el helper `getPlanUsage` de `@/lib/utils/getPlanUsage`.
 - `is_featured` solo puede ser `true` si la suscripción tiene `has_featured` (hoy: premium). Las server actions lo fuerzan a `false` silenciosamente si la agencia no lo tiene. **El gating se hace por el booleano `has_featured` (vía `planUsage.hasFeatured`), NUNCA comparando el nombre del plan (`=== "premium"`).**
 - La creación de `agencies`, el insert de `agents` y la escritura de `subscriptions` en el registro se hacen **con service role** (`admin.ts`), nunca con el client normal.
+
+#### Toda agencia nace con su suscripción — el trigger, no el código
+
+**`trg_ensure_agency_subscription`**, `AFTER INSERT ON agencies FOR EACH ROW`, ejecuta
+`ensure_agency_subscription()` (SECURITY DEFINER, `search_path` fijo). El cuerpo entero:
+
+```sql
+INSERT INTO subscriptions (agency_id)
+VALUES (NEW.id)
+ON CONFLICT (agency_id) DO NOTHING;
+```
+
+- **⚠ NO ESCRIBE NINGÚN VALOR SALVO LA CLAVE, Y ES LA DECISIÓN DEL DISEÑO.** Los `DEFAULT` de
+  las columnas de `subscriptions` **ya son** el estado de aterrizaje, así que ese `INSERT`
+  produce exactamente la fila que corresponde. Repetir los valores en el trigger crearía una
+  **segunda fuente de verdad**: el día que se cambie un default, la tabla y el trigger dirían
+  cosas distintas y **la divergencia no daría ningún síntoma** —las agencias nuevas quedarían
+  con un límite y las viejas con otro—. Si hay que mover el estado de aterrizaje, se mueve el
+  `DEFAULT` de la columna y esto sigue siendo correcto solo.
+- **Los defaults coinciden con `PLANS.free`** (medido contra `information_schema.columns` y
+  contrastado con `src/types/index.ts`): `plan='free'` / `status='active'` /
+  `property_limit=1` / `has_white_label=false` / `has_featured=false` / `has_metrics=false`, y
+  `PLANS.free` es `propertyLimit: 1` + los tres flags en `false`. **Son los mismos siete
+  valores que escribía el upsert del registro.**
+- **⚠ EL UPSERT QUE SIGUE EN `registerAction` NO ES LO QUE CREA LA FILA.** Para cuando esa
+  línea corre, el trigger ya la creó, y su `ignoreDuplicates` la deja intacta: en el camino
+  normal **no escribe nada**. **No se eliminó a propósito**: si alguien deshabilita el trigger,
+  el registro sigue funcionando. Es redundante e inofensivo, y esa redundancia es el punto.
+- **Por qué la regla se mudó a la base:** el registro escribe cuatro cosas en orden —usuario de
+  Auth, agencia, agente admin, suscripción— y hacía rollback de las dos del medio pero **no de
+  la última**. Si fallaba ese paso quedaba una agencia funcionando sin suscripción, y nadie
+  reparaba ese estado. Misma disciplina que los tres gates de publicación: **la regla vive en
+  la base porque el código se olvida y la base no.**
+- `ON CONFLICT DO NOTHING` lo hace idempotente, con respaldo real: `subscriptions.agency_id` es
+  `UNIQUE`. `AFTER INSERT` y no `BEFORE` porque la fila de `agencies` tiene que existir para
+  satisfacer la FK.
+
+#### Sin fila de suscripción el límite es 0 — y los dos números tienen que coincidir
+
+`getPlanUsage` es el **espejo en la interfaz** de `check_property_limit()`, así que ante la
+ausencia de fila los dos dicen lo mismo:
+
+| | Qué hace |
+|---|---|
+| `check_property_limit()` (base) | `SELECT property_limit INTO max_allowed …` y después `IF max_allowed IS NULL THEN max_allowed := 0` |
+| `getPlanUsage` (`lib/utils/`) | `const limit = subscription?.property_limit ?? NO_SUBSCRIPTION_LIMIT`, con `NO_SUBSCRIPTION_LIMIT = 0` |
+
+**⚠ Antes caía a `PLANS.free.propertyLimit` (= 1) y esa divergencia era un bug medido:** con
+límite 1 y 0 propiedades, `canCreate` daba `true`, `getPublishBlock` no bloqueaba, el botón
+"Nueva propiedad" quedaba habilitado, la ruta `/dashboard/propiedades/nueva` dejaba pasar, el
+agente llenaba el formulario entero **y el rechazo llegaba recién al guardar** —del trigger,
+con "máximo: 0"—, traducido a *"alcanzaste el límite de tu plan"*, que era falso: no había
+alcanzado ningún límite, le faltaba una fila.
+
+**Solo cambió el límite.** El `status` sigue cayendo a `'active'` y los tres `has_*` a los de
+`PLANS.free`, a propósito: declararla inactiva cambiaría el motivo del bloqueo
+(`subscription_inactive` en vez de `plan_limit`) sin que su situación lo justifique — no la
+dieron de baja, le falta una fila.
+
+Con el trigger el caso ya no se produce. **El espejo se alineó igual**, porque no puede
+prometer lo que la base va a rechazar si alguna vez alguien borra una fila a mano.
 
 ---
 
@@ -396,6 +476,53 @@ En el cambio de plan el campo viene **precargado** con el valor vigente, justame
 
 ### Plan usage — getPlanUsage
 - Siempre `src/lib/utils/getPlanUsage.ts`. Cuenta por `agency_id`. Solo en server.
+- **Sin fila de suscripción reporta límite `0`**, igual que `check_property_limit()`. Ver "Sin fila de suscripción el límite es 0".
+
+### ⚠ Un UPDATE acotado sobre una fila que no existe NO devuelve error
+
+**Afecta cero filas y reporta éxito.** `error` viene en `null`, así que mirar solo el error hace
+pasar por guardado algo que no se guardó. **Es un fallo silencioso, no una excepción**, y por
+eso hay que buscarlo a propósito.
+
+Ya mordió una vez: `requestPlanUpgradeAction` (`dashboard/suscripcion/actions.ts`) hacía
+`update({ pending_plan, status }).eq("agency_id", …)` y, sin fila, **la agencia veía la
+confirmación del pedido, volvía a la pantalla y el plan seguía igual**, sin ningún rastro de
+qué había pasado.
+
+**Cómo se resolvió: contando las filas afectadas en la MISMA escritura.**
+
+```ts
+const { error, count } = await admin
+  .from("subscriptions")
+  .update({ pending_plan: plan, status: "pending" }, { count: "exact" })
+  .eq("agency_id", agent.agency_id);
+```
+
+y después `if (count === 0)`, con un mensaje que **no habla de planes** (*"Hay un problema con
+la configuración de tu cuenta. Escribinos…"*): lo que le falta a esa agencia no se resuelve
+cambiando de plan.
+
+**⚠ Por qué el `count` y no leer la fila antes:** leer y escribir son **dos viajes distintos**,
+así que preguntar "¿existe?" antes deja una ventana entre la pregunta y la respuesta — y
+además cuesta una consulta más. **El `count` mide lo que la escritura hizo de verdad**, no lo
+que era cierto un momento antes. Es el patrón a repetir en cualquier `update`/`delete` acotado
+cuyo resultado se le informe a una persona.
+
+### ⚠ La guarda contra el cero de las barras de uso es VESTIGIAL, y hoy es load-bearing
+
+Dos componentes calculan el porcentaje de uso del plan **dividiendo por el límite**, y los dos
+tienen la misma guarda:
+
+- `src/components/dashboard/PlanBadge.tsx:14` — `const pct = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;`
+- `src/components/dashboard/SubscriptionContent.tsx:191` — `const usagePercent = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;`
+
+**Esa guarda NO se escribió para el límite 0.** Quedó del modelo anterior de planes, cuando
+existía uno "Ilimitado" — el propio comentario de `PlanBadge` lo dice: *"En el modelo de 4
+planes todos tienen un límite finito … Ya no hay 'Ilimitado'"*. O sea que **parece muerta**.
+
+**No lo está: desde que `getPlanUsage` reporta 0 sin fila, es lo único que evita una división
+por cero.** Borrarla por prolija reintroduce el problema, y el síntoma aparecería en una
+pantalla que nadie relacionaría con las suscripciones. Si se toca una, se toca la otra.
 
 ### Etiquetas UI — labels.ts
 - Nunca definir mapas de etiquetas inline. Usar `PROPERTY_TYPE_LABELS`, `OPERATION_TYPE_LABELS`, `PROPERTY_STATUS_LABELS`, `AMENITY_LABELS`, `CURRENCY_LABELS`.
@@ -800,7 +927,9 @@ WHERE city_id = $1 AND status = 'active'
 
 **Triggers de `properties` (los TRES gates de publicación, ver "Bloqueo de publicación"), en el orden alfabético en que Postgres los dispara:** `trg_check_agency_approved` (BEFORE INSERT → agencia aprobada), `trg_check_agency_subscription` (BEFORE INSERT → suscripción no `canceled`/`past_due`) y `trg_check_property_limit` (BEFORE INSERT OR UPDATE → cupo del plan; sin fila de suscripción el límite es 0). Los tres lanzan SQLSTATE **23514**, así que **ese orden decide qué mensaje ve el agente**. (Hay además dos `trg_*_updated_at` sobre `properties` y `subscriptions`.)
 
-**Funciones y RPC:** `agency_is_publicly_visible(target_agency_id)` — la regla de visibilidad pública, SECURITY DEFINER + STABLE, invocada por tres policies y por `resolveAgencyBySlug` (ver "Visibilidad pública de las propiedades"). `jsonb_is_short_string_array(arr, max_len)` — IMMUTABLE, la usa el CHECK `properties_rent_requirements_other_items`; **existe porque un CHECK no admite subconsultas** y recorrer un array JSONB exige `jsonb_array_elements()`, que devuelve filas: meter el SELECT dentro del CHECK no compila. `increment_views(property_id)` — incrementa `views_count` (SECURITY DEFINER); **⚠ existe pero NO se la llama desde ningún lado, así que `views_count` es 0 en todas las propiedades** (ver PENDIENTES.md).
+**Trigger de `agencies`:** `trg_ensure_agency_subscription` (AFTER INSERT → `ensure_agency_subscription()`) crea la fila de `subscriptions` de toda agencia nueva. **Es lo que vuelve imposible el estado "agencia sin suscripción"**, y su cuerpo no escribe ningún valor salvo la clave: los `DEFAULT` de la tabla ya son el estado de aterrizaje. Ver "Toda agencia nace con su suscripción".
+
+**Funciones y RPC:** `agency_is_publicly_visible(target_agency_id)` — la regla de visibilidad pública, SECURITY DEFINER + STABLE, invocada por tres policies y por `resolveAgencyBySlug` (ver "Visibilidad pública de las propiedades"). `jsonb_is_short_string_array(arr, max_len)` — IMMUTABLE, la usa el CHECK `properties_rent_requirements_other_items`; **existe porque un CHECK no admite subconsultas** y recorrer un array JSONB exige `jsonb_array_elements()`, que devuelve filas: meter el SELECT dentro del CHECK no compila. `increment_views(property_id)` — incrementa `views_count` (SECURITY DEFINER); **⚠ existe pero NO se la llama desde ningún lado, así que `views_count` es 0 en todas las propiedades** (ver PENDIENTES.md). `ensure_agency_subscription()` — SECURITY DEFINER, `search_path` fijo; la dispara `trg_ensure_agency_subscription` sobre `agencies` (ver arriba).
 
 **⚠ Event trigger `ensure_rls`** (función `public.rls_auto_enable()`, SECURITY DEFINER): en `ddl_command_end`, **habilita RLS automáticamente en toda tabla nueva del esquema `public`**. Consecuencia práctica: una tabla nueva nace con RLS activada **y sin policies**, o sea invisible para todos —incluido el dueño— hasta que se le escriban. No es un bug: es la red de seguridad que evita publicar una tabla sin querer.
 
@@ -916,6 +1045,8 @@ npm run storage:huerfanos:borrar   # ⚠ destructivo. Ver "Auditoría y limpieza
 ## Método de Diagnóstico
 
 Cuando el usuario reporta un síntoma visual, **inspeccionar el estado real del DOM y las clases aplicadas antes de teorizar sobre el pipeline de build**. La causa más simple (un elemento en otro estado, una clase pisada) es más probable que una corrupción de caché. No verificar en entornos aislados (headless, build paralelo) cuando el síntoma aparece en la app corriendo — la evidencia está en el DOM real.
+
+**⚠ Y un patrón propio de este repo, que ya costó cuatro veces: los comentarios que afirman que un caso ESTÁ CUBIERTO son los más peligrosos, porque desactivan la sospecha.** El ejemplo que lo cerró: `getPlanUsage` decía *"ese caso ya lo bloquea el límite 0"* mientras el límite que ese mismo archivo calculaba era **1**. Nadie volvió a mirar el caso justamente porque el comentario decía que estaba resuelto. Los otros tres fueron de la misma familia: dos cláusulas `ON DELETE` que la base no tenía, y un *"el único código que borra logos y avatares"* que había dejado de ser único. **Un comentario que afirma una propiedad de la base o de otro archivo hay que medirlo antes de creerle**, sobre todo si es la razón por la que algo no se está revisando.
 
 ## Diseño
 
