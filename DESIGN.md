@@ -381,7 +381,8 @@ Identifica a la inmobiliaria y a la persona que va a atender la consulta. Sin é
 - Fondo del drawer/sheet en `paper`, nunca blanco puro. Los inputs internos sí van en white (legibilidad).
 - Fotos full-bleed con ratio consistente, gradiente inferior sutil para legibilidad, y crossfade entre fotos (no corte seco), 180–200ms.
 - Flechas de navegación finas (`paper`/85 + backdrop-blur, chevron graphite), se ocultan en los extremos. Dot indicators finos y discretos.
-- Botones flotantes (cerrar / favorito) en `paper`/85 con backdrop-blur e ícono graphite — no círculos `bg-black/50`. El corazón favorito en terracota relleno (coherente con el mapa).
+- Botones flotantes en `paper`/85 con backdrop-blur e ícono graphite — no círculos `bg-black/50`. Son **tres**: cerrar arriba a la izquierda, y **compartir + favorito apareados arriba a la derecha** (`gap-2`). El corazón favorito en terracota relleno (coherente con el mapa); el de compartir vira a `success` con un ✓ mientras confirma que copió.
+  > ⚠ **El de compartir va SOBRE LA FOTO, no en la zona inferior, y es una restricción de espacio, no un gusto.** Esa zona es `shrink-0` dentro de un sheet de alto fijo (`h-[82vh]`), así que todo lo que se le agrega se lo resta al área que scrollea — que después del bloque "quién publica" quedó en ~177 px en un teléfono chico. Otra fila de 44 px la dejaría en menos de dos párrafos. Los botones flotantes son `absolute` sobre el carrusel: no cuestan un solo píxel de alto.
 - Chips de amenities con ícono lucide 16px graphite a la izquierda (mapeo amenity→ícono: pileta→Waves, gym→Dumbbell, seguridad_24h→ShieldCheck, etc.).
 - Estado de carga: skeleton que imita el layout (no "Cargando..." en texto).
 - Apertura del modal: 220ms ease-out (DESIGN §8).
@@ -442,6 +443,60 @@ Altura estándar: `44px` (cumple accesibilidad táctil). Padding horizontal: `16
 | Estado vendido | `stone` | `graphite` | Propiedades `sold`/`rented` |
 
 Todos en DM Sans 11px SemiBold uppercase, `rounded-sm`, padding `4px 8px`.
+
+### Página pública de la propiedad (`/propiedades/[slug]`)
+
+La misma propiedad que el modal, pero como **página propia con dirección propia**: indexable por buscadores y compartible por WhatsApp. No es "el modal en grande" — es una lectura larga en una columna, sin nada fijo y sin nada recortado.
+
+**⚠ Todo lo que se ve está en el HTML, renderizado en el servidor.** Es la restricción que gobierna cada decisión de abajo: si algo se arma en el navegador, un buscador ve un hueco. Solo dos piezas bajan como isla de cliente, y solo porque necesitan estado: el flujo de contacto y el botón de compartir.
+
+```
+┌──────────────────────────────────────────────┐
+│  Marka.                    ← Volver al mapa  │  header sticky, 56px, borde stone
+├──────────────────────────────────────────────┤
+│  [ foto ][ foto ][ foto ] →                  │  galería scroll-snap, aspect-[4/3], máx 420px
+│  8 fotos · deslizá para ver todas            │  DM Sans 12px graphite
+│                                              │
+│  CASA · VENTA · ALQUILER          ★ Destacada│  DM Sans 11px uppercase tracking-wider
+│  Casa 3 ambientes en el centro               │  Noto Serif 30/36px bold  ← <h1>
+│  USD 250.000                                 │  Noto Serif 40px bold terracota
+│  ARS 450.000            (etiqueta por op.)   │
+│  📍 Mitre 291, Centro — Santiago del Estero  │  DM Sans 15px graphite
+│  🛏 3 ambientes  🚿 2 baños  📐 120 m²        │  DM Sans 14px
+│  ────────────────────────────────────────    │  divider stone
+│  Descripción COMPLETA, sin "ver más"         │  DM Sans 15px, whitespace-pre-line
+│  ────────────────────────────────────────    │
+│  COMODIDADES  ·  chips con ícono             │
+│  REQUISITOS PARA ALQUILAR · chips sin ícono  │  solo si hay alquiler y hay requisitos
+│ ┌──────────────────────────────────────────┐ │
+│ │ [LOGO] Inmobiliaria Demo                 │ │  bloque de acción sobre `mist`
+│ │        Atiende Juan Pérez                │ │
+│ │ [● Consultar por WhatsApp            ]   │ │
+│ │ [⤴ Compartir                         ]   │ │
+│ └──────────────────────────────────────────┘ │
+│  DÓNDE QUEDA                                 │
+│  [ mapa estático 200px + pin + atribución ]  │
+│  [ Ver todas las propiedades en el mapa ]    │  botón secundario
+└──────────────────────────────────────────────┘
+```
+
+- **Columna `max-w-2xl` centrada** sobre `paper`. Una sola columna en todos los tamaños: el contenido es una ficha, no un tablero.
+- **El precio es lo primero que el ojo encuentra después de las fotos**, y acá tiene toda la columna para lograrlo: **40 px** contra los 32 del modal, donde compite con un CTA a 200 px. El kicker y el título lo preceden en el orden de lectura pero no en peso visual (11 px uppercase y serif 30 px contra 40 px bold terracota).
+- **Galería sin JavaScript:** `scroll-snap` horizontal, una foto por pantalla, `aspect-[4/3]` para reservar el espacio antes de que carguen (sin salto de layout). ⚠ **No es el carrusel del modal**: aquel guarda la foto activa en un `useState` y apila el resto con `opacity-0`, así que para un buscador **existe una sola foto**. Acá están las N en el documento, con su `alt`. El precio de no tener estado es que no hay flechas ni puntitos; a cambio hay gesto táctil nativo y el conteo en texto ("8 fotos · deslizá para ver todas"), que además lo lee un lector de pantalla.
+- **⚠ La descripción va COMPLETA, sin `line-clamp` y sin "Ver más".** En el modal se recorta; acá el texto entero tiene que estar en el documento, porque es justamente lo que un buscador lee. `whitespace-pre-line` respeta los saltos que escribió el agente.
+- **Quién publica + contacto + compartir van juntos en un bloque sobre `mist`.** Es lo único que rompe el ritmo de la columna, a propósito: en una página larga la zona de acción tiene que encontrarse de un vistazo. (En el modal no hacía falta: estaba siempre a la vista, fija abajo.) Mismo tratamiento del logo que el modal —altura fija, `object-contain`, y sin logo el nombre ocupa su lugar—, una talla más grande (`h-10`).
+- **El botón de compartir es secundario** (borde `stone`), nunca terracota: el CTA de la página es el verde de WhatsApp, y dos botones compitiendo confunden cuál es el paso final. Al copiar vira a `success` con un ✓ durante 2 s.
+- **Estado "no disponible"** (`PropertyUnavailable`): la propiedad existe pero no se puede mostrar. Clon de `AgencyUnavailable` —mismo esqueleto centrado, wordmark, `h1` serif 3xl, párrafo `graphite`, botón terracota "Ir al mapa"—, con otro texto. ⚠ **Nunca un 404**: quien llega casi siempre recibió el enlace de alguien, y un error de página inexistente le diría que el enlace estaba roto.
+
+### Mapa estático de la ficha
+
+El mapa del pie **no es Leaflet**. Es una grilla de 4×2 tiles de OpenStreetMap en `<img>`, corrida con CSS para que el punto quede centrado, con el pin terracota encima y la atribución abajo a la derecha. Cero JavaScript, cero librería, y está en el HTML.
+
+- Recuadro de **200 px** de alto, `rounded-md`, borde `stone`, ancho completo de la columna. Zoom 15 (escala de barrio, ~850 m de ancho visible).
+- El pin es el mismo dibujo del `LocationPicker` (28×36, terracota con centro `paper`), anclado por la **punta** con `-translate-y-full`.
+- Las tiles van con `loading="lazy"`: el mapa vive al pie, y así el primer pintado no arrastra ocho pedidos de red.
+- ⚠ **No se reusó el `LocationPicker`** (el otro mapa chico del proyecto): se monta con `ssr: false`, o sea que un buscador ve un recuadro vacío y la página arrastra Leaflet entero para algo con lo que el 99 % de las visitas no va a interactuar.
+- Usa `TILE_CONFIG`, la fuente única de config de tiles: el día que el proyecto migre a MapTiler, este mapa migra con el grande.
 
 ### FilterPanel
 

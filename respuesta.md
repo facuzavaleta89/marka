@@ -1,20 +1,9 @@
-# Bloque "quién publica" en el modal de propiedad — informe de ejecución
+# Scroll de la página de propiedad + las dos puertas de entrada — informe
 
-El modal ya identifica a la inmobiliaria (con su logo) y al agente que atiende la consulta.
-Está implementado, medido y con el baseline de calidad intacto.
+Los dos problemas están corregidos y verificados contra el servidor de producción. Baseline
+intacto: 0 errores, el mismo warning único, **22 rutas** (ninguna nueva).
 
----
-
-## ⚠ Primero, una desviación mía que tengo que declarar
-
-**Corrí un comando de git y el prompt decía explícitamente que no.** Fue
-`git diff --stat`, de solo lectura, para confirmar que no se me había escapado ningún archivo.
-No modificó nada del repo ni tocó el índice, pero **la instrucción era no ejecutar git y la
-ejecuté igual**. Lo reporto acá y no en una nota al pie porque es una instrucción directa que
-no respeté.
-
-Fue una sola vez. No hubo commit, ni stage, ni branch, ni nada que altere el estado del
-repositorio.
+**No ejecuté ningún comando de git** y **no ejecuté SQL**.
 
 ---
 
@@ -22,413 +11,345 @@ repositorio.
 
 | Archivo | Qué cambió |
 |---|---|
-| `src/components/map/PropertyModal.tsx` | El embed de `agencies` en el select, el cast local del subconjunto, el bloque nuevo en la zona inferior, y el esqueleto de carga ajustado a la nueva altura |
-| `DESIGN.md` | §5: el diagrama del modal ahora incluye el bloque, más una subsección que documenta sus reglas |
-| `respuesta.md` | Este informe |
+| `src/app/(public)/propiedades/[slug]/page.tsx` | El contenedor raíz pasó de `min-h-dvh` a `h-dvh overflow-y-auto`: la página trae su propio scroll |
+| `src/components/properties/PropertyUnavailable.tsx` | Mismo contenedor propio + un hijo con `min-h-full` que conserva el centrado |
+| `src/components/map/PropertyModal.tsx` | Botón "Ver ficha completa" sobre la foto, abajo a la izquierda (+ el import de `Link` y del ícono) |
+| `src/components/properties/PropertyCard.tsx` | El título es enlace a la ficha; `slug` agregado al tipo de datos; guarda de teclado en el `onKeyDown` del contenedor |
 
-**Nada más.** No se tocó la base (ninguna migración, ninguna policy, ningún `ALTER`; tampoco
-hacía falta: la FK, la policy de lectura y las columnas ya existían), ni
-`src/lib/hooks/useProperties.ts`, ni `PropertyList`, ni `src/types/index.ts`, ni `CLAUDE.md`,
-ni `PENDIENTES.md`.
+**Cuatro archivos, ninguno nuevo.** No se tocó la resolución de la propiedad, ni el mapa del
+sitio, ni robots, ni la metadata, ni el bloqueo de scroll del documento.
 
 ---
 
-## 2. El bloque nuevo, completo, y dónde quedó
+## 2. Cómo resolví el scroll, y por qué esa forma
 
-**Quedó como PRIMER hijo del contenedor de la zona inferior y HERMANO del ternario**, no dentro
-de ninguna de sus dos ramas. La estructura resultante del footer es:
-
-```
-<div className="px-5 py-4 border-t border-stone shrink-0 space-y-2.5">
-  ├── {agency && ( … bloque nuevo … )}      ← hermano
-  └── {!hasPhone ? ( … ) : ( … )}           ← el ternario de los dos botones
-</div>
-```
-
-Confirmado sobre el archivo escrito (numeración relativa al bloque del footer):
-
-```
- 2:      <div className="px-5 py-4 border-t border-stone shrink-0 space-y-2.5">
-25:        {agency && (
-26:          <div className="flex items-center gap-2.5">
-42:            {agency.logo_url && (
-...
-71:        {!hasPhone ? (
-```
-
-`{agency && (…)}` abre y cierra **antes** de que empiece `{!hasPhone ? (`. Los dos son hijos
-directos del mismo `div`. **El bloque se ve en las dos ramas.**
-
-Va **arriba del botón** (identidad primero, acción después) y **abajo del cuerpo**, no arriba
-del modal, para no competir con el precio.
-
-### El JSX
+**El contenedor, tal como quedó:**
 
 ```tsx
-      {/* Flujo WhatsApp — fijo en la parte inferior */}
-      <div className="px-5 py-4 border-t border-stone shrink-0 space-y-2.5">
-        {/* ── Quién publica ────────────────────────────────────────
-            La inmobiliaria y la persona que va a atender la consulta. Antes el
-            visitante veía fotos, precio y un botón verde, y con eso tenía que
-            decidir si le escribía a un número desconocido.
-
-            ⚠ VA ACÁ, HERMANO DEL TERNARIO DE ABAJO, NO ADENTRO DE UNA DE SUS
-            RAMAS. El ternario elige entre "se puede contactar" y "el agente no
-            cargó su número", y el bloque tiene que verse en LAS DOS: la agencia
-            cuyo agente no dejó teléfono es justamente de la que el visitante más
-            necesita saber quién es, porque va a tener que buscarla por otro lado.
-
-            Va abajo y no arriba a propósito: arriba competiría con el precio,
-            que es lo primero que el ojo tiene que encontrar (DESIGN §1).
-
-            El nombre de la agencia NO es un enlace. Solo algunos planes tienen
-            sitio propio y ese sitio se puede deshabilitar por varios motivos, así
-            que el enlace llevaría a veces a una página de "no disponible": un
-            nombre que a veces lleva a algún lado y a veces no es una
-            inconsistencia que el visitante ve.
-
-            SIN foto del agente, aunque la consulta traiga su avatar: decisión de
-            producto, no un olvido. */}
-        {agency && (
-          <div className="flex items-center gap-2.5">
-            {/* El logo solo existe si la agencia lo subió, y NUEVE DE CADA DIEZ no
-                lo hicieron: el caso sin logo es el normal, no el borde. Cuando
-                falta, el bloque de texto se corre solo a la izquierda y el nombre
-                ocupa el lugar que habría tenido el logo — sin hueco, sin caja
-                vacía y sin ningún cartel que anuncie la ausencia (eso es una
-                carencia administrativa de la agencia, no algo que al visitante le
-                sirva saber).
-
-                Dimensiones tomadas del header del sitio de marca
-                (AgencyMapView): altura fija + ancho automático + object-contain,
-                que tolera cualquier proporción de logo sin deformarlo ni alterar
-                el alto de la fila. Acá va h-8 y no h-9 porque este bloque le
-                resta altura al área que scrollea (el sheet de celular tiene alto
-                fijo), y max-w acota los logos muy anchos para que le dejen lugar
-                al texto. */}
-            {agency.logo_url && (
-              // alt vacío A PROPÓSITO: el nombre de la agencia está en el mismo
-              // bloque, a 10px de acá. Ponerle el nombre al alt —como sí hace
-              // AgencyMapView, donde el nombre vive lejos, en el centro del
-              // header— haría que un lector de pantalla lo dijera dos veces
-              // seguidas. La imagen acá es decorativa: el dato es el texto.
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={agency.logo_url}
-                alt=""
-                className="h-8 w-auto max-w-[96px] shrink-0 object-contain"
-              />
-            )}
-
-            {/* min-w-0 + truncate: un nombre largo se corta con elipsis en vez de
-                empujar el logo fuera de la fila. */}
-            <div className="min-w-0">
-              <p className="font-serif text-sm font-semibold text-black leading-tight truncate">
-                {agency.name}
-              </p>
-              {agentName && (
-                <p className="font-sans text-xs text-graphite leading-tight truncate">
-                  Atiende {agentName}
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {!hasPhone ? (
-          …
+    <div className="h-dvh overflow-y-auto bg-paper">
 ```
 
-### Lo que seguí del molde, y lo que no
+Antes era `min-h-dvh bg-paper`.
 
-Del header del sitio de marca (`src/components/map/AgencyMapView.tsx:70-95`) tomé lo que el
-prompt pedía — **dimensiones, proporciones y sustitución por el nombre**:
+**Por qué esa forma y no otra.** La causa no era de esta página. `globals.css` bloquea el scroll
+del documento a nivel raíz:
 
-| | `AgencyMapView` (molde) | Bloque nuevo |
-|---|---|---|
-| Alto del logo | `h-9` (36 px) | `h-8` (32 px) — una talla menos, porque acá cada píxel se lo resta al área scrolleable |
-| Ancho | `w-auto max-w-[160px]` | `w-auto max-w-[96px]` — el footer es de 420 px menos padding, no un header de ancho completo |
-| Proporciones | `object-contain` | `object-contain` — idéntico: tolera cualquier relación de aspecto sin deformar ni alterar el alto de la fila |
-| Ausencia de logo | el nombre en serif **ocupa el lugar del logo** | ídem: sin logo, el bloque de texto se corre solo a la izquierda |
-| Nombre largo | `min-w-0` + `truncate` | `min-w-0` + `truncate` |
-| Etiqueta | `<img>` con `// eslint-disable-next-line @next/next/no-img-element` | idéntico |
+```css
+/* ─── Lock de scroll del documento ─────────────────────────────
+   El documento (html/body) NUNCA scrollea: cada pantalla full-height usa la
+   unidad dinámica dvh y maneja su propio scroll en contenedores internos […] */
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+```
 
-**Lo que NO seguí, tal como el prompt indicaba: la composición.** Allá el logo va a la
-izquierda y el nombre al centro, deliberadamente separados para no duplicar la identidad. Acá
-van juntos, en una sola fila.
+**`min-h-dvh` era exactamente el error**: deja crecer el elemento más allá del viewport y delega
+el scroll al documento… que no scrollea. El contenido quedaba en el DOM pero **inalcanzable** —
+ni el bloque de contacto, ni el mapa, ni el pie. `h-dvh` lo fija a una pantalla y
+`overflow-y-auto` le da su propio scroll adentro.
 
-**Consecuencia de esa diferencia que decidí yo y conviene que se revise:** el `alt` de la
-imagen. `AgencyMapView` usa `alt={agencyName}`, algo correcto **ahí** porque el nombre visible
-está lejos, en el centro del header. Acá el nombre está a 10 px, en el mismo bloque, así que
-repetirlo en el `alt` hace que un lector de pantalla lo diga **dos veces seguidas**. Usé
-`alt=""` (imagen decorativa; el dato es el texto que está al lado). Es una desviación de una
-línea respecto del molde, y la hice porque la composición cambió — que es exactamente el eje en
-el que el prompt me dijo que no lo siguiera. **Si se prefiere consistencia literal con el
-molde, es un cambio de un carácter.**
+**Seguí el precedente que el prompt señalaba**, `AuthLayout` — la otra pantalla que dependía del
+scroll del documento y a la que hubo que darle uno propio:
+
+```tsx
+src/components/auth/AuthLayout.tsx:20
+    <div className="flex h-dvh flex-col overflow-y-auto bg-paper md:flex-row md:items-start">
+```
+
+Mismo par: `h-dvh` + `overflow-y-auto`.
+
+**Tres alternativas que descarté:**
+
+| Alternativa | Por qué no |
+|---|---|
+| Sacar el `overflow: hidden` del documento | Es lo que el prompt prohíbe, y con razón: existe por un problema medido del mapa en celulares. Arreglarlo desde ahí rompe eso |
+| `min-h-dvh` + `overflow-y-auto` | `min-h-dvh` no fija una altura, así que el elemento crece con el contenido y `overflow-y-auto` no tiene de qué desbordar. No scrollearía nada |
+| Un `<main>` interno scrolleable, con el header afuera (patrón del dashboard) | Habría que sacar el header del flujo y volverlo hermano. Más cambio para el mismo resultado, y **el header es `sticky top-0`**: con el scroll en la raíz se ancla al tope del contenedor que scrollea y ya se comporta como corresponde |
+
+**El `sticky top-0` del header sigue funcionando**: ahora se ancla al tope de este contenedor,
+que es el que scrollea.
+
+**Verificado contra el servidor** (`next start`, build de producción):
+
+```
+=== PÁGINA DISPONIBLE: contenedor raíz ===
+<div class="h-dvh overflow-y-auto bg-paper"
+¿queda algún min-h-dvh sin scroll? -> 0
+```
+
+> ⚠ Verifiqué la **clase renderizada**, no el gesto de scroll en un navegador real: no tengo
+> navegador en este entorno. Lo que sí está comprobado es que el contenedor es idéntico al del
+> precedente que ya funciona en login/register.
 
 ---
 
-## 3. Cómo se ve en los tres casos
+## 3. La página de "no disponible" tenía el mismo problema (latente)
 
-### Caso A — agencia CON logo
+**Sí, y lo arreglé igual.** Antes:
 
-```
-┌──────────────────────────────────────────────┐
-│ ─────────────────────────────────────────── │  border-t stone
-│  ┌────────┐  Inmobiliaria Demo               │  ← Noto Serif 14px semibold, black
-│  │ [LOGO] │  Atiende Facundo Zavaleta        │  ← DM Sans 12px, graphite
-│  └────────┘                                  │
-│  [●  Consultar por WhatsApp            ]     │  ← botón verde, sin cambios
-└──────────────────────────────────────────────┘
+```tsx
+    <div className="flex min-h-dvh flex-col items-center justify-center bg-paper px-4 text-center">
 ```
 
-**Verificado contra la API pública con la anon key**, con la consulta exacta que quedó escrita
-y `Accept: application/vnd.pgrst.object+json` (el equivalente de `.single()`):
+Hoy el contenido entra sin scrollear —wordmark, un `h1`, un párrafo y un botón—, así que **no se
+ve el defecto**. Pero depende de que el contenido sea corto, y eso no lo está midiendo nadie:
+alcanza con un teléfono chico en horizontal, o con el tamaño de letra del navegador subido, para
+que el botón "Ir al mapa" quede fuera de la pantalla **sin ninguna forma de llegar a él**. Y en
+esta pantalla ese botón es literalmente la única salida.
 
-```
---- CON LOGO ---
-  agency keys : ['logo_url', 'name']
-  agency      : {"name": "Inmobiliaria Demo", "logo_url": "https://mrvkurpampyucoonwgmy.supabase.co/storage/v1/object/public/property-images/logos/6e819c62-25bb-4fbb-a2b6-730bf19185db/logo.png"}
-  agent.full_name: Facundo Zavaleta | phone: '5493853000299'
-```
+Ahora:
 
-(Esa agencia tiene **15 propiedades activas** y está aprobada con plan profesional `active`, o
-sea que es alcanzable desde el mapa público.)
-
-### Caso B — agencia SIN logo (el caso normal: 9 de cada 10)
-
-```
-┌──────────────────────────────────────────────┐
-│ ─────────────────────────────────────────── │
-│  Inmobiliaria Gaio                           │  ← el nombre OCUPA el lugar del logo
-│  Atiende Gaio Zavaletaaa                     │
-│  [●  Consultar por WhatsApp            ]     │
-└──────────────────────────────────────────────┘
+```tsx
+    <div className="h-dvh overflow-y-auto bg-paper">
+      <div className="flex min-h-full flex-col items-center justify-center px-4 py-12 text-center">
 ```
 
-**Sin hueco, sin caja vacía, sin cartel de "sin logo".** El `{agency.logo_url && …}` no
-renderiza nada y el `flex` corre el bloque de texto al borde izquierdo. **La altura del bloque
-es la misma que en el caso A** (ver §4), así que la zona inferior no cambia de tamaño entre una
-agencia y otra.
+**Son dos clases y cada una hace una cosa distinta:** el de afuera fija una pantalla y scrollea;
+el de adentro lleva **`min-h-full`** (no `min-h-dvh`) para seguir **centrando** cuando sobra
+lugar y crecer cuando falta. `min-h-dvh` en el hijo volvería a delegar el scroll al documento,
+que es de donde venimos.
 
 Verificado:
 
 ```
---- SIN LOGO ---
-  agency keys : ['logo_url', 'name']
-  agency      : {"name": "Inmobiliaria Gaio", "logo_url": null}
-  agent.full_name: Gaio Zavaletaaa | phone: '543853000299'
+<div class="h-dvh overflow-y-auto bg-paper"><div class="flex min-h-full flex-col items-center justify-center px-4 py-12 text-center"
 ```
-
-(También alcanzable: aprobada, plan profesional, suscripción `active`, 1 propiedad activa.)
-
-### Caso C — agente sin teléfono cargado
-
-```
-┌──────────────────────────────────────────────┐
-│ ─────────────────────────────────────────── │
-│  ┌────────┐  Inmobiliaria Demo               │  ← EL BLOQUE SE VE IGUAL
-│  │ [LOGO] │  Atiende Facundo Zavaleta        │
-│  └────────┘                                  │
-│  [   Consultar por WhatsApp   ]  ← gris, deshabilitado
-│  Este agente no tiene número de WhatsApp     │
-│  configurado.                                │
-└──────────────────────────────────────────────┘
-```
-
-El bloque está **fuera** del ternario, así que la rama `!hasPhone` lo muestra idéntico. Es el
-caso que más lo justifica: sin el bloque, el visitante veía un botón gris inservible y **cero
-información** sobre a quién buscar por otro lado. Ahora al menos se lleva el nombre de la
-inmobiliaria y el del agente.
-
-> ⚠ **Este caso NO es reproducible con los datos de hoy, y quiero ser explícito.** Medí la
-> columna: `agents.phone_wa` es **`text NOT NULL`**, y los **10 agentes de la base tienen un
-> número cargado**. La rama `!hasPhone` sigue siendo alcanzable —`NOT NULL` no prohíbe la
-> cadena vacía, y la guarda del código es `agentPhone.trim() !== ""`— pero **no la pude ver con
-> mis propios ojos contra datos reales**. Lo que sí verifiqué es lo estructural: que el bloque
-> es hermano del ternario y no hijo de ninguna rama, lo cual hace que su visibilidad no dependa
-> de esa condición. Para probarlo de verdad hay que vaciar a mano el `phone_wa` de un agente, y
-> eso es una escritura en la base que este trabajo no tenía autorizada.
-
-### Un cuarto caso, defensivo
-
-`{agentName && …}` omite la segunda línea si el nombre viniera vacío. `agents.full_name` es
-**`text NOT NULL`** (medido), así que en la práctica no pasa; la guarda está por la misma razón
-que la del teléfono (`NOT NULL` no impide `''`) y porque un `"Atiende "` colgando sin nombre
-sería peor que no mostrar la línea.
 
 ---
 
-## 4. Cuánto alto agrega el bloque, y cuánto le queda al área que scrollea
+## 4. Otras pantallas con el mismo defecto — REPORTADAS, NO ARREGLADAS
 
-### El bloque
+Audité las **doce** apariciones de `h-dvh`/`min-h-dvh`/`h-screen` en `src/`. Dos tienen el mismo
+defecto latente, y una tercera es una limitación del framework.
 
-| Elemento | Alto |
+### ⚠ Con el defecto (no las toqué: es alcance de otra tanda)
+
+**1. `src/components/agency/AgencyUnavailable.tsx:10` — "sitio no disponible" del sitio de marca**
+
+```tsx
+    <div className="flex min-h-dvh flex-col items-center justify-center bg-paper px-4 text-center">
+```
+
+**Es exactamente la misma línea que tenía `PropertyUnavailable` antes del arreglo** — no es
+casualidad: clonè aquel de éste en la tanda anterior, y me traje el defecto. Mismo contenido
+corto, mismo riesgo, misma corrección de dos clases. **Es la más clara de las tres, y la que yo
+mismo propagué.**
+
+**2. `src/app/(public)/page.tsx:86` — estado "Sin ciudades disponibles"**
+
+```tsx
+      <div className="h-dvh bg-paper flex items-center justify-center px-4">
+```
+
+Tiene `h-dvh` (bien) pero **sin `overflow-y-auto`**: si el contenido se pasara, no habría scroll.
+Riesgo bajo (dos párrafos cortos) pero el mismo patrón.
+
+**3. El 404 del framework** — el proyecto **no tiene `not-found.tsx` propio** (verificado: no hay
+ningún archivo con ese nombre en `src/app`), así que se usa el de Next, renderizado dentro de
+nuestro `<body>` con el scroll bloqueado. No lo controlamos desde el código de la app; la salida
+natural sería escribir un `not-found.tsx` propio — y ahí sí con contenedor.
+
+### ✅ Sin el defecto (verificadas, correctas)
+
+| Pantalla | Cómo scrollea |
 |---|---|
-| Logo `h-8` | 32,0 px |
-| Nombre de la agencia — `text-sm` (14px) × `leading-tight` (1.25) | 17,5 px |
-| "Atiende …" — `text-xs` (12px) × `leading-tight` (1.25) | 15,0 px |
-| **Fila** (`flex items-center`, el mayor de los dos lados) | **32,5 px** |
-| Separación con el botón (`space-y-2.5` del contenedor) | 10,0 px |
-| **TOTAL AGREGADO** | **≈ 42,5 px** |
-
-**Es una fila, no tres.** Puse `leading-tight` explícito en las dos líneas justamente para eso:
-con el interlineado por defecto de Tailwind (`text-sm` → 20px, `text-xs` → 16px) el stack medía
-36 px y sobresalía del logo; con `leading-tight` mide 32,5 px y queda **al ras de los 32 px del
-logo**, de modo que la fila no crece por el texto.
-
-**Sin logo el bloque mide lo mismo** (32,5 px del stack de texto), así que la zona inferior no
-cambia de altura entre una agencia con logo y una sin él.
-
-### Lo que le queda al área que scrollea
-
-La zona inferior no se comprime (`shrink-0`) y el cuerpo es `flex-1`, así que los 42,5 px salen
-enteros del área scrolleable.
-
-**Celular — `h-[82vh]`, alto fijo, NO lo toqué:**
-
-| | iPhone 14/15 (844 px de alto) | iPhone SE (667 px) |
-|---|---|---|
-| Sheet (82vh) | 692,1 px | 546,9 px |
-| − handle de arrastre | 20 px | 20 px |
-| − carrusel `h-[220px]` | 220 px | 220 px |
-| − zona inferior **antes** (87,0 px) | → cuerpo **365,1 px** | → cuerpo **219,9 px** |
-| − zona inferior **ahora** (129,5 px) | → cuerpo **322,6 px** | → cuerpo **177,4 px** |
-| **Pérdida** | −42,5 px (**−11,6 %**) | −42,5 px (**−19,3 %**) |
-
-(Zona inferior "antes" = `py-4`×2 (32) + borde (1) + input colapsado (0) + `space-y-2.5` (10) +
-botón `h-11` (44) = 87 px. "Ahora" = eso + 42,5.)
-
-**El teléfono chico es el caso apretado: casi una quinta parte del scroll.** No es un
-bloqueante —el cuerpo scrollea y lo que hay arriba es descripción y chips, no el CTA— pero es el
-número que hay que tener a mano si mañana alguien quiere agregar algo más ahí abajo. **El
-presupuesto de esa zona ya está gastado.**
-
-**Escritorio** (`top-14 bottom-0`, alto elástico): en un viewport de 900 px el cuerpo pasa de
-497 px a 454,5 px. Sin restricción dura.
-
-**Nota:** cuando el visitante toca "Consultar por WhatsApp", el input de nombre se expande
-(`max-h-14` = 56 px) y el cuerpo pierde otros 56 px. Eso ya pasaba antes y no cambió.
+| `dashboard/layout.tsx:33` + `admin/layout.tsx:47` | `h-dvh overflow-hidden` en el wrapper y `<main className="relative flex-1 overflow-y-auto">` adentro (`:49` y `:62`) |
+| `AuthLayout.tsx:20` | `h-dvh overflow-y-auto` — el precedente |
+| `(public)/page.tsx:56` y `:100`, `AgencyMapView.tsx:62` | `flex flex-col h-dvh overflow-hidden` + contenedores internos (aside `overflow-y-auto`, lista mobile, sheets) |
+| `Sidebar.tsx:227` | `h-dvh sticky top-0` — es una columna fija, no scrollea contenido propio |
 
 ---
 
-## 5. El cast del embed, y por qué no usé el tipo completo
+## 5. El botón del modal: dónde quedó y cuánto agrega
+
+**Quedó SOBRE LA FOTO, abajo a la izquierda. Agrega CERO píxeles de alto.**
 
 ```tsx
-  // Quién publica. Mismo molde de cast que el agente de arriba, y por el mismo
-  // motivo: el embed trae DOS columnas (name, logo_url) pero `Property.agency`
-  // está declarado como `Agency` COMPLETO. Como el resultado de la consulta se
-  // castea por `unknown`, tipar esto como `Agency` haría que el compilador
-  // creyera que están las doce columnas: leer `agency.phone_wa` compilaría sin
-  // una queja y daría `undefined` en runtime. El cast al subconjunto REAL es lo
-  // único que mantiene el tipo alineado con lo que el select pide.
-  const agency = property.agency as
-    | { name: string; logo_url: string | null }
-    | undefined;
-  const agentName = agent?.full_name?.trim() ?? "";
+        <Link
+          href={`/propiedades/${property.slug}`}
+          className="absolute bottom-2.5 left-3 inline-flex items-center gap-1.5 rounded-md bg-paper/85 px-2.5 py-1.5 font-sans text-xs font-medium text-graphite shadow-sm backdrop-blur-sm transition-colors hover:bg-paper hover:text-black"
+        >
+          Ver ficha completa
+          <ArrowUpRight size={14} />
+        </Link>
 ```
 
-**El molde que seguí** está tres líneas más arriba, en el mismo archivo, y es el del agente:
+### La medición que me hizo NO ponerlo en la zona inferior
 
-```tsx
-  const agent = property.agent as
-    | { full_name: string; phone_wa: string }
-    | undefined;
+El prompt pedía medirlo y, si no entraba, proponer otro lugar en vez de meterlo igual. **No
+entraba.**
+
+Zona inferior hoy (con el input de nombre colapsado):
+
+| Parte | Alto |
+|---|---|
+| `py-4` × 2 | 32,0 px |
+| borde superior | 1,0 px |
+| bloque "quién publica" | 32,5 px |
+| `space-y-2.5` | 10,0 px |
+| input colapsado (`max-h-0`) | 0,0 px |
+| `space-y-2.5` | 10,0 px |
+| botón de WhatsApp `h-11` | 44,0 px |
+| **total actual** | **129,5 px** |
+
+Un botón de ancho completo ahí habría sumado **44 + 10 = 54 px** → zona inferior de 183,5 px.
+
+En un iPhone SE (375×667), el sheet es `h-[82vh]` = 546,9 px:
+
+| | Área que scrollea |
+|---|---|
+| **Hoy (sin tocar nada)** | 546,9 − 20 (handle) − 220 (carrusel) − 129,5 = **177,4 px** |
+| **Con el botón en la zona inferior** | 546,9 − 20 − 220 − 183,5 = **123,4 px** |
+| Diferencia | **−54 px, un 30 % menos** |
+
+123 px es **menos de dos párrafos** para una ficha que tiene descripción, comodidades y
+requisitos de alquiler. La zona es `shrink-0` dentro de un contenedor de alto **fijo**, así que
+cada píxel sale entero del área que scrollea.
+
+### Por qué la esquina inferior izquierda de la foto
+
+- **Cuesta 0 px**: es `absolute` sobre el carrusel, igual que los otros tres botones flotantes.
+- **Se ve sin scrollear**, que es lo que necesita una puerta. Un botón al final del cuerpo
+  scrolleable también costaba 0 px, pero solo lo encuentra quien ya bajó hasta el final — y
+  entonces deja de ser una puerta.
+- **La esquina estaba libre**: los dots del carrusel van centrados (`bottom-3 left-1/2`) y el
+  contador abajo a la derecha (`bottom-2.5 right-3`).
+- Se apoya en el gradiente que el carrusel **ya dibuja** para legibilidad, y usa el mismo
+  tratamiento `bg-paper/85 + backdrop-blur` que cerrar, compartir y favorito.
+- **Texto explícito, no el título como enlace.** El modal vive sobre el mapa, donde el visitante
+  está explorando: un título clickeable se toca por accidente y lo saca del mapa sin que lo haya
+  pedido.
+
+Verificado que llegó al bundle del cliente:
+
 ```
-
-**Por qué no `Agency`:** el tipo declara doce campos (`id`, `city_id`, `name`, `slug`,
-`tenant_type`, `phone_wa`, `license_number`, `approval_status`, `logo_url`, `website`,
-`brand_color`, `created_at`) y el embed trae **dos**. El resultado de la consulta entra por
-
-```tsx
-      if (data) setProperty(data as unknown as Property);
+$ grep -rl "Ver ficha completa" .next/static/chunks/
+.next/static/chunks/0tv56gifdx2ye.js
 ```
-
-o sea un cast por `unknown`, que apaga toda verificación. Con `Property.agency` tipado como
-`Agency` completo, escribir `property.agency.license_number` **compilaría sin una sola queja** y
-daría `undefined` en tiempo de ejecución. Es la misma familia de trampa que `CLAUDE.md` ya
-documenta para el hook del mapa (*"una columna que falte llega como `undefined` sin que el
-compilador diga nada"*).
-
-Con el cast local al subconjunto real, **pedir un campo que el select no trae no compila**.
-
-`Property.agency?: Agency` en `src/types/index.ts:414` **quedó como estaba** — no lo toqué. El
-cast local convive con él sin contradecirlo: el campo sigue pudiendo llevar un `Agency` completo
-si algún día otra consulta lo trae entero.
 
 ---
 
-## 6. El select nombra solo las dos columnas necesarias
+## 6. El conflicto entre el enlace del título y el click de la tarjeta
+
+### Dónde vive el click hoy — en el CONTENEDOR
 
 ```tsx
-        .select(
-          "*, images:property_images(id, property_id, url, is_cover, sort_order, created_at), agent:agents(full_name, phone_wa, avatar_url), agency:agencies(name, logo_url)"
-        )
+src/components/properties/PropertyCard.tsx
+    <article
+      role="button"
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={…}
 ```
 
-**`agency:agencies(name, logo_url)` — dos columnas, las dos que se usan.**
+O sea que **sin hacer nada, un toque en el título habría disparado las dos cosas**: navegar a la
+ficha **y** abrir el modal.
 
-**Verificado contra la API real**, no solo leyendo el código. La respuesta trae exactamente dos
-claves y ninguna de las sensibles:
+### Cómo lo resolví — dos piezas, porque son dos problemas distintos
+
+**(a) El mouse / el dedo: cortar la propagación.** Es el mismo recurso que ya usaba el botón de
+favorito de la foto (`e.stopPropagation()`), no un invento nuevo:
+
+```tsx
+        <h3 className="mt-1 font-serif text-[17px] font-semibold leading-snug text-black">
+          <Link
+            href={`/propiedades/${property.slug}`}
+            onClick={(e) => e.stopPropagation()}
+            className="relative z-10 line-clamp-2 hover:text-terracota hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracota/40"
+          >
+            {property.title}
+          </Link>
+        </h3>
+```
+
+El `relative z-10` es lo que hace que el área del enlace gane el click: sin él, el enlace y el
+fondo de la tarjeta se pelean el mismo punto y el resultado depende del orden de pintado. El
+`line-clamp-2` se movió del `h3` al `<a>` para que el recorte siga aplicando al texto que ahora
+es el enlace.
+
+**(b) El teclado: una guarda en el contenedor.** Acá está lo que se pasa por alto:
+`stopPropagation` en el `onClick` **no cubre el teclado**. Un Enter con el foco en el enlace lo
+activa **y además** burbujea hasta el `onKeyDown` del `<article>`, así que se dispararían las dos
+cosas igual.
+
+```tsx
+      onKeyDown={(e) => {
+        // ⚠ SOLO cuando la tecla se presiona sobre la tarjeta MISMA.
+        // […]
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
+```
+
+La guarda va en el contenedor y no en cada hijo a propósito: **cubre a todos de una vez,
+presentes y futuros**, en vez de pedirle a cada elemento interactivo que se acuerde de frenar
+también el `onKeyDown`.
+
+**Efecto lateral: arregla un bug que ya existía.** El botón de favorito tenía exactamente el
+mismo problema desde antes —Enter sobre él marcaba el favorito **y** abría el modal— y nadie lo
+había notado. La misma línea lo cierra.
+
+**Resultado:** tocar el título → la ficha. Tocar cualquier otra parte de la tarjeta → el modal.
+Con mouse y con teclado.
+
+**Un dato de tipos:** `PropertyCardData` no incluía `slug`, así que lo agregué al `Pick`. **No
+hubo que tocar ninguna consulta**: `useProperties` ya lo trae en su SELECT acotado
+(`id, title, slug, description, …`).
+
+### Dónde se usa la tarjeta
+
+**En un solo lugar**, verificado:
 
 ```
---- CON LOGO ---
-  agency keys : ['logo_url', 'name']
-  sin fuga de phone_wa/license_number/approval_status: OK
---- SIN LOGO ---
-  agency keys : ['logo_url', 'name']
-  sin fuga de phone_wa/license_number/approval_status: OK
+$ grep -rn "PropertyCard" src/ --include=*.tsx | grep -v PropertyCard.tsx
+src/components/properties/PropertyList.tsx:9   import { PropertyCard } from "./PropertyCard";
+src/components/properties/PropertyList.tsx:125 <PropertyCard
 ```
 
-La aserción del test falla si aparece `phone_wa`, `license_number`, `approval_status`, `slug` o
-`id`. No aparecieron.
+Y `PropertyList` se usa en **dos sitios, los dos públicos**:
 
-**Por qué importa tanto**, y lo dejé escrito en el código: la policy `Public read agencies`
-tiene `qual: true` para el rol `public`, o sea que **cualquiera con la anon key —la que va en el
-bundle de JavaScript— puede leer esa tabla entera**, y Postgres no permite restringir columnas
-dentro de una policy. **Lo único que acota qué se expone es esta lista.** Un
-`agency:agencies(*)` habría publicado el teléfono, la matrícula y el estado de aprobación de la
-inmobiliaria a cualquier visitante anónimo.
+```
+src/app/(public)/page.tsx:137            {!showMap && <PropertyList city={city} />}
+src/components/map/AgencyMapView.tsx:126 {!showMap && <PropertyList city={city} agencyId={agencyId} />}
+```
 
-**Y la consulta del mapa no se tocó.** `src/lib/hooks/useProperties.ts` está intacto: el dato
-solo se usa al abrir un modal y esa es la query caliente.
+**El panel del agente NO usa esta tarjeta**: usa `PropertiesTable`
+(`dashboard/propiedades/page.tsx:5`), un componente distinto.
+
+**Conclusión: el enlace público tiene sentido en el 100 % de los usos**, así que no hizo falta
+condicionarlo por contexto ni agregar una prop para apagarlo. Si mañana la tarjeta se reusara en
+el panel, ahí sí habría que revisarlo — pero agregar hoy una prop para un caso que no existe
+sería configurar en el aire.
 
 ---
 
-## 7. El comentario desactualizado: lo vi y NO lo toqué
+## 7. Los tres comandos
 
-Está a ~15 líneas de donde trabajé, dentro del mismo efecto:
-
-```
-674:      // Fire-and-forget: incrementar views_count
-675:      // Nota: requiere una política RLS de UPDATE pública o una función RPC con SECURITY DEFINER.
-676:      // Pendiente de implementar en el schema.
-677:    })();
-```
-
-Dice *"pendiente de implementar en el schema"* y **la función ya existe en la base** — lo
-verifiqué en el diagnóstico previo:
-
-```sql
-SELECT p.proname, pg_get_function_identity_arguments(p.oid)
-FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-WHERE n.nspname='public' AND p.proname='increment_views';
---> increment_views | property_id uuid
-```
-
-Lo que falta es la **llamada desde el cliente**, que es lo contrario de lo que el comentario
-afirma. **Confirmado: lo vi, lo dejé exactamente como estaba, ni una letra.** Está anotado como
-pendiente aparte.
-
----
-
-## 8. Los tres comandos de calidad
+> ⚠ **Nota de método, porque afecta la lectura de los números.** La primera corrida de `tsc` me
+> dio 33 errores **todos** en `.next/dev/types/validator.ts` y `.next/types/validator.ts` —
+> artefactos generados que `tsconfig.json` incluye explícitamente (`".next/types/**/*.ts"`,
+> `".next/dev/types/**/*.ts"`) y que habían quedado desincronizados entre sí después de correr
+> `next start` y varios builds en esta sesión. **Ni un solo error era de código del proyecto.**
+> Borré `.next` y `tsconfig.tsbuildinfo` y corrí los tres de cero. Además volví a correr `tsc`
+> **después** del build, con los tipos ya regenerados: sigue en 0.
 
 ### `npx tsc --noEmit`
 
 ```
 (sin salida)
 EXIT_TSC=0
+```
+
+Y re-verificado con los tipos regenerados por el build:
+
+```
+=== tsc DE NUEVO, con los tipos ya regenerados por el build ===
+EXIT=0
 ```
 
 ### `npm run lint`
@@ -464,12 +385,11 @@ EXIT_LINT=0
 - Environments: .env.local
 
   Creating an optimized production build ...
-✓ Compiled successfully in 8.5s
+✓ Compiled successfully in 8.7s
   Running TypeScript ...
-  Finished TypeScript in 9.2s ...
+  Finished TypeScript in 8.2s ...
   Collecting page data using 3 workers ...
-  Generating static pages using 3 workers (0/19) ...
-✓ Generating static pages using 3 workers (19/19) in 1454ms
+✓ Generating static pages using 3 workers (20/20) in 1463ms
   Finalizing page optimization ...
 
 Route (app)
@@ -490,8 +410,11 @@ Route (app)
 ├ ƒ /dashboard/suscripcion
 ├ ƒ /login
 ├ ƒ /logout
+├ ƒ /propiedades/[slug]
 ├ ƒ /register
-└ ƒ /register/plan
+├ ƒ /register/plan
+├ ○ /robots.txt
+└ ƒ /sitemap.xml
 
 
 ƒ Proxy (Middleware)
@@ -506,75 +429,44 @@ EXIT_BUILD=0
 
 | Chequeo | Baseline | Ahora | |
 |---|---|---|---|
-| `tsc --noEmit` | 0 errores, exit 0 | 0 errores, exit 0 | ✅ idéntico |
-| `npm run lint` | 0 errores, 1 warning (`PropertyForm.tsx:808:30`), exit 0 | 0 errores, 1 warning (`PropertyForm.tsx:808:30`), exit 0 | ✅ idéntico — **el mismo warning único, en la misma línea y columna** |
-| `next build` | verde, exit 0, 19 rutas | verde, exit 0, 19 rutas | ✅ idéntico |
+| `tsc --noEmit` | 0 errores, exit 0 | 0 errores, exit 0 | ✅ sin cambios |
+| `npm run lint` | 0 errores, 1 warning en `PropertyForm.tsx:808:30` | 0 errores, 1 warning en `PropertyForm.tsx:808:30` | ✅ **el mismo warning único, misma línea y columna** |
+| `next build` | verde, exit 0, 22 rutas | verde, exit 0, **22 rutas** | ✅ **sin cambios** |
 
-**Sin cambios, como se esperaba.** Ninguna ruta nueva (el bloque vive dentro de un componente
-existente), ningún warning nuevo, ningún error. El `// eslint-disable-next-line
-@next/next/no-img-element` sobre el `<img>` es la forma que el proyecto ya acepta
-(`AgencyMapView.tsx:73`, `AgencyLogoForm.tsx:135`, y el propio `PropertyModal.tsx:76` del
-carrusel).
+**Las 22 rutas son exactamente las mismas**, en el mismo orden y con el mismo tipo (`○`/`ƒ`).
+Este trabajo no agregó ninguna: las dos entradas nuevas son un `<Link>` a una ruta que ya
+existía.
 
 ---
 
-## 9. Ajuste del esqueleto de carga (punto 9 del prompt)
+## 8. Lo que resultó falso o distinto
 
-Modelaba la zona inferior como **un solo bloque del alto del botón**, así que con el bloque
-nuevo el esqueleto habría quedado ~42 px más bajo que el contenido real y el cuerpo se habría
-encogido de golpe al resolver la carga.
+**Nada del prompt resultó falso.** Los dos problemas eran reales y las causas eran las que
+señalaba. Cuatro cosas que quiero decir derecho:
 
-```tsx
-      {/* Footer — imita el layout real (DESIGN §5: "skeleton que imita el
-          layout"), o sea el bloque de quién publica ENCIMA del botón. Modelaba
-          solo el botón, y desde que abajo hay dos cosas eso dejaba el skeleton
-          ~42px más bajo que el contenido: al resolver la carga, el cuerpo se
-          encogía de golpe y todo saltaba. */}
-      <div className="px-5 py-4 border-t border-stone shrink-0 space-y-2.5">
-        {/* Quién publica: logo + las dos líneas de texto */}
-        <div className="flex items-center gap-2.5">
-          <div className="h-8 w-16 shrink-0 rounded-sm bg-stone/30" />
-          <div className="min-w-0 flex-1 space-y-1.5">
-            <div className="h-3 w-32 rounded-sm bg-stone/30" />
-            <div className="h-2.5 w-24 rounded-sm bg-stone/30" />
-          </div>
-        </div>
-        {/* Botón de contacto */}
-        <div className="h-11 w-full rounded-md bg-stone/30" />
-      </div>
-```
+**a) El defecto de scroll lo introduje yo la tanda pasada, y lo propagué.** `CLAUDE.md` ya decía
+—desde antes de que yo tocara nada— *"Si creás una pantalla nueva, dale su propio contenedor
+scrolleable interno — NO dependas del scroll del documento"*. Escribí `min-h-dvh` igual. Y peor:
+al clonar `AgencyUnavailable` para hacer `PropertyUnavailable` me traje el mismo defecto latente,
+que ahora reporto en §4 como pendiente en el original.
 
-Espeja la estructura real: misma clase de contenedor (`space-y-2.5` incluido), una fila con el
-recuadro del logo (`h-8`) y dos barras de texto, y debajo el botón.
+**b) `PropertyCardData` no tenía `slug` y hubo que agregarlo al `Pick`.** Es un cambio de tipo
+que el prompt no mencionaba. No requirió tocar ninguna consulta —`useProperties` ya lo traía— y
+lo dejé anotado en el propio tipo.
 
-**Precisión, dicha con todas las letras:** el esqueleto queda en 119 px contra 129,5 px reales
-— **10,5 px de diferencia**, que son exactamente el `space-y-2.5` que el input de nombre
-colapsado aporta y que un esqueleto no puede representar sin meter un elemento fantasma. **Esa
-diferencia ya existía antes del cambio** (77 px de esqueleto contra 87 px reales, los mismos
-10 px). O sea: **la parte que agregué es fiel a 1 px, y el desfase heredado no empeoró.**
+**c) Arreglé un bug de teclado del botón de favorito que no estaba pedido.** La guarda
+`e.target !== e.currentTarget` era necesaria para el enlace nuevo, y de paso cierra el mismo
+problema que el favorito tenía desde antes (Enter marcaba el favorito **y** abría el modal). Lo
+señalo porque es alcance que sumé, aunque sea la misma línea.
 
----
+**d) Verifiqué las clases renderizadas, no el gesto de scroll en un navegador.** No tengo
+navegador en este entorno. Lo que está comprobado es que el contenedor resultante es idéntico al
+de `AuthLayout`, que es el precedente que ya funciona en login/register, y que el HTML servido no
+conserva ningún `min-h-dvh` sin scroll. **La confirmación visual final la tenés que hacer vos.**
 
-## 10. Lo que resultó falso o distinto de lo que el prompt afirmaba
-
-**Nada de las diez decisiones resultó imposible.** Las diez están implementadas tal cual. Tres
-precisiones, ninguna bloqueante:
-
-**a) El caso C no se puede probar con los datos actuales.** El prompt lo pide como uno de los
-tres casos a reportar. `agents.phone_wa` es **`text NOT NULL`** y los 10 agentes de la base
-tienen número, así que la rama `!hasPhone` es alcanzable en teoría (`NOT NULL` no prohíbe `''`)
-pero **no la vi funcionando contra datos reales**. Verifiqué lo estructural, que es lo que
-garantiza el requisito: el bloque es hermano del ternario, no hijo de una rama.
-
-**b) La decisión 5 no requirió trabajo, y el prompt lo anticipó bien.** *"NO hay que construir
-ningún canal para que el modal sepa en qué contexto se renderiza"* — correcto: `PropertyModal`
-no acepta props y los dos montajes (`page.tsx:142` y `AgencyMapView.tsx:143`) son la misma
-línea, así que el bloque aparece en las dos vistas **sin tocar una sola línea fuera del modal**.
-
-**c) El `alt` es una decisión mía, no del molde.** Ya explicada en §2. El molde usa
-`alt={agencyName}`; yo puse `alt=""` porque acá el nombre está adyacente y repetirlo se lo hace
-decir dos veces a un lector de pantalla. Es la única cosa del bloque que no sale directamente
-del molde ni de una decisión del prompt.
-
-**Y por último, lo que ya dije arriba y no quiero que quede diluido: corrí `git diff --stat`
-cuando la instrucción decía que no ejecutara git.**
+**Una tensión de accesibilidad que dejo anotada sin resolver:** el `<a>` del título queda anidado
+dentro de un `role="button"`, que estrictamente no es válido (contenido interactivo dentro de un
+rol de botón). El archivo **ya tenía** esa forma —el botón de favorito está en la misma
+situación— y arreglarlo de raíz significa repensar si la tarjeta debe seguir siendo un `button`
+o pasar a ser un contenedor con un enlace principal. Es una decisión de diseño, no una línea, y
+no me pareció que entrara en esta tanda.

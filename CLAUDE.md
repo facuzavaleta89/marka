@@ -1049,10 +1049,13 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=     # Requerido: registro de agentes + suscripciones
 ADMIN_USER_ID=                 # Requerido para /admin: auth.uid() (UUID) del dueño de la plataforma. Server-side (sin NEXT_PUBLIC_). Fail-closed: si falta, /admin deniega a todos
+NEXT_PUBLIC_SITE_URL=          # ⚠ REQUERIDA PARA QUE EL PROYECTO ARRANQUE. Dirección pública del sitio, SIN barra al final (ej: https://marka.com.ar; en local http://localhost:3000). La leen metadataBase (disposición raíz), la página pública de la propiedad (canónica + enlace a compartir), el mapa del sitio y robots.txt. Si falta, src/lib/utils/siteUrl.ts LANZA a propósito
 NEXT_PUBLIC_MAPTILER_KEY=      # Opcional
 GEOCODING_USER_AGENT=          # Opcional pero MUY recomendado en producción: User-Agent con contacto para el buscador de direcciones (política de Nominatim). Server-side (sin NEXT_PUBLIC_). Si falta, se usa un default que identifica la app pero no lleva dirección de contacto
 GEOCODING_SIMULATE_OUTAGE=     # ⚠ SOLO PRUEBA LOCAL, NUNCA EN PRODUCCIÓN. Server-side (sin NEXT_PUBLIC_). Con cualquier valor distinto de vacío/"0"/"false", TODA búsqueda de direcciones devuelve "servicio no disponible" sin salir a la red. Existe para verificar a mano que una caída del buscador no rompe el alta ni la edición de propiedades (cortar internet no sirve: también corta Supabase y entonces no se puede guardar nada). Ausente = apagado
 ```
+
+**`NEXT_PUBLIC_SITE_URL` es la única variable que CORTA si falta**, y es deliberado: `siteUrl.ts` lanza en vez de caer a un valor por defecto. La alternativa —caer a `http://localhost:3000` para que "ande igual"— es el peor de los dos mundos, porque el sitio construiría bien y **publicaría direcciones de localhost en la vista previa de los enlaces compartidos y en el mapa del sitio**, sin que nada avise; un fallo al construir se ve, una dirección equivocada indexada por Google no. ⚠ **No usar `VERCEL_URL`**: apunta al despliegue concreto, no al dominio, y cambia en cada publicación y en cada vista previa.
 
 **Las dos del buscador de direcciones, en una línea:** ninguna es obligatoria para que la app arranque (la feature es un atajo). En **producción hay que setear `GEOCODING_USER_AGENT`** con una identificación que incluya contacto —lo pide la política de Nominatim— y **`GEOCODING_SIMULATE_OUTAGE` no debe existir**; es de uso local y mientras esté puesta ninguna búsqueda funciona. Ver "Ubicación de la propiedad".
 

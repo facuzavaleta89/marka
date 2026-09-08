@@ -1,20 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
   X, MapPin, Bed, Bath, Square, Heart, ImageOff,
-  ChevronLeft, ChevronRight, MessageCircle, Send,
-  Waves, Beef, Flame, Dumbbell, Users, ShieldCheck, BellRing,
-  WashingMachine, Sun, Trees, Umbrella, Car, Sailboat, Ship,
-  Landmark, Briefcase, Tag,
+  ChevronLeft, ChevronRight, MessageCircle, Send, ArrowUpRight,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 import { useMapFilters } from "@/store/mapFiltersStore";
 import { useFavorites } from "@/lib/hooks/useFavorites";
+import { createClient } from "@/lib/supabase/client";
 import { generateWaUrl } from "@/lib/utils/waMessage";
 import { formatPrice } from "@/lib/utils/formatPrice";
 import { getActiveOperations } from "@/lib/utils/propertyOperations";
+import { registerLead, LEAD_ERROR_MESSAGE } from "@/lib/utils/registerLead";
+import { AMENITY_ICONS, AMENITY_FALLBACK_ICON } from "@/lib/utils/amenityIcons";
+import { propertyUrl } from "@/lib/utils/siteUrl";
+import { ShareButton } from "@/components/properties/ShareButton";
 import {
   PROPERTY_TYPE_LABELS,
   OPERATION_TYPE_LABELS,
@@ -22,28 +23,11 @@ import {
   RENT_REQUIREMENT_LABELS,
 } from "@/lib/utils/labels";
 import { cn } from "@/lib/utils";
-import type { Property, PropertyImage, Amenity } from "@/types";
+import type { Property, PropertyImage } from "@/types";
 
-// ─── Íconos de amenities (16px graphite en los chips) ─────────
-// El ícono es una decisión de UI; las etiquetas viven en labels.ts.
-const AMENITY_ICONS: Record<Amenity, LucideIcon> = {
-  pileta: Waves,
-  quincho: Beef,
-  parrilla: Flame,
-  gym: Dumbbell,
-  sum: Users,
-  seguridad_24h: ShieldCheck,
-  portero: BellRing,
-  laundry: WashingMachine,
-  solarium: Sun,
-  jardin: Trees,
-  terraza: Umbrella,
-  cochera_cubierta: Car,
-  vista_al_rio: Sailboat,
-  vista_al_mar: Ship,
-  apto_credito: Landmark,
-  apto_profesional: Briefcase,
-};
+// La tabla de íconos de amenities SE MUDÓ a @/lib/utils/amenityIcons: la página
+// pública de la propiedad muestra los mismos chips, y son dieciséis entradas
+// exhaustivas por tipo que no se pueden duplicar sin que se desincronicen.
 
 // ─── Carrusel de imágenes ─────────────────────────────────────
 
@@ -244,43 +228,31 @@ function ModalContent({
     setSending(true);
     setLeadError(false);
 
-    const supabase = createClient();
-
-    // Registrar lead (la política RLS permite INSERT público).
-    //
-    // ⚠ EL ERROR SE CAPTURA, PERO NO BLOQUEA. Esto era un `await` pelado, sin
-    // `const { error } =`: un rechazo de la policy, una caída de red o una
-    // agencia que dejó de ser públicamente visible entre el render y el click
-    // producían EXACTAMENTE la misma pantalla que el éxito — se abría WhatsApp y
-    // la agencia nunca se enteraba de que hubo una consulta. Mismo defecto que
-    // ya se corrigió en ImageUploader.handleRemove, y misma forma de resolverlo:
-    // se captura el error y se muestra, sin abortar la operación principal.
-    //
-    // La operación principal ACÁ es el contacto, no el registro: el lead es para
-    // la agencia, no para el visitante, y no puede ser la razón por la que
-    // alguien no llegue a escribirle a una inmobiliaria. Por eso el window.open
-    // va después, incondicionalmente.
-    //
-    // NO se manda `agent_name`: lo escribe la base (trigger
-    // trg_set_lead_agent_name). Si viajara en este payload sería un dato que el
-    // visitante controla —`leads` no tiene ningún CHECK y la policy de inserción
-    // no puede validar una columna de texto—, o sea que cualquiera podría
-    // escribir lo que quisiera en la columna "Agente" del panel de una agencia.
-    const { error: leadInsertError } = await supabase.from("leads").insert({
-      property_id: property.id,
-      agent_id: property.agent_id,
-      agency_id: property.agency_id,
-      contact_name: userName.trim(),
-      source: "whatsapp",
+    // Registrar la consulta. El insert SE MUDÓ a @/lib/utils/registerLead cuando
+    // apareció la segunda pantalla que contacta por WhatsApp (la página pública
+    // de la propiedad): ahí viven, escritas, las cuatro decisiones que lleva
+    // encima —y la más frágil de las cuatro es una OMISIÓN (`agent_name` NO se
+    // manda: lo escribe el trigger de la base), que copiada a mano se pierde sin
+    // que nada falle—. Las tres decisiones que le tocan al llamador se respetan
+    // acá abajo, una por una.
+    const registered = await registerLead({
+      propertyId: property.id,
+      agentId: property.agent_id,
+      agencyId: property.agency_id,
+      contactName: userName,
     });
 
+    // Decisión 1: incondicional y fuera de toda rama de error. La operación
+    // principal ACÁ es el contacto, no el registro: el lead es para la agencia,
+    // no para el visitante, y no puede ser la razón por la que alguien no llegue
+    // a escribirle a una inmobiliaria.
     window.open(url, "_blank", "noopener,noreferrer");
 
     setSending(false);
-    setLeadError(!!leadInsertError);
-    // Con error, el flujo NO se cierra: el aviso se muestra donde el visitante
-    // está mirando. Sin error, vuelve al estado inicial como siempre.
-    if (!leadInsertError) {
+    setLeadError(!registered);
+    // Decisión 3: con error el flujo NO se cierra — el aviso se muestra donde el
+    // visitante está mirando. Sin error, vuelve al estado inicial como siempre.
+    if (registered) {
       setShowNameInput(false);
       setUserName("");
     }
@@ -301,17 +273,67 @@ function ModalContent({
         >
           <X size={18} />
         </button>
-        <button
-          onClick={() => toggleFavorite(property.id)}
-          className="absolute top-3 right-3 flex items-center justify-center w-9 h-9 rounded-full bg-paper/85 backdrop-blur-sm shadow-sm transition-colors hover:bg-paper"
-          aria-label={fav ? "Quitar de favoritos" : "Guardar en favoritos"}
-        >
-          <Heart
-            size={18}
-            className={cn(fav ? "text-terracota" : "text-graphite")}
-            fill={fav ? "currentColor" : "none"}
+        {/* Favorito y compartir, apareados a la derecha.
+            ⚠ EL DE COMPARTIR VA ACÁ, SOBRE LA FOTO, Y NO EN LA ZONA INFERIOR.
+            Esa zona es `shrink-0` dentro de un contenedor de alto FIJO en
+            celular (`h-[82vh]`), así que todo lo que se le agrega se lo resta al
+            área que scrollea — que después del bloque "quién publica" quedó en
+            unos 177px en un teléfono chico. Otra fila de 44px la dejaría en
+            menos de dos párrafos. Acá, en cambio, los botones son `absolute`
+            sobre el carrusel: no cuestan un solo píxel de alto.
+            `relative` en el contenedor: el fallback manual del ShareButton se
+            ancla debajo del botón, y necesita este bloque como referencia. */}
+        <div className="absolute top-3 right-3 flex items-center gap-2">
+          <ShareButton
+            url={propertyUrl(property.slug)}
+            title={property.title}
+            text={`${property.title} — ${property.address}`}
+            variant="icon"
           />
-        </button>
+          <button
+            onClick={() => toggleFavorite(property.id)}
+            className="flex items-center justify-center w-9 h-9 rounded-full bg-paper/85 backdrop-blur-sm shadow-sm transition-colors hover:bg-paper"
+            aria-label={fav ? "Quitar de favoritos" : "Guardar en favoritos"}
+          >
+            <Heart
+              size={18}
+              className={cn(fav ? "text-terracota" : "text-graphite")}
+              fill={fav ? "currentColor" : "none"}
+            />
+          </button>
+        </div>
+
+        {/* ── Puerta a la ficha completa ───────────────────────────
+            El modal es un resumen; la página es la ficha entera, y hasta ahora
+            no había NINGUNA forma de llegar a ella desde la app: solo escribiendo
+            la dirección a mano.
+
+            ⚠ NO ES EL TÍTULO CONVERTIDO EN ENLACE. El modal vive sobre el mapa,
+            donde el visitante está explorando: un título clickeable se toca por
+            accidente y lo saca del mapa sin que lo haya pedido. Un botón con
+            texto explícito no tiene esa ambigüedad.
+
+            ⚠ Y NO VA EN LA ZONA INFERIOR, aunque sea el lugar "natural" de un
+            CTA. Esa zona es `shrink-0` dentro de un sheet de alto FIJO
+            (`h-[82vh]`), así que cada píxel que se le agrega se lo resta al área
+            que scrollea — que en un teléfono chico ya está en ~177px. Un botón
+            de 44px más su separación de 10px la dejaría en ~123px: menos de dos
+            párrafos, para una ficha que tiene descripción, comodidades y
+            requisitos. La cuenta está en el informe.
+
+            Acá, sobre la foto, cuesta CERO alto (es `absolute`) y se ve sin
+            scrollear, que es lo que necesita una puerta. La esquina inferior
+            izquierda estaba libre: los dots del carrusel van centrados y el
+            contador abajo a la derecha. Se apoya en el gradiente que el carrusel
+            ya dibuja para legibilidad, y usa el mismo tratamiento
+            `paper/85 + backdrop-blur` que los otros tres botones flotantes. */}
+        <Link
+          href={`/propiedades/${property.slug}`}
+          className="absolute bottom-2.5 left-3 inline-flex items-center gap-1.5 rounded-md bg-paper/85 px-2.5 py-1.5 font-sans text-xs font-medium text-graphite shadow-sm backdrop-blur-sm transition-colors hover:bg-paper hover:text-black"
+        >
+          Ver ficha completa
+          <ArrowUpRight size={14} />
+        </Link>
       </div>
 
       {/* Cuerpo scrolleable */}
@@ -411,7 +433,7 @@ function ModalContent({
         {property.amenities.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {property.amenities.map((a) => {
-              const Icon = AMENITY_ICONS[a] ?? Tag;
+              const Icon = AMENITY_ICONS[a] ?? AMENITY_FALLBACK_ICON;
               return (
                 <span
                   key={a}
@@ -602,8 +624,7 @@ function ModalContent({
                 DESIGN §10: dice qué pasó y qué hacer, sin retar a nadie. */}
             {leadError && (
               <p className="font-sans text-xs text-graphite" role="status">
-                Se abrió WhatsApp, pero no pudimos avisarle a la inmobiliaria de
-                tu consulta. Escribile igual por el chat: te va a responder.
+                {LEAD_ERROR_MESSAGE}
               </p>
             )}
           </>
