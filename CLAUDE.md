@@ -20,9 +20,13 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 
 **Distribución:** web responsive + PWA instalable. No hay app nativa ni stores.
 
-**Estado:** Deployado en Vercel, **sin datos reales todavía** (lo cargado es de prueba; el lanzamiento con inmobiliarias fundadoras se apunta a octubre). MVP + multi-agente completos. **Fase White-label cerrada** en lo esencial: Sub-pieza A (ruta `/[slug]` + mapa filtrado + gate de plan), B1 (subir logo) y B2a (mostrar logo + nombre + "powered by Marka." en el header) hechas y probadas. **B2b (variante admin en `disabled`) y C (slug editable) quedan EN PAUSA**. **Fase de modelo de agencias CERRADA** (ago 2026): solo-agencias, matrícula + aprobación manual, bloqueo de publicación en la base, sesión unificada. Ver "Aprobación de agencias" abajo. **Fase de cobrabilidad CERRADA** (31 ago – 1 sep 2026): la visibilidad pública ahora depende de que la agencia esté al día (ver "Visibilidad pública de las propiedades") y el panel `/admin` dejó de ser de una sola vía —cancelar solicitud, vencimiento, baja/reactivación, eliminación y cambio de plan (ver "Panel de plataforma")—. **Ese era el bloqueante para poder cobrar y ya no lo es.** **Fase de modelo de la propiedad CERRADA** (3 sep 2026): una propiedad puede ofrecerse en **varias operaciones a la vez** con precio y moneda propios por operación, el **precio es opcional** ("a convenir") y las propiedades en alquiler llevan **requisitos para el inquilino**. Ver "Operaciones, precios y requisitos de la propiedad". **Grupo de archivos de Storage CERRADO** (5–6 sep 2026), en tres tandas: policies finas por agencia, borrado de archivos en los caminos que no lo hacían, y una herramienta de línea de comandos que audita y limpia huérfanos. El bucket quedó en **9 objetos y 707 kB, sin un solo huérfano**; venía de 24 objetos y 6,4 MB con el 89 % del peso en basura. Ver "Imágenes y Storage". **Grupo de blindaje CERRADO** (7 sep 2026, última de sus cinco tandas): una agencia **ya no puede existir sin fila de suscripción** —lo garantiza un trigger en la base— y el choque de matrícula duplicada al aprobar **se explica**, con la matrícula en conflicto y la regla, en vez de un "no se pudo" genérico. Ver "Suscripciones y límites" y "Aprobación de agencias". **La consulta sobrevive al agente** (7 sep 2026): borrar un agente con consultas a su nombre **antes fallaba siempre** contra una clave foránea; ahora la consulta se **desvincula** y conserva el nombre de quien la atendió en una **copia congelada que escribe la base**, no el cliente. En la misma tanda: el registro de una consulta **ya no falla en silencio** en el mapa público, y el aviso previo al borrado de un agente **dice también qué pasa con sus consultas**. Ver "La consulta sobrevive al agente".
+**Estado:** Deployado en Vercel, **sin datos reales todavía** (lo cargado es de prueba; el lanzamiento con inmobiliarias fundadoras se apunta a octubre). MVP + multi-agente completos. **Fase White-label cerrada** en lo esencial: Sub-pieza A (ruta `/[slug]` + mapa filtrado + gate de plan), B1 (subir logo) y B2a (mostrar logo + nombre + "powered by Marka." en el header) hechas y probadas. **B2b (variante admin en `disabled`) y C (slug editable) quedan EN PAUSA**. **Fase de modelo de agencias CERRADA** (ago 2026): solo-agencias, matrícula + aprobación manual, bloqueo de publicación en la base, sesión unificada. Ver "Aprobación de agencias" abajo. **Fase de cobrabilidad CERRADA** (31 ago – 1 sep 2026): la visibilidad pública ahora depende de que la agencia esté al día (ver "Visibilidad pública de las propiedades") y el panel `/admin` dejó de ser de una sola vía —cancelar solicitud, vencimiento, baja/reactivación, eliminación y cambio de plan (ver "Panel de plataforma")—. **Ese era el bloqueante para poder cobrar y ya no lo es.** **Fase de modelo de la propiedad CERRADA** (3 sep 2026): una propiedad puede ofrecerse en **varias operaciones a la vez** con precio y moneda propios por operación, el **precio es opcional** ("a convenir") y las propiedades en alquiler llevan **requisitos para el inquilino**. Ver "Operaciones, precios y requisitos de la propiedad". **Grupo de archivos de Storage CERRADO** (5–6 sep 2026), en tres tandas: policies finas por agencia, borrado de archivos en los caminos que no lo hacían, y una herramienta de línea de comandos que audita y limpia huérfanos. El bucket quedó en **9 objetos y 707 kB, sin un solo huérfano**; venía de 24 objetos y 6,4 MB con el 89 % del peso en basura. Ver "Imágenes y Storage". **Grupo de blindaje CERRADO** (7 sep 2026, última de sus cinco tandas): una agencia **ya no puede existir sin fila de suscripción** —lo garantiza un trigger en la base— y el choque de matrícula duplicada al aprobar **se explica**, con la matrícula en conflicto y la regla, en vez de un "no se pudo" genérico. Ver "Suscripciones y límites" y "Aprobación de agencias". **La consulta sobrevive al agente** (7 sep 2026): borrar un agente con consultas a su nombre **antes fallaba siempre** contra una clave foránea; ahora la consulta se **desvincula** y conserva el nombre de quien la atendió en una **copia congelada que escribe la base**, no el cliente. En la misma tanda: el registro de una consulta **ya no falla en silencio** en el mapa público, y el aviso previo al borrado de un agente **dice también qué pasa con sus consultas**. Ver "La consulta sobrevive al agente". **Cada propiedad tiene su página pública propia** (7–8 sep 2026): `/propiedades/[slug]`, renderizada en el servidor e indexable, con vista previa enriquecida al compartir el enlace, botón de compartir, mapa del sitio y archivo de instrucciones para buscadores. Y **el modal dice quién publica**: logo y nombre de la inmobiliaria más el nombre del agente que atiende. Ver "Página pública de la propiedad" y "Quién publica". ⚠ **El grupo de captación y difusión NO está cerrado**: falta convertir el botón "Ingresar" del header público en la puerta de captación para inmobiliarias (PENDIENTES.md → C3).
 
-**Baseline de calidad medido (no documentado de memoria; última medición: 7 sep 2026):** `npx tsc --noEmit` 0 errores (exit 0), `npm run lint` **0 errores y 1 warning** (`PropertyForm.tsx:808`, exit 0), `npx next build` verde (exit 0) con **19 rutas**. Cualquier error nuevo, un warning distinto del único conocido, o una ruta que aparezca sin motivo, es una regresión. Ver "ESLint". ⚠ El chequeo de tipos y el lint **también cubren `scripts/`** (el `include` de `tsconfig.json` es `**/*.ts` y ESLint no lo ignora): una herramienta rota ahí rompe el baseline igual que el código de la app.
+**Baseline de calidad medido (no documentado de memoria; última medición: 8 sep 2026):** `npx tsc --noEmit` 0 errores (exit 0), `npm run lint` **0 errores y 1 warning** (`PropertyForm.tsx:808`, exit 0), `npx next build` verde (exit 0) con **22 rutas**. Cualquier error nuevo, un warning distinto del único conocido, o una ruta que aparezca sin motivo, es una regresión.
+
+> ⚠ **Las rutas pasaron de 19 a 22, y es la ÚNICA vez que el número se movió.** Las tres nuevas son de la página pública de la propiedad: **`/propiedades/[slug]`** (la página, dinámica), **`/sitemap.xml`** (dinámica: ver "Infraestructura de buscadores") y **`/robots.txt`** (estática). Las dos últimas no son código de aplicación sino **archivos de convención de Next**, que cuentan como ruta en ese listado igual que `/apple-icon.png`, que ya estaba. Las 19 anteriores siguen las 19, con el mismo nombre y el mismo tipo (`○`/`ƒ`).
+>
+> ⚠ **Y un ruido de medición que ya mordió una vez:** `tsconfig.json` incluye `".next/types/**/*.ts"` y `".next/dev/types/**/*.ts"`, o sea **artefactos generados**. Si se mezclan los de `next dev` con los de `next build` (por ejemplo corriendo `next start` entre medio), `npx tsc --noEmit` escupe decenas de errores en `.next/**/validator.ts` que **no son del proyecto**. Ante una corrida así: borrar `.next` y `tsconfig.tsbuildinfo` y repetir. Si los errores no están en `src/` ni en `scripts/`, no son tuyos. Ver "ESLint". ⚠ El chequeo de tipos y el lint **también cubren `scripts/`** (el `include` de `tsconfig.json` es `**/*.ts` y ESLint no lo ignora): una herramienta rota ahí rompe el baseline igual que el código de la app.
 
 > **⚠️ Hoja de ruta de modelo (tras validación con el rubro y el colegio de corredores).** **Ya aplicado:** los particulares se eliminaron (la app es solo-agencias); las agencias requieren **número de matrícula + aprobación manual** del dueño de la plataforma (ver "Aprobación de agencias"); y el formulario de propiedad tiene el **atajo de sugerencia de ubicación desde la dirección** (ver "Ubicación de la propiedad"), que era el ítem D1 de la hoja de ruta; y **el mapa público ya filtra por agencia habilitada** (era el bloqueante para cobrar: ver "Visibilidad pública de las propiedades"); y **una propiedad puede estar en venta y en alquiler a la vez**, con **precio opcional** ("a convenir") y **requisitos de alquiler** (ver "Operaciones, precios y requisitos de la propiedad"). **Pendiente:** registro opcional de visitantes; página y link por propiedad. Ver PENDIENTES.md → "Nueva fase".
 
@@ -108,7 +112,8 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 
 - **La regla vive en la base, en una sola función: `agency_is_publicly_visible(agency_id)`.** Devuelve `true` si la agencia está **aprobada**, su suscripción está en **`active`** y su plan **no es `free`**. Tres condiciones, un solo lugar.
 - **La usan TRES policies** (todas medidas contra la base): `Public read active properties` (`status = 'active' AND agency_is_publicly_visible(agency_id)`), `Public read property images` (misma condición vía la propiedad) y `Public insert lead` (además de lo que ya validaba). O sea: se apagan el mapa, las fotos y el registro de consultas, juntos.
-- **⚠ POR QUÉ POLICY Y NO UN FILTRO EN CADA CONSULTA.** Hay **DOS caminos públicos** que leen propiedades con la anon key: el hook del mapa (`useProperties`) y el `PropertyModal`, que consulta una propiedad **por id**. Un filtro por consulta hay que ponerlo en los dos, y el que se olvide **filtra mal en silencio** (sigue devolviendo propiedades, solo que de agencias que no pagan). En la policy la regla se aplica sola en todo camino, presente y futuro. Se **midió el plan de ejecución antes de decidir**: el acceso a la tabla caliente (`properties`) no se degradó, y las dos tablas del join tienen **una fila por agencia** (`agencies` por PK, `subscriptions` por su UNIQUE de `agency_id`).
+- **⚠ POR QUÉ POLICY Y NO UN FILTRO EN CADA CONSULTA.** Hay **DOS caminos públicos** que leen propiedades con la anon key: el hook del mapa (`useProperties`) y el `PropertyModal`, que consulta una propiedad **por id**. Un filtro por consulta hay que ponerlo en los dos, y el que se olvide **filtra mal en silencio** (sigue devolviendo propiedades, solo que de agencias que no pagan). En la policy la regla se aplica sola en todo camino, presente y futuro.
+- **⚠ PERO LAS POLICIES NO CUBREN TODO, Y DESDE EL 8 SEP 2026 SON TRES LOS LUGARES QUE NO CUBREN.** El **service role saltea las policies**, así que todo camino que lo use tiene que invocar la regla **a mano**. Hoy son tres, y los tres lo hacen: `resolveAgencyBySlug` (sitio de marca), `resolvePropertyBySlug` (página pública de la propiedad) y `src/app/sitemap.ts` (mapa del sitio). **Los tres llaman a la MISMA función por RPC**, ninguno reescribe las condiciones. Es la regla a sostener: *si leés propiedades con service role, la regla de cobro es tuya*. Se **midió el plan de ejecución antes de decidir**: el acceso a la tabla caliente (`properties`) no se degradó, y las dos tablas del join tienen **una fila por agencia** (`agencies` por PK, `subscriptions` por su UNIQUE de `agency_id`).
 - **⚠ POR QUÉ LA FUNCIÓN ES `SECURITY DEFINER`.** El visitante es **anónimo**, y la policy `Agency members read own subscription` solo deja leer `subscriptions` a los agentes de esa agencia. Sin `SECURITY DEFINER`, el `EXISTS` de adentro no vería ninguna fila de suscripción **para nadie**, daría `false` siempre y **el mapa quedaría vacío para todo el mundo**. Es segura: recibe solo un id, devuelve solo un booleano y tiene `search_path` fijo. Es `STABLE`, así que el planificador la evalúa por agencia y no fila por fila.
 - **Efecto de borde deseado:** dar de baja y reactivar desde `/admin` **no toca una sola propiedad**. Cambia el `status` de la suscripción y el mapa se apaga o se enciende solo.
 - **El sitio de marca (`/[slug]`) se alineó por CÓDIGO, no por policy**, y no es redundancia: `resolveAgencyBySlug` lee con **service role**, que **saltea las policies**, así que ninguna de las tres lo cubre. Llama a la MISMA función por RPC (`isAgencyPubliclyVisible`, falla cerrada: si el RPC falla devuelve `false`) en vez de reescribir las comparaciones en TypeScript — el día que la regla cambie, el mapa y el sitio de marca no pueden decir cosas distintas.
@@ -270,7 +275,13 @@ prometer lo que la base va a rechazar si alguna vez alguien borra una fila a man
 │   ├── app/
 │   │   ├── (public)/
 │   │   │   ├── page.tsx                 ← Mapa principal + lista mobile (home: todas las agencias de la ciudad activa)
-│   │   │   └── [slug]/page.tsx          ← Vista white-label por agencia (resuelve slug → 404 / no-disponible / mapa filtrado). Sub-pieza A
+│   │   │   ├── [slug]/page.tsx          ← Vista white-label por agencia (resuelve slug → 404 / no-disponible / mapa filtrado). Sub-pieza A
+│   │   │   └── propiedades/[slug]/page.tsx ← PÁGINA PÚBLICA DE LA PROPIEDAD (Server Component + generateMetadata).
+│   │   │                                     El prefijo NO es opcional: en el primer nivel ya vive el [slug] de
+│   │   │                                     agencia y dos rutas dinámicas hermanas son ambiguas
+│   │   ├── sitemap.ts                   ← Mapa del sitio (/sitemap.xml). `dynamic = "force-dynamic"`: sin eso se
+│   │   │                                  cachearía al construir. Mismo criterio que la página
+│   │   └── robots.ts                    ← /robots.txt. Contenido fijo → sin force-dynamic, a propósito
 │   │   ├── (agent)/
 │   │   │   ├── login/                    ← page.tsx (Server: lee ?reason y lo mapea a un mensaje fijo) + LoginForm.tsx (client). Split-screen editorial (AuthLayout)
 │   │   │   ├── logout/route.ts           ← Route handler GET: signOut() + redirect a /login?reason=. Existe porque un Server Component NO puede borrar cookies (ver "Cierre de sesión")
@@ -296,8 +307,10 @@ prometer lo que la base va a rechazar si alguna vez alguien borra una fila a man
 │   │   │   ├── MapView.tsx              ← Raíz del mapa (client, ssr:false)
 │   │   │   ├── PropertyMarker.tsx       ← Pin terracota + estados (CSS sobre DivIcon). El precio del pin
 │   │   │   │                              depende del filtro de operación → createPropertyIcon lo recibe
-│   │   │   ├── PropertyModal.tsx        ← Drawer/sheet + flujo WA + carrusel. Único lugar que muestra
-│   │   │   │                              TODAS las operaciones con sus precios + los chips de requisitos
+│   │   │   ├── PropertyModal.tsx        ← Drawer/sheet + flujo WA + carrusel. Muestra TODAS las operaciones
+│   │   │   │                              con sus precios + los chips de requisitos + el bloque "quién
+│   │   │   │                              publica". Sobre la foto: cerrar, compartir, favorito y el botón
+│   │   │   │                              "Ver ficha completa" (los cuatro absolute: cuestan 0px de alto)
 │   │   │   ├── FilterPanel.tsx          ← Filtros (checkboxes shadcn, commit on-blur). Operación es
 │   │   │   │                              MÚLTIPLE; el rango de precio solo se habilita con UNA marcada
 │   │   │   ├── CityPicker.tsx           ← Selector de ciudad (lee cityStore)
@@ -311,8 +324,19 @@ prometer lo que la base va a rechazar si alguna vez alguien borra una fila a man
 │   │   │   └── Notice.tsx               ← Aviso persistente reutilizable (Server Component, tonos info/warning/error). NO es el "banner de error" descartable
 │   │   ├── properties/
 │   │   │   ├── PropertyCard.tsx         ← Card editorial reutilizable. Kicker con todas las operaciones,
-│   │   │   │                              UN precio (el de getDisplayOperationPrice, según el filtro)
+│   │   │   │                              UN precio (el de getDisplayOperationPrice, según el filtro).
+│   │   │   │                              El TÍTULO es enlace a la ficha dentro de una card clickeable:
+│   │   │   │                              ver "La tarjeta tiene un enlace adentro de algo clickeable"
 │   │   │   ├── PropertyList.tsx         ← Lista mobile (cards-first)
+│   │   │   ├── PropertyGallery.tsx      ← Galería de la página pública. Server Component, CERO JS: scroll-snap
+│   │   │   │                              de CSS con las N fotos en el HTML (el carrusel del modal deja UNA)
+│   │   │   ├── PropertyContact.tsx      ← Isla de cliente del flujo WA en la página. Usa registerLead
+│   │   │   ├── PropertyUnavailable.tsx  ← Estado "la propiedad existe pero no se muestra". Clon de
+│   │   │   │                              AgencyUnavailable. NUNCA un 404 (ver los tres estados)
+│   │   │   ├── ShareButton.tsx          ← Compartir. Cascada: navigator.share → clipboard → execCommand →
+│   │   │   │                              campo seleccionable. Las dos primeras exigen contexto seguro
+│   │   │   ├── StaticMap.tsx            ← Mapa estático de la página: grilla 4x2 de tiles OSM en <img>,
+│   │   │   │                              corrida con CSS. Server Component, sin Leaflet y sin JS
 │   │   │   ├── PropertyForm.tsx         ← CRUD form + barra de acción sticky. Tres casillas de operación,
 │   │   │   │                              cada una con su precio+moneda opcionales, y la sección de
 │   │   │   │                              requisitos (solo si hay alquiler). Todo con Controller, sin watch()
@@ -375,6 +399,15 @@ prometer lo que la base va a rechazar si alguna vez alguien borra una fila a man
 │   │       │                              URL pública → path del bucket. Servidor y cliente. Devuelve NULL
 │   │       │                              si la URL no es del bucket: mandar la URL entera a remove() no
 │   │       │                              borra nada y tampoco falla
+│   │       ├── resolvePropertyBySlug.ts ← Resuelve slug → propiedad pública (service role + RPC de
+│   │       │                              visibilidad). 3 estados: not_found / unavailable / available.
+│   │       │                              Cacheado con cache() de React: la ruta lo llama DOS veces
+│   │       ├── siteUrl.ts               ← SITE_URL / absoluteUrl() / propertyUrl(). LANZA si falta
+│   │       │                              NEXT_PUBLIC_SITE_URL, en vez de inventar un valor
+│   │       ├── registerLead.ts          ← El insert de la consulta, extraído del modal. Lleva escritas las
+│   │       │                              cuatro decisiones; la más frágil es una OMISIÓN (agent_name)
+│   │       ├── amenityIcons.ts          ← AMENITY_ICONS (16 entradas, Record exhaustivo) + el ícono de
+│   │       │                              reserva. Extraído del modal al aparecer la segunda pantalla
 │   │       └── labels.ts                ← Etiquetas UI compartidas
 │   │
 │   ├── store/
@@ -548,9 +581,181 @@ pantalla que nadie relacionaría con las suscripciones. Si se toca una, se toca 
 - **Sub-pieza B2a — Logo + nombre en el header (HECHA):** `AgencyMapView` recibe `agencyName` + `agencyLogoUrl` (la ruta los pasa; `resolveAgencyBySlug` ya trae `logo_url` en estado `active`). Header: **logo de la agencia a la izquierda** (donde en la home va el Wordmark de Marka) con `h-9 w-auto max-w-[160px] object-contain` (altura fija, ancho según relación de aspecto, tolera cualquier proporción sin romper el header); **nombre de la agencia en el centro** (`text-base sm:text-lg`, visible también en mobile). Si NO hay logo: el nombre va a la izquierda y el centro queda vacío (nunca el Wordmark de Marka). La marca de la agencia NO es link (llevaría al marketplace general, contradiciendo el white-label). **"Powered by Marka."** discreto centrado al pie (`fixed`, `pointer-events-none`, respeta safe-area y no tapa FABs/zoom), usando un `size="xs"` nuevo del `Wordmark` (aditivo). Validación de PROPORCIONES del logo al subir (rechazar verticales extremos) quedó como ajuste futuro a B1 — el `object-contain` ya protege el layout.
 - **EN PAUSA (Sub-piezas B2b y C):** B2b = variante "admin logueado de la agencia ve invitación a reactivar" en estado `disabled` (requiere meterle sesión a la ruta `/[slug]`, hoy anónima, + ensanchar `resolveAgencyBySlug` para que `disabled` devuelva id/name). C = slug editable. **No se tocan hasta resolver los cambios profundos de modelo** (eliminar particulares, matrícula + alta manual): esas piezas están entrelazadas con agencias/roles/slugs y diseñarlas ahora sería trabajar sobre un modelo que va a cambiar. Ver PENDIENTES.md → "Nueva fase".
 
+### Página pública de la propiedad — `/propiedades/[slug]`
+
+> Cada propiedad tiene su **dirección propia, renderizada en el servidor e indexable**. Antes toda la app pública era UNA sola dirección: el visitante abría un modal sobre el mapa, lo cerraba, y la barra de direcciones nunca cambiaba. Para un buscador la plataforma era una página sola, y una inmobiliaria que hablaba con un cliente fuera de Marka no tenía ningún enlace que mandarle.
+
+- **Ruta: `src/app/(public)/propiedades/[slug]/page.tsx`** (Server Component, `params` es Promise → `await`). El identificador es `properties.slug`, que es `NOT NULL` + `UNIQUE` global (no parcial).
+- **⚠ EL PREFIJO `/propiedades/` NO ES UNA PREFERENCIA DE ESTILO: EN EL PRIMER NIVEL NO ENTRA.** Ahí ya vive `src/app/(public)/[slug]/page.tsx`, el sitio de marca de una agencia, y **dos rutas dinámicas hermanas en el mismo nivel son ambiguas** — Next no las admite. (Es distinto del caso que ya estaba anotado en "White-label": una ruta **estática** de primer nivel sí convive con `[slug]`, porque las estáticas ganan. Dos dinámicas, no.)
+- **El slug NO se regenera al editar**, y de eso depende que los enlaces compartidos sobrevivan. `generateSlug` se llama **una sola vez**, en `createPropertyAction`; `updatePropertyAction` no incluye la columna y lo dice (`// El slug no se recalcula al editar`). Verificado además en los datos: hay una fila con `slug = "casa-prueba2-taf8a3"` y `title = "casa prueba22"` — alguien editó el título y el slug se quedó.
+
+#### Los tres estados, y dónde vive la decisión
+
+Toda la lógica está en **`src/lib/utils/resolvePropertyBySlug.ts`**, no en la página — mismo rol y misma forma (unión discriminada) que `resolveAgencyBySlug`:
+
+```ts
+export type PropertyResolution =
+  | { status: "not_found" }
+  | { status: "unavailable" }
+  | { status: "available"; property: PublicProperty };
+```
+
+| Estado | Cuándo | Qué hace la ruta |
+|---|---|---|
+| `not_found` | no existe ninguna propiedad con ese slug | `notFound()` → 404 real |
+| `unavailable` | existe pero no se puede mostrar: `status <> 'active'`, **o** su agencia no está al día | renderiza `PropertyUnavailable` |
+| `available` | pasa los dos gates | la página completa |
+
+- **⚠ NO COLAPSAR `unavailable` EN `not_found`.** Quien llega casi siempre recibió el enlace de alguien —esa es la función que la página vino a cumplir—, y un 404 le diría que **el enlace estaba roto**. No lo está: la propiedad existió y, si estaba pausada, puede volver.
+- **FALLA CERRADA:** si la consulta o el RPC fallan, se responde `unavailable`. ⚠ **Acá se separa de `resolveAgencyBySlug` a propósito:** aquel hace `if (error || !data) return { status: "not_found" }`, metiendo el error de lectura en la misma rama que "no existe". Acá no se puede: un error de lectura → `unavailable` (no sabemos nada, ante la duda la propiedad queda oculta) y **solo** la ausencia de fila → `not_found` (ahí sí sabemos: la base respondió y no hay nada).
+- Está envuelto en **`cache()` de React** (mismo patrón que `resolveAgentSession`) porque la ruta lo llama **dos veces por request** —una en `generateMetadata` y otra en el render—: sin eso serían dos consultas y dos RPC. Por lo mismo **no recibe el client por parámetro**: lo crea adentro, o un client distinto por llamador rompería la deduplicación.
+
+#### ⚠ POR QUÉ SERVICE ROLE Y NO EL CLIENT DE SERVIDOR CON SESIÓN
+
+Los dos motivos están **medidos** y son los que gobiernan todo el diseño. No vuelven la alternativa "menos linda": la vuelven imposible.
+
+**1. Con las policies, los tres estados son INDISTINGUIBLES.** `Public read active properties` es una sola condición —`status = 'active' AND agency_is_publicly_visible(agency_id)`—, así que una propiedad pausada, una de agencia que no paga y un slug inexistente devuelven **los tres la lista vacía**. Medido contra la API con la anon key:
+
+```
+asd-w6vx6j        activa, agencia en plan free  ->  []
+asdsad-hewjr6     pausada, agencia al día       ->  []
+casa-demo-s7jw5o  activa, agencia al día        ->  [{...}]
+```
+
+Con eso la página **solo podría hacer 404**, que es justo lo que el estado `unavailable` existe para evitar.
+
+**2. El resultado dependería de QUIÉN MIRE.** Sobre `properties` hay **TRES policies de SELECT, las tres PERMISSIVE** (medido en `pg_policy.polpermissive`), y las permissive **se combinan con OR**:
+
+| Policy | `qual` |
+|---|---|
+| `Public read active properties` | `status = 'active' AND agency_is_publicly_visible(agency_id)` |
+| `Agency members read agency properties` | `agency_id IN (SELECT agency_id FROM agents WHERE id = auth.uid())` |
+| `Agent manages own properties` (ALL) | `agent_id = auth.uid()` |
+
+O sea que **un agente logueado de esa agencia entraría por la segunda y vería PUBLICADA una propiedad que para el resto del mundo no lo está**. La página le mentiría sobre su propio estado justo a quien la administra — y es el caso más probable de todos: el agente que acaba de pausar una propiedad y abre su enlace para ver cómo quedó.
+
+Con service role el resultado es **idéntico para todos**: visitante anónimo, buscador y el propio agente.
+
+**⚠ Y el precio de ese service role es que la regla de cobro hay que invocarla A MANO**, porque saltea las policies: ninguna de las tres la aplica acá. Sin la llamada, esta página quedaría en pie mostrando las propiedades de agencias que dejaron de pagar. Es el mismo riesgo, con la misma mitigación, que `resolveAgencyBySlug`.
+
+#### ⚠ LA REGLA DE COBRO SE PREGUNTA A LA BASE POR RPC, NO SE REESCRIBE
+
+```ts
+  const { data, error } = await supabase.rpc("agency_is_publicly_visible", {
+    target_agency_id: agencyId,
+  });
+  if (error) return false;   // falla cerrada
+  return data === true;
+```
+
+Replicar las tres condiciones en TypeScript dejaría **la regla de cobro escrita en TRES lugares** (las policies, el sitio de marca y esta página): el día que cambie —por ejemplo si un `past_due` pasara a tener período de gracia— dirían cosas distintas y nadie se enteraría hasta que un cliente lo reportara. Se paga un viaje extra a la base a cambio de que la regla tenga un solo lugar donde vive.
+
+#### Qué muestra, y las dos cosas que la separan del modal
+
+Orden: fotos → tipo y operaciones → título → **precios** → ubicación → métricas → descripción → comodidades → requisitos de alquiler → quién publica → contacto por WhatsApp → compartir → mapa estático → vuelta al mapa general. El detalle visual está en `DESIGN.md` §5.
+
+- **Todo se renderiza en el servidor.** Solo bajan como isla de cliente las dos piezas que necesitan estado: `PropertyContact` (el flujo de WhatsApp) y `ShareButton`.
+- **⚠ La galería NO es el carrusel del modal, y no debe serlo.** Aquel guarda la foto activa en un `useState` y apila el resto con `opacity-0`: para un buscador **existe UNA sola foto**. `PropertyGallery` es un Server Component con `scroll-snap` de CSS y **cero JavaScript**: las N fotos están en el documento con su `alt`.
+- **⚠ La descripción va COMPLETA, sin `line-clamp` y sin "Ver más".** En el modal se recorta con estado de cliente; acá el texto entero tiene que estar en el HTML, porque es justamente lo que un buscador lee.
+- **El mapa del pie es ESTÁTICO** (`StaticMap`): una grilla de 4×2 tiles de OSM en `<img>` corrida con CSS para centrar el punto, con el pin encima y la atribución. Cero JS, cero Leaflet. Usa `TILE_CONFIG`, así que si el proyecto migra a MapTiler este mapa migra con el grande. **No se reusó `LocationPicker`**: se monta con `ssr: false`, o sea que un buscador ve un recuadro vacío y la página arrastraría Leaflet entero.
+- **`generateMetadata`** arma título, descripción corta (tipo, operaciones, precio, ubicación y métricas) y `openGraph` con **la foto de portada real** de la propiedad. ⚠ Los estados `not_found` y `unavailable` salen con **`robots: { index: false }`**: no es redundante con el mapa del sitio —aquel decide qué se *ofrece*, esto decide qué pasa cuando el buscador llega igual, por un enlace ya indexado.
+
+### Quién publica — el bloque de la agencia y el agente
+
+En el **modal** y en la **página**, en la zona de contacto. Antes el visitante veía fotos, precio y un botón verde, y con eso tenía que decidir si le escribía a un número desconocido. Argumento comercial: *"tu marca aparece en cada propiedad que publicás, no solo en tu web"*.
+
+- **Muestra tres cosas: el logo de la agencia, el nombre de la agencia y el nombre del agente** ("Atiende Juan Pérez"). **SIN foto del agente**, aunque la consulta traiga `avatar_url`: es una decisión de producto, no un olvido.
+- **⚠ SI LA AGENCIA NO TIENE LOGO, EL NOMBRE OCUPA SU LUGAR.** Sin hueco, sin caja vacía y sin ningún cartel que anuncie la ausencia (a diferencia de la preview de `AgencyLogoForm`, que sí dice "Sin logo" porque ahí estás por subir un archivo). **Es el caso NORMAL, no el borde: medido, 1 de 10 agencias tiene logo cargado.** Un diseño que solo se vea bien con logo se va a ver mal casi siempre. Dimensiones tomadas del header del sitio de marca (`h-8 w-auto max-w-[96px] object-contain` en el modal, `h-10` en la página): altura fija, ancho según la relación de aspecto, tolera cualquier proporción.
+- **⚠ EL NOMBRE DE LA AGENCIA NO ES UN ENLACE.** Solo algunos planes tienen sitio propio, y ese sitio se puede deshabilitar por **tres** motivos independientes (ver `resolveAgencyBySlug`), así que el enlace llevaría a veces a una página de "no disponible". Un nombre que a veces lleva a algún lado y a veces no es una inconsistencia que el visitante ve.
+- **⚠ VA HERMANO DEL CONDICIONAL QUE ELIGE EL BOTÓN, NO DENTRO DE UNA DE SUS RAMAS.** El ternario elige entre "se puede contactar" y "el agente no cargó su número", y el bloque tiene que verse en **las dos**: la agencia cuyo agente no dejó teléfono es justamente de la que el visitante más necesita saber quién es, porque va a tener que buscarla por otro lado.
+- **El dato viene EMBEBIDO en la consulta que el modal ya hace** (`agency:agencies(name, logo_url)`), no en una consulta aparte: la segunda necesitaría el `agency_id` que sale de la primera, así que sería secuencial y el bloque aparecería después de que el resto ya está pintado. **La consulta del mapa NO se tocó** (query caliente).
+- **⚠ SE NOMBRAN SOLO LAS DOS COLUMNAS QUE SE USAN.** `Public read agencies` tiene `qual: true`, o sea que cualquiera con la anon key puede leer esa tabla entera, y Postgres no permite restringir columnas dentro de una policy: **lo único que acota qué se expone es la lista del `select`**. Ahí viven `phone_wa`, `license_number` y `approval_status`.
+- **⚠ NO USAR EL TIPO COMPLETO `Agency` PARA EL EMBED.** `Property.agency` está declarado como `Agency` entero (doce columnas) y el resultado se castea por `unknown`, así que tiparlo así haría creer al compilador que están las doce: leer `agency.license_number` compilaría sin una queja y daría `undefined` en runtime. Se usa un **cast local al subconjunto real**, el mismo molde que el archivo ya usaba para el agente. En la página, `PublicProperty` hace lo mismo con un `Omit`.
+
+### Las dos puertas a la ficha, y por qué son distintas
+
+Se construyó la página y **no la puerta**: durante un tiempo solo se llegaba escribiendo la dirección a mano. Hay **dos** entradas, y son deliberadamente distintas porque el contexto lo es.
+
+| Dónde | Qué es | Por qué |
+|---|---|---|
+| **Modal** | un **botón** con texto explícito, "Ver ficha completa", sobre la foto abajo a la izquierda | El modal vive **sobre el mapa**, donde el visitante está explorando |
+| **Tarjeta de la lista** | el **título** como enlace | En la lista el visitante está **leyendo**, y el título como enlace es lo que espera |
+
+- **⚠ EN EL MODAL EL TÍTULO NO ES ENLACE, A PROPÓSITO.** Sobre el mapa, un título clickeable **se toca por accidente** y saca al visitante del mapa sin que lo haya pedido. Un botón con texto explícito no tiene esa ambigüedad.
+- **⚠ Y EL BOTÓN NO VA EN LA ZONA INFERIOR DEL MODAL**, aunque sea el lugar "natural" de un CTA. Ver "El presupuesto de alto de la zona inferior" abajo: ahí cuesta 54 px que salen enteros del área que scrollea. Sobre la foto es `absolute` y cuesta **cero**.
+
+### Infraestructura de buscadores
+
+- **`src/app/sitemap.ts` → `/sitemap.xml`.** Convención de archivo de Next: función por defecto que devuelve `MetadataRoute.Sitemap`.
+  - **⚠ LLEVA `export const dynamic = "force-dynamic"` Y SIN ESO SE CONGELA AL CONSTRUIR.** La documentación lo dice: *"`sitemap.js` is a special Route Handler that is **cached by default** unless it uses a Request-time API or dynamic config option"*. Por omisión, la consulta correría una vez durante `next build` y el archivo serviría para siempre la lista de ese día: las propiedades nuevas invisibles y las dadas de baja todavía ofrecidas. Se comprueba en el build: `/sitemap.xml` tiene que figurar como **`ƒ` (Dynamic)**; si sale `○`, quedó cacheado.
+  - **⚠ APLICA EXACTAMENTE EL MISMO CRITERIO QUE LA PÁGINA**, y el segundo gate **con la misma función de la base**: `.eq("status", "active")` + `agency_is_publicly_visible` por RPC. Si listara propiedades que la página no muestra, un buscador indexaría carteles de "ya no está publicada" — peor que no listarlas, porque el resultado existe, se puede clickear y no sirve. El RPC se hace **una vez por agencia distinta**, no una por propiedad. Falla cerrada en los dos lugares.
+- **`src/app/robots.ts` → `/robots.txt`.** `Allow: /`, `Disallow` de `/dashboard`, `/admin` y `/api/`, más la declaración del mapa del sitio. **NO lleva `force-dynamic` y es correcto**: su contenido es fijo y no lee la base, así que no hay lista que pueda quedar vieja. ⚠ No usar el campo `other` de `MetadataRoute.Robots`: se agregó en Next **16.3.0** y el proyecto corre **16.2.6**.
+- **`metadataBase` en la disposición raíz** (`src/app/layout.tsx`), desde `NEXT_PUBLIC_SITE_URL`. **⚠ Sin él, usar una ruta relativa en cualquier campo de metadata basado en URL ROMPE LA CONSTRUCCIÓN**: *"Using a relative path in a URL-based metadata field without configuring a `metadataBase` will cause a build error"*. El `title` pasó de una cadena suelta a `{ default, template: "%s · Marka" }`, para que el título de la propiedad no borre la marca.
+- **No hay `opengraph-image`**, y es deliberado: la vista previa usa **la foto de portada real** de la propiedad, que ya es una URL absoluta del bucket. Generar una imagen habría sumado una ruta, tiempo de build y otra fuente de verdad para mostrar algo peor que la foto de la casa.
+
 ### Viewport mobile — altura y lock de scroll
 - **Wrappers de pantalla completa van con `h-dvh`/`min-h-dvh`, NUNCA `h-screen`/`100vh`.** `100vh` en mobile es el viewport grande (ignora la barra de URL), lo que dejaba el documento scrolleable por ese hueco; cualquier "scroll into view" del navegador (foco en un anchor de zoom de Leaflet, o en un input que abre el teclado) desplazaba el documento y sacaba el header (que está en flujo normal) fuera de vista, sin restituirlo. `dvh` sigue a la barra de URL y no deja hueco.
-- **El documento tiene lock de scroll:** `globals.css` fija `html, body { height: 100%; overflow: hidden }`. Toda la app scrollea en **contenedores internos** (el `main` del dashboard con `overflow-y-auto`, la lista mobile, el cuerpo de los sheets), nunca el documento. Si creás una pantalla nueva, dale su propio contenedor scrolleable interno — NO dependas del scroll del documento (lo hace `AuthLayout` con `h-dvh overflow-y-auto`, el único caso que lo necesitaba).
+- **El documento tiene lock de scroll:** `globals.css` fija `html, body { height: 100%; overflow: hidden }`. Toda la app scrollea en **contenedores internos** (el `main` del dashboard con `overflow-y-auto`, la lista mobile, el cuerpo de los sheets), nunca el documento. Si creás una pantalla nueva, dale su propio contenedor scrolleable interno — NO dependas del scroll del documento.
+
+#### ⚠ TRAMPA 1 — ESTA REGLA YA ESTABA ESCRITA Y AUN ASÍ SE INCUMPLIÓ
+
+La página pública de la propiedad nació con `min-h-dvh` y **sin contenedor propio**. Resultado: el contenido estaba en el documento pero era **INALCANZABLE** de la mitad para abajo — ni el bloque de contacto, ni el mapa, ni el pie. No aparece una barra de scroll rota ni un error: simplemente **no hay forma de llegar**.
+
+**El error específico, para reconocerlo:**
+
+| | Qué hace |
+|---|---|
+| ❌ `min-h-dvh` | Es un **mínimo**: deja crecer el elemento más allá del viewport y **delega el scroll al documento**… que no scrollea |
+| ✅ `h-dvh overflow-y-auto` | Fija una pantalla y le da **su propio scroll adentro** |
+
+**La forma exacta que funciona** es la de `AuthLayout.tsx:20`, la otra pantalla que dependía del scroll del documento:
+
+```tsx
+<div className="flex h-dvh flex-col overflow-y-auto bg-paper …">
+```
+
+**Y si la pantalla además centra su contenido** (los estados "no disponible"), son **dos** elementos, cada uno con su trabajo — el de adentro lleva `min-h-full`, **nunca `min-h-dvh`**, que volvería a delegar al documento:
+
+```tsx
+<div className="h-dvh overflow-y-auto bg-paper">
+  <div className="flex min-h-full flex-col items-center justify-center px-4 py-12 text-center">
+```
+
+⚠ **Que el contenido "entre sin scrollear" no es una excusa para omitirlo.** Alcanza un teléfono chico en horizontal, o el tamaño de letra del navegador subido, para que el único botón de la pantalla quede fuera. Hay al menos **dos pantallas del proyecto todavía así** (ver PENDIENTES.md).
+
+#### ⚠ TRAMPA 2 — EL PRESUPUESTO DE ALTO DE LA ZONA INFERIOR DEL MODAL
+
+El bottom sheet de celular tiene **alto FIJO** (`h-[82vh]`), el carrusel es `shrink-0` y la zona inferior también: **el único que cede es el cuerpo**. O sea que **cada píxel que se le agrega a la zona inferior se lo resta al área que scrollea**.
+
+Zona inferior hoy, con el input de nombre colapsado: `py-4`×2 (32) + borde (1) + bloque "quién publica" (32,5) + `space-y-2.5` (10) + input colapsado (0) + `space-y-2.5` (10) + botón `h-11` (44) = **129,5 px**.
+
+En un iPhone SE (375×667), `82vh` = 546,9 px:
+
+| | Área que scrollea |
+|---|---|
+| **Hoy** | 546,9 − 20 (handle) − 220 (carrusel) − 129,5 = **≈ 177 px** |
+| Con un botón de ancho completo más (44 + 10) | **≈ 123 px** — menos de dos párrafos |
+
+**177 px es contra lo que juega quien quiera agregar algo ahí.** Por eso el botón "Ver ficha completa" y el de compartir viven **sobre la foto**: los cuatro botones flotantes son `absolute` sobre el carrusel y cuestan **cero**. Es el lugar al que hay que mirar primero.
+
+#### ⚠ TRAMPA 3 — LA TARJETA TIENE UN ENLACE ADENTRO DE ALGO CLICKEABLE
+
+`PropertyCard` es un `<article role="button" tabIndex={0} onClick={onSelect}>`: **el click vive en el contenedor**. Desde que el título es un `<Link>` a la ficha, tocarlo dispararía **las dos cosas** — navegar **y** abrir el modal.
+
+**La solución tiene DOS partes porque son dos problemas distintos, y quedarse en la primera es el error fácil:**
+
+| | Problema | Cómo se corta |
+|---|---|---|
+| **Puntero** | el click burbujea al `<article>` | `onClick={(e) => e.stopPropagation()}` en el `<Link>` — el mismo recurso que ya usaba el botón de favorito |
+| **Teclado** | `stopPropagation` del `onClick` **NO cubre el teclado**: un Enter sobre el enlace lo activa **y además** burbujea al `onKeyDown` del contenedor | `if (e.target !== e.currentTarget) return;` como primera línea del `onKeyDown` del `<article>` |
+
+La guarda va **en el contenedor y no en cada hijo**: cubre a todos de una vez, presentes y futuros. (De paso cerró el mismo defecto que el botón de favorito tenía desde antes, sin que nadie lo hubiera notado.)
+
+El `<Link>` lleva además `relative z-10`: sin eso, el enlace y el fondo de la tarjeta se pelean el mismo punto y el resultado depende del orden de pintado.
+
+⚠ **`PropertyCardData` incluye `slug` desde entonces.** No hubo que tocar ninguna consulta: `useProperties` ya lo traía en su SELECT acotado.
+
+⚠ **Deuda conocida y anotada:** un `<a>` dentro de un `role="button"` no es estrictamente válido. El componente **ya era así** (el botón de favorito está en la misma situación) y arreglarlo de raíz es decidir si la tarjeta sigue siendo un botón o pasa a ser un contenedor con enlace principal. Ver PENDIENTES.md.
 - Tailwind v4 trae `h-dvh`/`min-h-dvh` nativas (no hace falta el arbitrario `h-[100dvh]`).
 - Los `fixed`/`sticky` (bottom sheets, FABs, marco editorial, sidebar mobile) se reanclan bien y NO se tocan; el problema era solo el chrome en flujo normal sobre wrappers `100vh`.
 
@@ -573,7 +778,7 @@ Lo completa el trigger **`trg_set_lead_agent_name`** (`BEFORE INSERT ON leads` �
 
 **Poner ese campo en el `insert` del `PropertyModal` era muchísimo más barato de escribir, y es exactamente lo que no hay que hacer.** Las tres condiciones que lo vuelven inseguro se dan las tres a la vez:
 
-1. **el único camino que crea consultas es PÚBLICO Y ANÓNIMO** (el modal del mapa inserta con la anon key, sin sesión);
+1. **todo camino que crea consultas es PÚBLICO Y ANÓNIMO** (insertan con la anon key, sin sesión). ⚠ Desde el 8 sep 2026 son **DOS**: el modal del mapa y la página pública de la propiedad — los dos por `registerLead`, que es justamente por qué se extrajo;
 2. **`leads` no tiene NI UN SOLO CHECK** (medido) — la base no tiene con qué rechazar un valor;
 3. **la policy `Public insert lead` no puede validar una columna de texto**: compararla contra `agents.full_name` sería verificar contra la fuente que esta columna existe para no consultar.
 
@@ -645,7 +850,16 @@ O sea: **una consulta desvinculada pasa a verla SOLO el admin de la agencia.** E
 
 ### El registro de la consulta NO puede bloquear al visitante
 
-El `insert` de `leads` en `PropertyModal.handleSendWA` **captura su error, pero el enlace de WhatsApp se abre igual**: el `window.open` va después del insert y **fuera de toda rama de error**.
+El `insert` de `leads` **captura su error, pero el enlace de WhatsApp se abre igual**: el `window.open` va después y **fuera de toda rama de error**.
+
+⚠ **El insert ya NO vive dentro del modal: se extrajo a `src/lib/utils/registerLead.ts`** (8 sep 2026), cuando apareció una **segunda** pantalla que contacta por WhatsApp (la página pública de la propiedad). Copiarlo habría sido copiar —o perder— las cuatro decisiones que lleva encima, y **la más frágil de las cuatro es una OMISIÓN**: que `agent_name` NO viaje en el payload. Las omisiones no se copian, se olvidan. La función **nunca lanza** (devuelve un booleano) y las otras tres decisiones son **contrato del llamador**, escritas en ese mismo archivo:
+
+| # | Decisión | Dónde vive |
+|---|---|---|
+| 1 | el error se captura pero **no bloquea** el contacto | el llamador: `window.open` después y fuera de toda rama de error |
+| 2 | **no se manda `agent_name`** — lo escribe el trigger | la función: que el campo no esté **es** la barrera |
+| 3 | con error el formulario **no se cierra** | el llamador |
+| 4 | el aviso **no es un error grave** (`graphite` + `role="status"`) | el llamador, con el texto en `LEAD_ERROR_MESSAGE` |
 
 **El criterio: la operación principal acá es el CONTACTO, no el registro.** El lead es para la agencia, no para el visitante, y **no puede ser la razón por la que alguien no llegue a contactar a una inmobiliaria**. No hay ninguna rama en la que el visitante se quede sin poder escribir.
 
@@ -973,7 +1187,7 @@ onKeyDown={(e) => {
 
 ### Mapa — performance
 - Debounce 400ms en `moveend`. `ClusterLayer` diff por ids (**⚠ ese diff no detecta un cambio de precio por filtro de operación: ver la trampa 2 en "Operaciones, precios y requisitos"**). `useProperties` con SELECT acotado, no `*`. La lista mobile usa `bounds = null` (toda la ciudad).
-- **⚠ El SELECT del hook es una lista EXPLÍCITA de columnas y el resultado se castea por `unknown`**, así que una columna que falte llega como `undefined` sin que el compilador diga nada (el pin imprimiría `NaN`). Las nueve columnas de operación/precio tienen que estar todas. Los requisitos de alquiler **NO** están ahí a propósito: no se muestran ni en el pin ni en la card, y esa es la query caliente. El modal usa `select("*")` y hereda las columnas solas.
+- **⚠ El SELECT del hook es una lista EXPLÍCITA de columnas y el resultado se castea por `unknown`**, así que una columna que falte llega como `undefined` sin que el compilador diga nada (el pin imprimiría `NaN`). Las nueve columnas de operación/precio tienen que estar todas. Los requisitos de alquiler **NO** están ahí a propósito: no se muestran ni en el pin ni en la card, y esa es la query caliente. El modal usa `select("*")` y hereda las columnas solas, más los embeds de imágenes, agente y **agencia** (esta última con solo `name, logo_url` nombradas: ver "Quién publica").
 
 ---
 
@@ -1153,6 +1367,17 @@ npm run storage:huerfanos:borrar   # ⚠ destructivo. Ver "Auditoría y limpieza
 | El reparto de mensajes de bloqueo es un `switch` exhaustivo con guarda `never` | Era un ternario binario y el motivo nuevo cayó en el `else`: una agencia dada de baja leía "alcanzaste el límite de tu plan". Con la guarda, agregar un motivo sin mensaje no compila |
 | La sesión del área privada se resuelve en un solo helper cacheado (`resolveAgentSession`) | Estaba copiada en 21 lugares con 5 selects y 4 comportamientos distintos ante "no hay fila"; esa dispersión fue la causa raíz del bucle de redirecciones. `cache()` evita que centralizar cueste una consulta extra por página |
 | Salida del bucle por route handler (`/logout`), no por action ni Server Component | Un Server Component no puede borrar cookies (documentado en `lib/supabase/server.ts`), así que no puede cerrar sesión; y una action se invoca desde un form, no desde un render. Solo el route handler puede hacer las dos cosas: cerrar la sesión y redirigir |
+| La página de la propiedad va en `/propiedades/[slug]`, con prefijo | En el primer nivel ya vive el `[slug]` de agencia, y **dos rutas dinámicas hermanas en el mismo nivel son ambiguas**: el framework no las admite. No es estilo |
+| La propiedad se lee con **service role** + la regla invocada a mano, no con el client de servidor | Con las policies los tres estados son **indistinguibles** (pausada, impaga e inexistente devuelven la misma lista vacía), así que la página solo podría hacer 404; y las tres policies de SELECT son permissive y se combinan con **OR**, así que un agente logueado vería publicada una propiedad que para el resto del mundo no lo está. Con service role el resultado es igual para todos |
+| La regla de cobro se pregunta a la base **por RPC**, no se reescribe en TypeScript | Ya vive en `agency_is_publicly_visible()` y la invocan tres policies y el sitio de marca. Replicarla acá la dejaría escrita en tres lugares: el día que cambie, el mapa, el sitio de marca y esta página dirían cosas distintas y nadie se enteraría |
+| El estado "no disponible" NO es un 404 | Quien llega casi siempre recibió el enlace de alguien —esa es la función de la página—, y un error de página inexistente le diría que el enlace estaba roto. No lo está: la propiedad existió y puede volver |
+| La galería de la página es CSS puro, no el carrusel del modal | El carrusel guarda la foto activa en un `useState` y apila el resto con `opacity-0`: para un buscador existe **una sola foto**. En una página cuyo motivo de existir es ser indexada, eso es exactamente lo que no se puede hacer |
+| El mapa de la página es una grilla de tiles estática, no Leaflet con `ssr: false` | Un Leaflet cargado solo en el cliente lo ve vacío un buscador, y arrastra la librería entera a una página que queremos rápida y con la que el 99 % de las visitas no va a interactuar. No hay API de imágenes estáticas disponible: OSM no ofrece una y la key de MapTiler está vacía |
+| La vista previa al compartir usa la **foto real** de la propiedad, no una imagen generada | Generar una con `ImageResponse` sumaba una ruta, tiempo de build y otra fuente de verdad, para mostrar algo peor que la foto de la casa |
+| El mapa del sitio lleva `force-dynamic` | Por omisión es un Route Handler **cacheado al construir**: serviría la lista del día del despliegue, con las propiedades nuevas invisibles y las dadas de baja todavía ofrecidas |
+| `NEXT_PUBLIC_SITE_URL` corta si falta, en vez de caer a un valor por defecto | Caer a `localhost` sería el peor de los dos mundos: el sitio construiría bien y **publicaría direcciones de localhost** en la vista previa de los enlaces y en el mapa del sitio, sin que nada avise. Un fallo al construir se ve; una dirección equivocada indexada, no |
+| Del modal se extrajeron **solo dos cosas**: la tabla de íconos de amenities y el registro de la consulta | Son las dos que **no se pueden duplicar sin que se rompan en silencio**: la tabla son 16 entradas exhaustivas por tipo (una amenity nueva en un solo lado no falla, solo muestra el ícono genérico), y el insert lleva encima cuatro decisiones de las cuales **la más frágil es una OMISIÓN** (`agent_name`), y las omisiones no se copian: se olvidan. El resto de la presentación son bloques de 12-25 líneas que solo componen helpers ya compartidos: extraerlos acoplaría dos pantallas que tienen que poder evolucionar distinto |
+| En el modal el título NO es enlace; en la tarjeta de la lista SÍ | El modal vive sobre el mapa, donde un título clickeable se toca por accidente y saca al visitante del mapa sin que lo haya pedido. En la lista el visitante está leyendo, y el título como enlace es lo que espera |
 
 ---
 
