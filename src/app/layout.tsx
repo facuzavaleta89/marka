@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Noto_Serif, DM_Sans } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
+import { SITE_URL } from "@/lib/utils/siteUrl";
 
 const notoSerif = Noto_Serif({
   subsets: ["latin"],
@@ -18,12 +19,46 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Marka",
+  // ⚠ SIN `metadataBase`, USAR UNA RUTA RELATIVA EN CUALQUIER CAMPO DE METADATA
+  // BASADO EN URL ROMPE LA CONSTRUCCIÓN DEL SITIO. La documentación oficial lo
+  // dice con esas palabras: "Using a relative path in a URL-based metadata field
+  // without configuring a metadataBase will cause a build error". Y esta tanda
+  // estrenó justamente esos campos: la canónica y la imagen de la vista previa
+  // de la página de la propiedad.
+  //
+  // Va acá, en la disposición raíz, porque aplica "al segmento actual y a todos
+  // los de abajo" — o sea a todas las rutas de una sola vez.
+  //
+  // El valor sale de NEXT_PUBLIC_SITE_URL vía `SITE_URL`, que además es quien
+  // corta si la variable falta. NO se usa la variable automática del proveedor
+  // de despliegue: apunta al despliegue concreto, no al dominio. Ver siteUrl.ts.
+  metadataBase: new URL(SITE_URL),
+  title: {
+    // `default` para las rutas que no ponen título propio; `template` para que
+    // las que sí lo ponen —la página de la propiedad— queden como
+    // "Casa 3 ambientes centro · Marka" en vez de perder la marca. Antes era una
+    // cadena suelta, con la que un título hijo reemplazaba todo.
+    default: "Marka",
+    template: "%s · Marka",
+  },
   description: "Marketplace inmobiliario",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
+  },
+  // Vista previa por defecto al pegar un enlace de Marka en una app de
+  // mensajería. La página de la propiedad la pisa con sus propios datos y su
+  // foto de portada; esto es lo que ven el resto de las rutas, que hasta ahora
+  // no mostraban ni imagen ni descripción.
+  openGraph: {
+    type: "website",
+    siteName: "Marka",
+    locale: "es_AR",
+    title: "Marka",
+    description: "Marketplace inmobiliario",
+    // Relativa a propósito: es exactamente el caso que `metadataBase` resuelve.
+    images: ["/icon-512.png"],
   },
 };
 

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Heart, MapPin, Bed, Bath, Square, ImageOff } from "lucide-react";
 import { useFavorites } from "@/lib/hooks/useFavorites";
 import { formatPrice } from "@/lib/utils/formatPrice";
@@ -21,6 +22,9 @@ export type PropertyCardData = Pick<
   Property,
   | "id"
   | "title"
+  // El slug alimenta el enlace del título a la ficha pública. No hubo que tocar
+  // ninguna consulta: `useProperties` ya lo trae en su SELECT acotado.
+  | "slug"
   | "property_type"
   | "for_sale"
   | "sale_price"
@@ -85,6 +89,18 @@ export function PropertyCard({
       tabIndex={0}
       onClick={onSelect}
       onKeyDown={(e) => {
+        // ⚠ SOLO cuando la tecla se presiona sobre la tarjeta MISMA.
+        //
+        // `stopPropagation` en el `onClick` de los hijos resuelve el mouse, pero
+        // NO el teclado: un Enter sobre el enlace del título (o sobre el botón
+        // de favorito) activa ese elemento **y además** burbujea hasta acá, así
+        // que se dispararían las dos cosas — navegar Y abrir el modal.
+        //
+        // Esta guarda lo corta para todos los hijos de una vez, presentes y
+        // futuros, en vez de pedirle a cada uno que se acuerde de frenar también
+        // el `onKeyDown`. (De paso arregla el mismo problema, que ya existía sin
+        // que nadie lo notara, en el botón de favorito.)
+        if (e.target !== e.currentTarget) return;
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           onSelect();
@@ -151,9 +167,33 @@ export function PropertyCard({
           ))}
         </p>
 
-        {/* Título */}
-        <h3 className="mt-1 line-clamp-2 font-serif text-[17px] font-semibold leading-snug text-black">
-          {property.title}
+        {/* ── Título: enlace a la ficha completa ────────────────────
+            En la lista el contexto es distinto al del modal: el visitante está
+            LEYENDO, no navegando un mapa, y el título como enlace es lo que
+            espera. (En el modal, que vive sobre el mapa, el título NO es enlace
+            a propósito: ahí se tocaría por accidente.)
+
+            ⚠ EL CONFLICTO REAL: la tarjeta entera ya es clickeable (el
+            `<article role="button" onClick={onSelect}>` de arriba abre el modal),
+            así que sin hacer nada un toque en el título dispararía LAS DOS
+            cosas — navegaría Y abriría el modal.
+
+            Se resuelve cortando la propagación, que es el mismo recurso que ya
+            usa el botón de favorito de la foto (`e.stopPropagation()`), no un
+            invento nuevo. Resultado: tocar el título va a la ficha; tocar
+            cualquier otra parte de la tarjeta abre el modal.
+
+            El `relative z-10` es lo que hace que el área del enlace gane el
+            click: sin él, el enlace y el fondo de la tarjeta se pelean el mismo
+            punto y el resultado depende del orden de pintado. */}
+        <h3 className="mt-1 font-serif text-[17px] font-semibold leading-snug text-black">
+          <Link
+            href={`/propiedades/${property.slug}`}
+            onClick={(e) => e.stopPropagation()}
+            className="relative z-10 line-clamp-2 hover:text-terracota hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracota/40"
+          >
+            {property.title}
+          </Link>
         </h3>
 
         {/* Precio */}
