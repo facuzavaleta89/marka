@@ -1,251 +1,235 @@
-# Inversión: en pantallas chicas queda el ingreso, no el llamado
+# Documentación del cierre — C3 y el grupo de captación y difusión
 
-> **Modo ejecución, alcance mínimo.** **No se ejecutó ningún comando de git** y **no se ejecutó
-> SQL**. No se tocaron `CLAUDE.md` ni `PENDIENTES.md`.
-> **Fecha:** 8 sep 2026.
+> **Modo ejecución, solo documentación.** Se modificaron **dos** archivos: `CLAUDE.md` y
+> `PENDIENTES.md`. **No se tocó `src/`, `scripts/`, el archivo de migración ni `DESIGN.md`.**
+> **No se ejecutó ningún comando de git** ni SQL de ninguna clase.
+> **Fecha:** 10 sep 2026.
 
----
+**Verificación de que no se tocó código** (por marca de tiempo, ya que no se puede usar git):
 
-## 1. Archivos modificados
-
-**Dos.**
-
-| Archivo | Qué cambió |
-|---|---|
-| `src/components/auth/PublicHeaderAuth.tsx` | En la variante `marketplace`: el `hidden sm:inline-flex` **pasó del enlace de ingreso al enlace de captación**. Los comentarios que justificaban el reparto viejo se reescribieron con el criterio nuevo. |
-| `DESIGN.md` | §11 "Encabezado público": el diagrama ahora muestra los dos tamaños, el párrafo del punto de corte dice que el que se cae es el llamado, con los anchos **medidos**; se anotó la consecuencia de que la captación no se ve en celular y la alternativa evaluada; y se corrigió una cifra estimada del bloque del salto de layout. |
-
-**No se tocó nada más.** En particular, y según el punto 5: `AgencyMapView.tsx` (variante del sitio
-de marca), `propiedades/[slug]/page.tsx`, las guardas de ancho del encabezado, el estado de carga
-(`PublicHeader` en `(public)/page.tsx`) y `CityPicker.tsx` quedaron **exactamente como estaban**.
-
-El cambio funcional es de **dos palabras de clases**:
-
-```diff
-- <Link href="/register" className="inline-flex h-9 shrink-0 items-center rounded-md border …">
-+ <Link href="/register" className="hidden h-9 shrink-0 items-center rounded-md border … sm:inline-flex">
-
-- <Link href="/login" className={cn(GHOST_LINK, "hidden shrink-0 sm:inline-flex")}>
-+ <Link href="/login" className={cn(GHOST_LINK, "shrink-0")}>
+```
+### src/ scripts/ supabase/ + DESIGN.md
+11:09:30.3061670130  src/app/(public)/page.tsx
+11:09:30.3061670130  src/components/auth/PublicHeaderAuth.tsx
+11:09:30.3061670130  src/components/map/AgencyMapView.tsx
+11:09:30.3061670130  src/components/map/CityPicker.tsx
+11:09:30.3061670130  DESIGN.md
+### lo que sí se editó en esta tanda
+11:16:36  CLAUDE.md
+11:19:25  PENDIENTES.md
 ```
 
+Los cinco primeros comparten un timestamp **idéntico al nanosegundo** y son anteriores al inicio
+de esta tanda (~11:10): son de las tandas de implementación previas, no de ésta.
+
 ---
 
-## 2. Cómo quedó cada enlace en cada tamaño
+## 1. CLAUDE.md — qué agregué, modifiqué y corregí
 
-| | `< sm` (< 640 px) | `≥ sm` (≥ 640 px) |
+### Agregado: una sección nueva
+
+**`### El encabezado público — tres variantes, y la puerta de captación`**, insertada entre "Las
+dos puertas a la ficha" y "Infraestructura de buscadores" (queda con las demás superficies
+públicas, y después de que white-label y la ficha ya están introducidas, que es a las que
+referencia). Cubre, en este orden:
+
+- **El antes**, con el dato medido: las únicas apariciones de la palabra "inmobiliaria" en toda la
+  superficie pública eran **comentarios de código**.
+- **Tabla de las tres superficies** (home / sitio de marca / ficha) con dónde vive cada encabezado
+  y qué ofrece.
+- **La home**: tabla de los tres enlaces con destino, tratamiento y comportamiento en `< sm` y
+  `≥ sm`; por qué el llamado **no es terracota** (el FAB ya lo usa; precedente literal de DESIGN
+  §11 con el `LocationPicker`); y por qué **el que se cae en pantalla chica es el llamado y no el
+  ingreso**, con la consecuencia asumida escrita.
+- **Por qué en el sitio de marca no va la captación** — con la razón comercial completa: ese sitio
+  es lo que la agencia compra con `has_white_label`, el marketplace es **por ciudad**, y el llamado
+  usaría el espacio que paga un cliente para captar a su competencia de la misma ciudad. Con el
+  argumento textual que le daría para no renovar.
+- **Por qué en la ficha tampoco va, por ahora** — quien llega busca una casa, y la página existe
+  para renderizarse entera en el servidor: un llamado dependiente de sesión obligaría a estrenar
+  una isla de cliente contra su razón de ser.
+- **El componente compartido**: ruta, firma, por qué la prop no tiene default, y que **absorbió la
+  detección de sesión** que estaba duplicada carácter por carácter.
+- **Trampa 1 — el mecanismo antisalto**: la grilla 1×1, y que la rama inactiva se apaga con
+  `invisible` y **nunca** con `hidden`, porque tiene que seguir ocupando la celda. Con el corolario
+  para futuros cambios de breakpoint: se apaga **un enlace de adentro**, nunca una rama entera.
+- **Trampa 2 — las guardas de ancho**: tabla de las cinco, contra qué protege cada una, que el
+  fallo es **silencioso** (lo recorta el `overflow-hidden` del raíz), y que el caso máximo —
+  "Santiago del Estero", 19 caracteres — **es el caso normal**, porque es la única ciudad activa.
+- **Trampa 3 — el nombre suelto**: por qué el arreglo fue **envolverlo** y no agregarle una clase
+  (un nodo de texto en un flex es un item anónimo: no había dónde poner `truncate`).
+- **Los anchos medidos** con el método (fontkit + `wght` → `avar` → `HVAR`), la tabla completa, y
+  **el umbral: desde 376 px el nombre entra completo**.
+
+### Agregado: siete filas en "Decisiones de Arquitectura"
+
+Componente compartido con variantes · sin captación en el sitio de marca · sin captación en la
+ficha · el llamado no es terracota · en pantalla chica se cae el llamado · `visibility` y no
+`display` para la rama inactiva · el estado de carga renderiza el encabezado real.
+
+### Agregado: tres entradas en la estructura de carpetas
+
+`PublicHeaderAuth.tsx` bajo `components/auth/`; la nota de `PublicHeader` en `(public)/page.tsx`
+(con el ⚠ de que la rama `if (!city)` **no** lo usa); y las guardas del `CityPicker`.
+
+### Corregido
+
+| Dónde | Qué decía | Qué dice |
 |---|---|---|
-| **"Sumá tu inmobiliaria"** → `/register` | **oculto** (`display: none`) | botón secundario: `h-9`, `border-stone`, `text-black`, hover `bg-mist` + `border-graphite` |
-| **"Iniciar sesión"** → `/login` | **visible**, ghost: texto `graphite` → hover `black` | visible, ghost, a la derecha del botón |
-| **"Ir al panel"** → `/dashboard` (con sesión) | visible, ghost | visible, ghost |
-
-Con sesión iniciada el reparto no cambia en ningún tamaño: se ve "Ir al panel" y nada más, porque
-a un agente logueado no se le ofrece registrarse.
-
-**La variante `agency` no se tocó:** sigue mostrando "Ingresar" → `/login` en todos los tamaños,
-sin punto de corte, con el mismo texto y el mismo destino de siempre.
+| **Estado** (párr. de apertura) | *"⚠ **El grupo de captación y difusión NO está cerrado**: falta convertir el botón «Ingresar»…"* | El grupo **CERRADO** el 10 sep, con qué trajo la pieza (desduplicación + guardas) |
+| **Baseline medido** | *"última medición: 8 sep 2026"* | 10 sep 2026 (los números no cambiaron) |
+| **Hoja de ruta de modelo** | *"**Pendiente:** registro opcional de visitantes; **página y link por propiedad**"* | Pendiente **solo** el registro opcional (C1). Ver el punto 3 |
 
 ---
 
-## 3. Punto 2 — el ingreso ya se renderizaba con el tratamiento original: **no cambié nada de eso**
+## 2. PENDIENTES.md — qué cerré, abrí y ajusté
 
-**Coincide, y lo verifiqué contra el marcado original.** Antes de toda esta pieza, el enlace vivía
-escrito a mano en `(public)/page.tsx` con esta clase:
+### Cerrado
 
-```
-font-sans text-sm font-medium text-graphite hover:text-black transition-colors
-```
+- **C3**, con el nivel de detalle del archivo: qué quedó, **qué encontró el diagnóstico que el
+  ítem no anticipaba** (la duplicación con divergencia iniciada, las guardas ausentes, y el tercer
+  lugar que apareció — el esqueleto con el ancho viejo), una **tabla de cinco descartes**, el
+  mecanismo antisalto marcado como la trampa a no romper, y el método de medición de anchos.
+- **El grupo entero**, en "Cerrados recientemente": **GRUPO DE CAPTACIÓN Y DIFUSIÓN — CERRADO
+  (7–10 sep 2026), tres piezas**, con el hilo común (la app pública era muda hacia afuera), el
+  resumen de C2, D2 y C3, los descartes del grupo juntos, lo que dejó abierto, y el apartado de
+  método.
+- **Encabezado del archivo** (`Última actualización`) reescrito al estado nuevo.
 
-Hoy sale de la constante `GHOST_LINK` del componente compartido:
+### Los cinco descartes registrados en C3
 
-```
-font-sans text-sm font-medium text-graphite transition-colors duration-[120ms] ease-out hover:text-black
-```
+Los tres que el prompt pedía, más dos que aparecieron midiendo:
 
-| Declaración | Original | Hoy |
+1. **La pantalla intermedia** — es una pieza propia y merece pensarse aparte; el enlace va directo
+   al registro, que ya dice para quién es en cuatro lugares.
+2. **La captación en el sitio de marca** — razón comercial completa.
+3. **La captación en la ficha** — los dos motivos (busca una casa / Server Component).
+4. **El terracota para el llamado** — ya lo usa el FAB "Ver lista / Ver mapa".
+5. **Resolver la sesión en el servidor** — volvería la home `ƒ (Dynamic)`.
+
+### Abierto (cuatro ítems, los cuatro verificados en el código antes de escribirlos)
+
+| Ítem | Dónde lo puse | Verificación |
 |---|---|---|
-| `font-sans` `text-sm` `font-medium` | ✅ | ✅ |
-| `text-graphite` → `hover:text-black` | ✅ | ✅ |
-| `transition-colors` | ✅ | ✅ + `duration-[120ms] ease-out` |
-| borde / fondo / padding / alto | **ninguno** | **ninguno** |
+| **C4 · La captación no se ve en el celular** | BLOQUE C, después de C3 | `hidden … sm:inline-flex` en el `<a href="/register">` de `PublicHeaderAuth.tsx` |
+| **El subclaim oculto en pantallas chicas** | Deuda técnica (primero de la lista) | `AuthLayout.tsx:56` → `hidden … md:block`; textos en `RegisterForm.tsx:29-30` y `LoginForm.tsx:17` |
+| **"Sin ciudades" sin encabezado** | Bugs / observaciones menores | `(public)/page.tsx:107-120`: `<div>` centrado, dos párrafos, **cero `href`** |
+| **El último píxel del nombre de la ciudad** | Pulido estético | Medido: 147,8 disponibles contra 148,7 necesarios |
 
-**Las mismas seis declaraciones, sin una caja ni un borde por ningún lado.** Lo único agregado es
-la curva y la duración de la transición, que no eran una elección sino la omisión de lo que
-DESIGN §8 fija para hover (*"Color/border transition · 120ms · ease-out"*), más el `shrink-0` que
-es guarda de ancho, no tratamiento visual.
+**C4 lleva la alternativa evaluada y no hecha**: el **pie de la lista de propiedades**, con el
+argumento de por qué es la única candidata (`PropertyList` es la única superficie pública del
+celular que scrollea; el mapa es `h-dvh` con el scroll del documento bloqueado, y los dos FABs ya
+están tomados), los a favor y los en contra, y la nota de que **se entrelaza con la pantalla
+intermedia descartada**.
 
-Confirmado también sobre el HTML que emite el build — es texto pelado:
+### Ajustado
 
-```html
-<a class="font-sans text-sm font-medium text-graphite transition-colors duration-[120ms] ease-out hover:text-black shrink-0" href="/login">Iniciar sesión</a>
-```
+- **"Tamaños de botones"** (Pulido estético) — se le sumó el `h-9` del llamado del encabezado
+  como **desviación consciente** de los 44 px de DESIGN §6, para que la pasada pareja la confirme
+  o la unifique en vez de "arreglarla" sin contexto.
 
-Ni `border`, ni `rounded`, ni `bg-`, ni `px-`, ni `h-`. **Cuando queda solo en celular, se ve como
-se veía antes de la pieza: un enlace de texto.** No hice ningún cambio en su tratamiento.
+### Lo que revisé y NO toqué
 
-⚠ **Una diferencia que sí existe y que no es de tratamiento: el texto.** En la variante del
-marketplace dice **"Iniciar sesión"** y no "Ingresar" — fue una decisión deliberada de la tanda
-anterior (con dos enlaces al lado, "Ingresar" era ambiguo). El punto 2 pedía verificar el
-*tratamiento*, y lo hice; menciono el texto porque **pesa en la aritmética del punto 4** y porque
-es lo único en lo que el celular no queda idéntico a como estaba antes de la pieza.
-
----
-
-## 4. Punto 3 — cómo verifiqué que el mecanismo antisalto sigue vivo
-
-**El riesgo concreto era uno solo, y lo nombro:** si el `hidden sm:…` hubiera terminado sobre una
-de las **dos ramas** de la grilla en vez de sobre un enlace de adentro, `display: none` la sacaría
-del documento y el ancho de la celda volvería a depender de la sesión — que es exactamente el salto
-que el mecanismo existe para apagar. Verifiqué que eso **no** pasó, por tres vías.
-
-### (a) Estructura, sobre el HTML que emite `next build`
-
-```html
-<div class="grid shrink-0 justify-items-end">
-  <div class="col-start-1 row-start-1 flex items-center gap-3" aria-hidden="false">
-    <a class="hidden h-9 shrink-0 … sm:inline-flex" href="/register">Sumá tu inmobiliaria</a>
-    <a class="font-sans text-sm … shrink-0" href="/login">Iniciar sesión</a>
-  </div>
-  <div class="col-start-1 row-start-1 flex items-center invisible pointer-events-none" aria-hidden="true">
-    <a class="font-sans text-sm … shrink-0" href="/dashboard">Ir al panel</a>
-  </div>
-</div>
-```
-
-### (b) Chequeos automáticos sobre ese HTML
-
-```
-ramas en la celda 1/1: 2  (esperado 2)
-ramas con 'hidden': 0
-  class="col-start-1 row-start-1 flex items-center gap-3"
-  class="col-start-1 row-start-1 flex items-center invisible pointer-events-none"
-dónde vive el hidden sm: → <a … sm:inline-flex" href="/register"
-```
-
-**Las dos ramas siguen siendo hermanas en la misma celda `1/1`, ninguna lleva `hidden`, y el
-`hidden sm:inline-flex` está sobre el `<a href="/register">` — un nieto, no una rama.** La rama con
-sesión sigue apagada con `invisible`, o sea que **sigue ocupando su celda**, que es la condición de
-la que depende todo.
-
-### (c) Que el ancho no dependa de la sesión, en los dos tamaños
-
-La celda mide `máx(rama anónima, rama con sesión)`. Con los anchos medidos (Parte 5):
-
-| Tamaño | Rama anónima | Rama con sesión | Celda = máx | ¿Depende de la sesión? |
-|---|---|---|---|---|
-| `< sm` | 86,1 px (el CTA va `display:none`) | 63,4 px | **86,1 px** | **no** |
-| `≥ sm` | 258,6 px (CTA + gap + ingreso) | 63,4 px | **258,6 px** | **no** |
-
-En los dos tamaños la rama anónima es la más ancha, así que **la celda mide lo mismo antes y
-después de que resuelva `getUser()`**. Sin el mecanismo, el encabezado se movería **195,2 px en
-`sm`+ y 22,7 px por debajo**.
-
-⚠ **Un efecto lateral favorable que la inversión trajo sola:** en celular el salto potencial pasó
-de 96,9 px (cuando la rama anónima era el botón de 160,5) a 22,7 px. El mecanismo ahora tapa un
-agujero más chico del que tapaba, no uno más grande.
+Barrí el resto del archivo buscando cifras que esta pieza dejara viejas. **No encontré ninguna.**
+El calendario de lanzamiento, el bloque de limpieza de datos previo al lanzamiento, la deuda
+técnica existente, las decisiones de producto abiertas y V2 **no dicen nada que C3 contradiga**.
+No inventé trabajo ahí.
 
 ---
 
-## 5. Punto 4 — la aritmética, ahora **medida** y no estimada
+## 3. Afirmaciones falsas que encontré
 
-⚠ **En la tanda anterior estos números eran estimaciones por conteo de caracteres y lo dejé
-señalado. Esta vez están medidos.** Cargué con `fontkit` los `.woff2` que sirve el build
-(`.next/static/media`), y como son **fuentes variables** y `fontkit` no puede instanciar estos
-subconjuntos, apliqué la variación de peso a mano: normalización del eje `wght` → tabla `avar` →
-deltas de `HVAR`, más el kerning del layout base. Control de sanidad: el mismo texto a peso 400 da
-84,3 px y a 500 da 86,1 px, o sea que la variación efectivamente se está aplicando.
+### (a) En CLAUDE.md — corregida
 
-**Anchos de texto medidos** (DM Sans 500 a 14 px; Noto Serif 700 a 24 px con `tracking-[-0.01em]`):
+> *"**Pendiente:** registro opcional de visitantes; **página y link por propiedad**."*
+
+**Falsa desde el 8 sep**: "página y link por propiedad" es C2, que está hecha — y el propio párrafo
+de Estado, cuatro líneas más arriba, ya lo decía. **No la dejó falsa esta pieza sino la anterior**,
+pero está en el mismo bloque de hoja de ruta que C3 tenía que actualizar, así que la corregí en el
+mismo movimiento y lo reporto acá.
+
+### (b) En `src/components/auth/PublicHeaderAuth.tsx:77` — **NO corregida, por el modo**
+
+El comentario del mecanismo antisalto dice:
+
+> *"el ancho del bloque se movería **~80 px** en el elemento más prominente del encabezado"*
+
+**Ese número es falso.** Medido contra las fuentes del build: el salto real sería de **195,2 px en
+`sm`+** (258,6 → 63,4) y de **22,7 px por debajo** (86,1 → 63,4). Ninguno de los dos se parece a
+80. Es un residuo de la estimación por conteo de caracteres de la primera tanda, que sobrevivió a
+la medición real y a la inversión del breakpoint.
+
+**No lo toqué porque esta tanda es solo documentación y `src/` está fuera de alcance.** Los números
+correctos quedaron en CLAUDE.md → "El encabezado público" y en PENDIENTES.md → C3, así que la
+documentación no repite el error. **Es un arreglo de una línea para la próxima tanda que toque ese
+archivo** — y encaja exactamente en el patrón que CLAUDE.md → "Método de Diagnóstico" ya advierte:
+un comentario que afirma un número desactualiza la sospecha.
+
+### (c) Nada más
+
+Las tres afirmaciones del prompt sobre lo que trajo la pieza —duplicación con divergencia, guardas
+ausentes en la home, salto de layout— se verificaron **las tres** contra el código y son exactas.
+
+---
+
+## 4. Los números que medí
+
+**Método:** se cargaron con `fontkit` los `.woff2` que sirve el build (`.next/static/media`). Como
+son **fuentes variables** que `fontkit` no puede instanciar en esos subconjuntos, la variación de
+peso se aplicó a mano: normalización del eje `wght` → tabla `avar` → deltas de `HVAR`, más el
+kerning del layout base. **Control de sanidad:** el mismo texto a peso 400 mide 84,3 px y a 500,
+86,1 px — la variación efectivamente se aplica.
+
+### Anchos de texto (DM Sans 500 a 14 px; Noto Serif 700 a 24 px con `tracking-[-0.01em]`)
 
 | Texto | Ancho |
 |---|---|
-| "Marka." (marca) | **85,1 px** |
+| "Marka." | **85,1 px** |
 | "Santiago del Estero" | **126,7 px** |
 | "Iniciar sesión" | **86,1 px** |
 | "Ir al panel" | **63,4 px** |
 | "Sumá tu inmobiliaria" | **134,5 px** |
-| "Ingresar" (variante `agency`) | 53,2 px |
+| "Ingresar" (variante `agency`) | **53,2 px** |
 
-**Slots armados:**
+### Slots
 
 | Slot | Ancho | Composición |
 |---|---|---|
-| Marca | **85,1 px** | — |
-| Selector de ciudad | **148,7 px** | texto 126,7 + `gap-1.5` 6 + chevron 16 |
+| Marca | 85,1 px | — |
+| Selector de ciudad | **148,7 px** | 126,7 + `gap-1.5` 6 + chevron 16 |
+| Botón del llamado | 160,5 px | 134,5 + `px-3` 24 + borde 2 |
 | Puerta `< sm` | **86,1 px** | `máx(86,1 · 63,4)` |
-| Botón CTA | 160,5 px | texto 134,5 + `px-3` 24 + borde 2 |
-| Puerta `≥ sm` | 258,6 px | `máx(160,5 + 12 + 86,1 · 63,4)` |
+| Puerta `≥ sm` | **258,6 px** | `máx(160,5 + 12 + 86,1 · 63,4)` |
 
-### El caso que pedía el punto 4: 375 px, ciudad más larga que existe
-
-```
---- 375 px ---
-  util 343,0 - (marca 85,1 + puerta 86,1 + gaps 24 = 195,2) = 147,8 para el selector,
-  que necesita 148,7
-  => TRUNCA, faltan 0,9 px
-```
-
-**Los tres elementos entran y son funcionales. El nombre de la ciudad queda 0,9 px corto** — o sea
-que a exactamente 375 px `truncate` se activa y el nombre pierde su último carácter contra los
-puntos suspensivos. **Lo reporto tal cual en vez de redondear a "entra".**
-
-### Barrido de viewports
+### El umbral
 
 | Viewport | Dispone el selector | Necesita | Resultado |
 |---|---|---|---|
-| 320 px | 92,8 | 148,7 | trunca (−55,9) |
-| 360 px | 132,8 | 148,7 | trunca (−15,9) |
-| **375 px** | **147,8** | **148,7** | **trunca (−0,9)** |
-| 390 px (iPhone 12–15) | 162,8 | 148,7 | ✅ completo (+14,1) |
-| 393 px (Pixel) | 165,8 | 148,7 | ✅ completo (+17,1) |
-| 412 / 414 px | 184,8 / 186,8 | 148,7 | ✅ completo |
-| 430 px (iPhone Pro Max) | 202,8 | 148,7 | ✅ completo (+54,1) |
-| 640 px (`sm`, ya con CTA) | 240,3 | 148,7 | ✅ completo (+91,6) |
+| 320 px | 92,8 | 148,7 | recorta (−55,9) |
+| 360 px | 132,8 | 148,7 | recorta (−15,9) |
+| **375 px** | **147,8** | **148,7** | **recorta (−0,9)** |
+| 390 / 393 / 412 / 430 px | 162,8 / 165,8 / 184,8 / 202,8 | 148,7 | ✅ completo |
+| 640 px (`sm`) | 240,3 | 148,7 | ✅ completo (+91,6) |
 
-**Umbral: desde 376 px el nombre entra completo.**
+**Umbral: desde 376 px de viewport el nombre de la ciudad entra completo.** Con el reparto
+anterior de esta misma pieza —cuando en pantalla chica quedaba el llamado— el umbral era
+**451 px**, o sea que **ningún teléfono** lo mostraba entero.
 
-### La comparación que justifica el cambio
+### Salto de layout que el mecanismo apaga
 
-| Reparto | Umbral para "Santiago del Estero" completo | A 375 px |
-|---|---|---|
-| **Antes** (en chica quedaba el CTA) | **451 px** | faltaban **75,2 px** |
-| **Ahora** (en chica queda el ingreso) | **376 px** | faltan **0,9 px** |
+**195,2 px en `sm`+ · 22,7 px por debajo.**
 
-**Ningún teléfono mostraba el nombre entero con el reparto anterior. Con el nuevo lo muestran
-todos salvo los de 375 px y menos**, y ahí por menos de un píxel. La inversión, que se pedía por
-un motivo de producto, **también mejora el encabezado en 75 px**.
+### Datos de la base (solo lectura)
 
-⚠ **Si esos 0,9 px molestan, hay una salida que NO implementé por estar fuera de alcance:** volver
-el texto del ingreso a **"Ingresar"** (53,2 px en vez de 86,1) dejaría la puerta en 63,4 px y el
-selector con **170,5 px contra 148,7**, o sea **21,8 px de sobra** y umbral por debajo de 320. Se
-paga con la ambigüedad que "Iniciar sesión" vino a resolver. Es una decisión de producto, no de
-layout, y la dejo planteada sin tomarla.
+**Una sola ciudad activa: "Santiago del Estero", 19 caracteres** — o sea, el caso máximo y el caso
+normal a la vez.
 
 ---
 
-## 6. Punto 6 — anotado, no implementado
+## 5. Baseline
 
-**En un teléfono la captación no se ve en ningún lado.** No se movió a otro lugar: no está. Un
-visitante de inmobiliaria que mire el mapa desde el celular —que va a ser el caso más frecuente
-cuando arranque la publicidad de octubre— no tiene ninguna línea de la interfaz que le hable, que
-es exactamente la situación que C3 vino a resolver. **La pieza resuelve el problema en escritorio y
-lo deja abierto en celular.**
-
-**La alternativa evaluada y no implementada: el pie de la lista de propiedades.** Es la **única
-superficie pública del celular que scrollea** — el mapa es `h-dvh` con el scroll del documento
-bloqueado a nivel raíz (`globals.css`), así que no existe ningún "abajo" donde colgar nada, y los
-dos FABs ya están tomados. La lista mobile (`PropertyList`), en cambio, tiene scroll propio y un
-final natural: quien llegó hasta ahí ya recorrió la oferta de su ciudad, que es justo el momento en
-que una inmobiliaria entiende para qué sirve la plataforma.
-
-Queda anotado acá y en DESIGN.md §11 para el cierre del grupo. **No lo implementé.**
-
----
-
-## 7. Baseline
-
-Se borraron `.next` y `tsconfig.tsbuildinfo` antes de medir. **No apareció el ruido de herramienta:
-ningún error en `.next/**`.**
+Corrido **después** de escribir los dos `.md`. Se borraron `.next` y `tsconfig.tsbuildinfo` antes
+de medir; **no apareció el ruido de herramienta: ningún error en `.next/**`.**
 
 ### `npx tsc --noEmit`
 
@@ -254,7 +238,7 @@ ningún error en `.next/**`.**
 EXIT_TSC=0
 ```
 
-Salida vacía, **exit code 0, 0 errores.** ✅
+Salida vacía. **Exit code 0. 0 errores.** ✅
 
 ### `npm run lint`
 
@@ -290,11 +274,11 @@ EXIT_LINT=0
 - Environments: .env.local
 
   Creating an optimized production build ...
-✓ Compiled successfully in 9.0s
+✓ Compiled successfully in 7.1s
   Running TypeScript ...
-  Finished TypeScript in 10.5s ...
+  Finished TypeScript in 7.9s ...
   Collecting page data using 3 workers ...
-✓ Generating static pages using 3 workers (20/20) in 1328ms
+✓ Generating static pages using 3 workers (20/20) in 1379ms
   Finalizing page optimization ...
 
 Route (app)
@@ -329,45 +313,38 @@ Route (app)
 EXIT_BUILD=0
 ```
 
-**Verde, exit code 0, 22 rutas.** ✅ `/` sigue `○ (Static)`, `/sitemap.xml` sigue `ƒ`,
-`/robots.txt` sigue `○`. **Nada se movió.**
+**Verde, exit code 0, 22 rutas** (contadas una por una). `/` sigue `○ (Static)`, `/sitemap.xml`
+sigue `ƒ`, `/robots.txt` sigue `○`. ✅ **Nada se movió**, como correspondía a una tanda que solo
+toca `.md`.
 
 ---
 
-## 8. Qué de este prompt resultó falso
+## 6. Qué de este prompt resultó falso
 
-**Nada resultó falso.** Las tres afirmaciones técnicas del enunciado se verificaron contra el
-código antes de tocarlo:
+**Nada de lo que el prompt afirma resultó falso.** Los tres hallazgos que enumera —el enlace
+duplicado con copias ya divergentes, el encabezado de la home sin ninguna guarda de ancho mientras
+el del sitio de marca las tenía todas, y el salto de layout por el cambio de texto según sesión—
+se verificaron contra el código y son exactos.
 
-- *"la variante del marketplace muestra hoy dos enlaces… el llamado con tratamiento de botón y el
-  ingreso con tratamiento de texto"* — cierto, tal cual.
-- *"hoy se oculta el ingreso por debajo del punto de corte intermedio"* — cierto: era
-  `hidden sm:inline-flex` sobre el enlace a `/login`, con `sm` = 640 px.
-- *"los dos estados de sesión se renderizan apilados en la misma celda de una grilla y uno se apaga
-  con visibilidad"* — cierto, y sigue así.
+**Dos precisiones, ninguna contradice el prompt:**
 
-### Dos precisiones, ninguna contradice el prompt
+1. **Los lugares a tocar eran "dos y medio", no dos.** Además de los dos archivos con el enlace,
+   apareció un tercero: el **esqueleto de carga** de la home tenía el ancho del slot derecho
+   escrito a mano (`w-16` = 64 px, dimensionados para la palabra "Ingresar"). No estaba en la lista
+   y era obligatorio: sin ajustarlo, la home saltaba al terminar de cargar. Quedó registrado en
+   C3 como "el tercer lugar".
+2. **La afirmación de que "no hay una sola línea de la interfaz que le hable" a una inmobiliaria
+   era literalmente cierta**, verificada por barrido exhaustivo: las tres apariciones de la palabra
+   "inmobiliaria" en toda la superficie pública eran comentarios de código. Lo dejo asentado porque
+   es de las afirmaciones fáciles de escribir de memoria y ésta estaba medida.
 
-1. **El punto 2 resultó no requerir ningún cambio, como el propio prompt anticipaba** (*"Si el
-   ingreso ya se renderiza con ese tratamiento, decilo y no cambies nada de eso"*). Ya era
-   `GHOST_LINK`: texto pelado sin caja ni borde. No toqué su tratamiento.
-2. **El punto 4 se cumple por poco, no con holgura, y prefiero decirlo:** a exactamente 375 px
-   faltan **0,9 px** y el nombre de la ciudad se corta por un carácter. Desde 376 px entra
-   completo. Con el reparto anterior faltaban 75,2 px, así que la situación mejoró 75 px — pero
-   "entran los tres" a 375 px es cierto en el sentido de que los tres se ven y funcionan, no en el
-   de que el nombre se lea entero.
-
-### Lo que este cambio empeora, dicho sin adornos
-
-**La captación desapareció del celular por completo** (Parte 6). Es la contracara directa de la
-decisión de producto que el prompt tomó, y es coherente con ella —no molestar todos los días a
-quien ya paga— pero significa que el objetivo original de C3 queda a medio cumplir hasta que se
-resuelva la superficie del pie de lista.
+**Y una cosa que el prompt no podía saber:** el comentario del propio componente
+(`PublicHeaderAuth.tsx:77`) contiene un número falso (~80 px contra los 195,2 / 22,7 reales). Está
+en el punto 3(b), sin corregir por estar fuera del alcance de esta tanda.
 
 ---
 
 ## Estado final
 
-Dos archivos modificados, baseline intacto en los tres frentes, 22 rutas con el mismo nombre y el
-mismo tipo. **No se ejecutó ningún comando de git**, según lo indicado: el trabajo queda en el
-árbol para que lo revises.
+Dos archivos `.md` modificados. Baseline intacto en los tres frentes, 22 rutas con el mismo nombre
+y el mismo tipo. **No se ejecutó ningún comando de git**, según lo indicado.
