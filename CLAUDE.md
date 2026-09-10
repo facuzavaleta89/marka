@@ -20,15 +20,15 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 
 **Distribución:** web responsive + PWA instalable. No hay app nativa ni stores.
 
-**Estado:** Deployado en Vercel, **sin datos reales todavía** (lo cargado es de prueba; el lanzamiento con inmobiliarias fundadoras se apunta a octubre). MVP + multi-agente completos. **Fase White-label cerrada** en lo esencial: Sub-pieza A (ruta `/[slug]` + mapa filtrado + gate de plan), B1 (subir logo) y B2a (mostrar logo + nombre + "powered by Marka." en el header) hechas y probadas. **B2b (variante admin en `disabled`) y C (slug editable) quedan EN PAUSA**. **Fase de modelo de agencias CERRADA** (ago 2026): solo-agencias, matrícula + aprobación manual, bloqueo de publicación en la base, sesión unificada. Ver "Aprobación de agencias" abajo. **Fase de cobrabilidad CERRADA** (31 ago – 1 sep 2026): la visibilidad pública ahora depende de que la agencia esté al día (ver "Visibilidad pública de las propiedades") y el panel `/admin` dejó de ser de una sola vía —cancelar solicitud, vencimiento, baja/reactivación, eliminación y cambio de plan (ver "Panel de plataforma")—. **Ese era el bloqueante para poder cobrar y ya no lo es.** **Fase de modelo de la propiedad CERRADA** (3 sep 2026): una propiedad puede ofrecerse en **varias operaciones a la vez** con precio y moneda propios por operación, el **precio es opcional** ("a convenir") y las propiedades en alquiler llevan **requisitos para el inquilino**. Ver "Operaciones, precios y requisitos de la propiedad". **Grupo de archivos de Storage CERRADO** (5–6 sep 2026), en tres tandas: policies finas por agencia, borrado de archivos en los caminos que no lo hacían, y una herramienta de línea de comandos que audita y limpia huérfanos. El bucket quedó en **9 objetos y 707 kB, sin un solo huérfano**; venía de 24 objetos y 6,4 MB con el 89 % del peso en basura. Ver "Imágenes y Storage". **Grupo de blindaje CERRADO** (7 sep 2026, última de sus cinco tandas): una agencia **ya no puede existir sin fila de suscripción** —lo garantiza un trigger en la base— y el choque de matrícula duplicada al aprobar **se explica**, con la matrícula en conflicto y la regla, en vez de un "no se pudo" genérico. Ver "Suscripciones y límites" y "Aprobación de agencias". **La consulta sobrevive al agente** (7 sep 2026): borrar un agente con consultas a su nombre **antes fallaba siempre** contra una clave foránea; ahora la consulta se **desvincula** y conserva el nombre de quien la atendió en una **copia congelada que escribe la base**, no el cliente. En la misma tanda: el registro de una consulta **ya no falla en silencio** en el mapa público, y el aviso previo al borrado de un agente **dice también qué pasa con sus consultas**. Ver "La consulta sobrevive al agente". **Cada propiedad tiene su página pública propia** (7–8 sep 2026): `/propiedades/[slug]`, renderizada en el servidor e indexable, con vista previa enriquecida al compartir el enlace, botón de compartir, mapa del sitio y archivo de instrucciones para buscadores. Y **el modal dice quién publica**: logo y nombre de la inmobiliaria más el nombre del agente que atiende. Ver "Página pública de la propiedad" y "Quién publica". ⚠ **El grupo de captación y difusión NO está cerrado**: falta convertir el botón "Ingresar" del header público en la puerta de captación para inmobiliarias (PENDIENTES.md → C3).
+**Estado:** Deployado en Vercel, **sin datos reales todavía** (lo cargado es de prueba; el lanzamiento con inmobiliarias fundadoras se apunta a octubre). MVP + multi-agente completos. **Fase White-label cerrada** en lo esencial: Sub-pieza A (ruta `/[slug]` + mapa filtrado + gate de plan), B1 (subir logo) y B2a (mostrar logo + nombre + "powered by Marka." en el header) hechas y probadas. **B2b (variante admin en `disabled`) y C (slug editable) quedan EN PAUSA**. **Fase de modelo de agencias CERRADA** (ago 2026): solo-agencias, matrícula + aprobación manual, bloqueo de publicación en la base, sesión unificada. Ver "Aprobación de agencias" abajo. **Fase de cobrabilidad CERRADA** (31 ago – 1 sep 2026): la visibilidad pública ahora depende de que la agencia esté al día (ver "Visibilidad pública de las propiedades") y el panel `/admin` dejó de ser de una sola vía —cancelar solicitud, vencimiento, baja/reactivación, eliminación y cambio de plan (ver "Panel de plataforma")—. **Ese era el bloqueante para poder cobrar y ya no lo es.** **Fase de modelo de la propiedad CERRADA** (3 sep 2026): una propiedad puede ofrecerse en **varias operaciones a la vez** con precio y moneda propios por operación, el **precio es opcional** ("a convenir") y las propiedades en alquiler llevan **requisitos para el inquilino**. Ver "Operaciones, precios y requisitos de la propiedad". **Grupo de archivos de Storage CERRADO** (5–6 sep 2026), en tres tandas: policies finas por agencia, borrado de archivos en los caminos que no lo hacían, y una herramienta de línea de comandos que audita y limpia huérfanos. El bucket quedó en **9 objetos y 707 kB, sin un solo huérfano**; venía de 24 objetos y 6,4 MB con el 89 % del peso en basura. Ver "Imágenes y Storage". **Grupo de blindaje CERRADO** (7 sep 2026, última de sus cinco tandas): una agencia **ya no puede existir sin fila de suscripción** —lo garantiza un trigger en la base— y el choque de matrícula duplicada al aprobar **se explica**, con la matrícula en conflicto y la regla, en vez de un "no se pudo" genérico. Ver "Suscripciones y límites" y "Aprobación de agencias". **La consulta sobrevive al agente** (7 sep 2026): borrar un agente con consultas a su nombre **antes fallaba siempre** contra una clave foránea; ahora la consulta se **desvincula** y conserva el nombre de quien la atendió en una **copia congelada que escribe la base**, no el cliente. En la misma tanda: el registro de una consulta **ya no falla en silencio** en el mapa público, y el aviso previo al borrado de un agente **dice también qué pasa con sus consultas**. Ver "La consulta sobrevive al agente". **Cada propiedad tiene su página pública propia** (7–8 sep 2026): `/propiedades/[slug]`, renderizada en el servidor e indexable, con vista previa enriquecida al compartir el enlace, botón de compartir, mapa del sitio y archivo de instrucciones para buscadores. Y **el modal dice quién publica**: logo y nombre de la inmobiliaria más el nombre del agente que atiende. Ver "Página pública de la propiedad" y "Quién publica". **Grupo de captación y difusión CERRADO** (10 sep 2026, con su tercera y última pieza): el enlace del encabezado público que decía **"Ingresar"** —sin decir para quién era— es ahora una **puerta de captación**: un llamado a sumar la inmobiliaria que lleva al registro, más el ingreso como enlace secundario. La pieza además **desduplicó** ese enlace, que estaba escrito en dos archivos y cuyas copias ya habían empezado a divergir, y le puso al encabezado de la home las **guardas de ancho** que tenía el del sitio de marca y a él le faltaban enteras. Ver "El encabezado público".
 
-**Baseline de calidad medido (no documentado de memoria; última medición: 8 sep 2026):** `npx tsc --noEmit` 0 errores (exit 0), `npm run lint` **0 errores y 1 warning** (`PropertyForm.tsx:808`, exit 0), `npx next build` verde (exit 0) con **22 rutas**. Cualquier error nuevo, un warning distinto del único conocido, o una ruta que aparezca sin motivo, es una regresión.
+**Baseline de calidad medido (no documentado de memoria; última medición: 10 sep 2026):** `npx tsc --noEmit` 0 errores (exit 0), `npm run lint` **0 errores y 1 warning** (`PropertyForm.tsx:808`, exit 0), `npx next build` verde (exit 0) con **22 rutas**. Cualquier error nuevo, un warning distinto del único conocido, o una ruta que aparezca sin motivo, es una regresión.
 
 > ⚠ **Las rutas pasaron de 19 a 22, y es la ÚNICA vez que el número se movió.** Las tres nuevas son de la página pública de la propiedad: **`/propiedades/[slug]`** (la página, dinámica), **`/sitemap.xml`** (dinámica: ver "Infraestructura de buscadores") y **`/robots.txt`** (estática). Las dos últimas no son código de aplicación sino **archivos de convención de Next**, que cuentan como ruta en ese listado igual que `/apple-icon.png`, que ya estaba. Las 19 anteriores siguen las 19, con el mismo nombre y el mismo tipo (`○`/`ƒ`).
 >
 > ⚠ **Y un ruido de medición que ya mordió una vez:** `tsconfig.json` incluye `".next/types/**/*.ts"` y `".next/dev/types/**/*.ts"`, o sea **artefactos generados**. Si se mezclan los de `next dev` con los de `next build` (por ejemplo corriendo `next start` entre medio), `npx tsc --noEmit` escupe decenas de errores en `.next/**/validator.ts` que **no son del proyecto**. Ante una corrida así: borrar `.next` y `tsconfig.tsbuildinfo` y repetir. Si los errores no están en `src/` ni en `scripts/`, no son tuyos. Ver "ESLint". ⚠ El chequeo de tipos y el lint **también cubren `scripts/`** (el `include` de `tsconfig.json` es `**/*.ts` y ESLint no lo ignora): una herramienta rota ahí rompe el baseline igual que el código de la app.
 
-> **⚠️ Hoja de ruta de modelo (tras validación con el rubro y el colegio de corredores).** **Ya aplicado:** los particulares se eliminaron (la app es solo-agencias); las agencias requieren **número de matrícula + aprobación manual** del dueño de la plataforma (ver "Aprobación de agencias"); y el formulario de propiedad tiene el **atajo de sugerencia de ubicación desde la dirección** (ver "Ubicación de la propiedad"), que era el ítem D1 de la hoja de ruta; y **el mapa público ya filtra por agencia habilitada** (era el bloqueante para cobrar: ver "Visibilidad pública de las propiedades"); y **una propiedad puede estar en venta y en alquiler a la vez**, con **precio opcional** ("a convenir") y **requisitos de alquiler** (ver "Operaciones, precios y requisitos de la propiedad"). **Pendiente:** registro opcional de visitantes; página y link por propiedad. Ver PENDIENTES.md → "Nueva fase".
+> **⚠️ Hoja de ruta de modelo (tras validación con el rubro y el colegio de corredores).** **Ya aplicado:** los particulares se eliminaron (la app es solo-agencias); las agencias requieren **número de matrícula + aprobación manual** del dueño de la plataforma (ver "Aprobación de agencias"); y el formulario de propiedad tiene el **atajo de sugerencia de ubicación desde la dirección** (ver "Ubicación de la propiedad"), que era el ítem D1 de la hoja de ruta; y **el mapa público ya filtra por agencia habilitada** (era el bloqueante para cobrar: ver "Visibilidad pública de las propiedades"); y **una propiedad puede estar en venta y en alquiler a la vez**, con **precio opcional** ("a convenir") y **requisitos de alquiler** (ver "Operaciones, precios y requisitos de la propiedad"); y **cada propiedad tiene su página propia con enlace compartible** (era el ítem C2, ver "Página pública de la propiedad"); y el encabezado público **le habla a las inmobiliarias** en vez de ofrecer un "Ingresar" mudo (era C3, ver "El encabezado público"). **Pendiente:** solo el registro opcional de visitantes (C1). Ver PENDIENTES.md → "Nueva fase".
 
 ---
 
@@ -274,7 +274,9 @@ prometer lo que la base va a rechazar si alguna vez alguien borra una fila a man
 ├── src/
 │   ├── app/
 │   │   ├── (public)/
-│   │   │   ├── page.tsx                 ← Mapa principal + lista mobile (home: todas las agencias de la ciudad activa)
+│   │   │   ├── page.tsx                 ← Mapa principal + lista mobile (home: todas las agencias de la ciudad
+│   │   │   │                              activa). Define `PublicHeader`, UNA sola definición para el estado de
+│   │   │   │                              carga y para el render real. ⚠ La rama `if (!city)` NO lo usa
 │   │   │   ├── [slug]/page.tsx          ← Vista white-label por agencia (resuelve slug → 404 / no-disponible / mapa filtrado). Sub-pieza A
 │   │   │   └── propiedades/[slug]/page.tsx ← PÁGINA PÚBLICA DE LA PROPIEDAD (Server Component + generateMetadata).
 │   │   │                                     El prefijo NO es opcional: en el primer nivel ya vive el [slug] de
@@ -302,7 +304,11 @@ prometer lo que la base va a rechazar si alguna vez alguien borra una fila a man
 │   │   ├── brand/
 │   │   │   └── Wordmark.tsx             ← "Marka." con punto terracota (Lote 0)
 │   │   ├── auth/
-│   │   │   └── AuthLayout.tsx           ← Shell split-screen de login/register
+│   │   │   ├── AuthLayout.tsx           ← Shell split-screen de login/register
+│   │   │   └── PublicHeaderAuth.tsx     ← ÚNICA puerta al área privada del encabezado público.
+│   │   │                                  Dos variantes (marketplace = captación / agency = sin
+│   │   │                                  ella) y la detección de sesión, que antes estaba
+│   │   │                                  duplicada carácter por carácter en dos archivos
 │   │   ├── map/
 │   │   │   ├── MapView.tsx              ← Raíz del mapa (client, ssr:false)
 │   │   │   ├── PropertyMarker.tsx       ← Pin terracota + estados (CSS sobre DivIcon). El precio del pin
@@ -313,7 +319,9 @@ prometer lo que la base va a rechazar si alguna vez alguien borra una fila a man
 │   │   │   │                              "Ver ficha completa" (los cuatro absolute: cuestan 0px de alto)
 │   │   │   ├── FilterPanel.tsx          ← Filtros (checkboxes shadcn, commit on-blur). Operación es
 │   │   │   │                              MÚLTIPLE; el rango de precio solo se habilita con UNA marcada
-│   │   │   ├── CityPicker.tsx           ← Selector de ciudad (lee cityStore)
+│   │   │   ├── CityPicker.tsx           ← Selector de ciudad (lee cityStore). Es el slot ELÁSTICO del
+│   │   │   │                              encabezado: `min-w-0` afuera y el nombre en un `<span>` con
+│   │   │   │                              `truncate` — suelto era un item anónimo, imposible de recortar
 │   │   │   ├── AgencyMapView.tsx        ← Mapa filtrado a una agencia (white-label, mirror de la home SIN CityPicker). Header con logo + nombre de la agencia + "Powered by Marka." (B2a). Sub-pieza A/B2a
 │   │   │   └── ClusterLayer.tsx         ← Clustering, diff por id, estados live. ⚠ Efecto aparte que
 │   │   │                                  refresca el PRECIO de los pines al cambiar el filtro de
@@ -683,6 +691,120 @@ Se construyó la página y **no la puerta**: durante un tiempo solo se llegaba e
 
 - **⚠ EN EL MODAL EL TÍTULO NO ES ENLACE, A PROPÓSITO.** Sobre el mapa, un título clickeable **se toca por accidente** y saca al visitante del mapa sin que lo haya pedido. Un botón con texto explícito no tiene esa ambigüedad.
 - **⚠ Y EL BOTÓN NO VA EN LA ZONA INFERIOR DEL MODAL**, aunque sea el lugar "natural" de un CTA. Ver "El presupuesto de alto de la zona inferior" abajo: ahí cuesta 54 px que salen enteros del área que scrollea. Sobre la foto es `absolute` y cuesta **cero**.
+
+### El encabezado público — tres variantes, y la puerta de captación
+
+> Hasta el 10 sep 2026 el encabezado público ofrecía **un solo enlace, que decía "Ingresar"**, sin decir para quién era. El visitante común no tiene por qué saber que la plataforma **no tiene cuentas de particular**, así que ese enlace le prometía algo que no existe —favoritos sincronizados, búsquedas guardadas— y lo llevaba a un login donde no puede hacer nada. Y del otro lado quedaba desaprovechada la oportunidad más grande: alguien de una inmobiliaria mirando el mapa de su ciudad es **exactamente el cliente que la plataforma busca**, y no había **una sola línea de la interfaz que le hablara** — medido por barrido, las únicas apariciones de la palabra "inmobiliaria" en toda la superficie pública eran comentarios de código.
+
+Hay **TRES superficies públicas, cada una con su encabezado, y son distintos a propósito**:
+
+| Superficie | Dónde vive el encabezado | Qué ofrece |
+|---|---|---|
+| **Home del mapa** (`/`) | `PublicHeader`, definido en `(public)/page.tsx` | Wordmark · `CityPicker` · **captación + ingreso** |
+| **Sitio de marca** (`/[slug]`) | `AgencyMapView.tsx` | logo/nombre de la agencia · nombre · **solo "Ingresar"** |
+| **Ficha de propiedad** (`/propiedades/[slug]`) | la propia página | Wordmark · **"← Volver al mapa"**, y nada más |
+
+#### La home: dos enlaces, y uno se cae en pantalla chica
+
+| Enlace | Destino | Tratamiento | `< sm` (640 px) | `≥ sm` |
+|---|---|---|---|---|
+| **"Sumá tu inmobiliaria"** | `/register` | botón **secundario** de DESIGN §6: `h-9`, `border-stone`, texto `black`, hover `bg-mist` | **oculto** | visible |
+| **"Iniciar sesión"** | `/login` | **ghost**: texto `graphite` → hover `black`, sin caja ni borde | visible | visible |
+| **"Ir al panel"** (con sesión) | `/dashboard` | ghost | visible | visible |
+
+- **La jerarquía entre los dos no la da el color: la da la caja.** Uno tiene borde y padding, el otro es texto pelado.
+- **⚠ EL LLAMADO NO ES TERRACOTA, Y NO ES UN DESCUIDO.** En esa pantalla el terracota ya está tomado por el FAB "Ver lista / Ver mapa", que es la acción principal **del visitante** — y el visitante es el 99 % del tráfico. Dos elementos terracota compitiendo confunden cuál es el paso siguiente: es el mismo criterio, con las mismas palabras, que DESIGN §11 aplica a los dos botones del `LocationPicker`. El llamado a sumarse es una **puerta lateral**, no el paso siguiente de quien está mirando el mapa.
+- **⚠ POR DEBAJO DE `sm` EL QUE SE CAE ES EL LLAMADO, NO EL INGRESO, y el criterio es de PRODUCTO.** Los cuatro elementos no entran en un teléfono (ver los anchos medidos abajo), así que hay que sacar uno. **El ingreso es la función que un cliente usa todos los días** y el celular es donde más se navega: esconderlo ahí le agrega un paso a quien ya paga para ganar una conversión eventual de quien todavía no. ⚠ **Consecuencia asumida: en un teléfono la captación NO SE VE EN NINGÚN LADO** — no se movió a otro lugar, no está. Es deuda abierta a propósito (PENDIENTES.md).
+
+#### ⚠ Por qué en el SITIO DE MARCA no va la captación — es comercial, no una excepción de layout
+
+`AgencyMapView` consume la variante `agency`, que renderiza **"Ingresar" → `/login` y nada más**, con el texto y el destino de siempre.
+
+**Ese sitio es literalmente lo que la agencia compra con su plan** (el entitlement `has_white_label`, que se vende en profesional y premium). Y el modelo es un **marketplace POR CIUDAD**, así que un llamado a "sumá tu inmobiliaria" ahí estaría **usando el espacio que paga un cliente para captar a su competencia directa, de su misma ciudad**. Le daría un argumento fácil y perfectamente articulable para no renovar: *"pago para tener mi propia web y me ponen un cartel invitando a la inmobiliaria de la esquina"*.
+
+Es coherente con lo que ese encabezado ya decidió en otro lado: la marca que se muestra es la de la agencia y no el Wordmark de Marka, que queda como un "Powered by" deliberadamente discreto al pie. **No unificar las dos variantes "por prolijidad".**
+
+#### ⚠ Por qué en la FICHA DE PROPIEDAD tampoco va, POR AHORA
+
+Su encabezado no ofrece ninguna entrada al área privada: Wordmark + "← Volver al mapa", los dos a `/`.
+
+Dos motivos:
+
+1. **Quien llega ahí está buscando una casa**, no una plataforma para publicar. Es la superficie del tráfico frío de buscadores, y un llamado de captación competiría con el botón de WhatsApp, que es el paso final de esa pantalla.
+2. **⚠ Es un Server Component y existe para renderizarse entero en el servidor** — es la restricción que gobierna toda esa página. Un llamado que dependa de si hay sesión **obligaría a estrenar una isla de cliente** ahí, contra su razón de ser. Y uno que no dependa de la sesión le mostraría "Sumá tu inmobiliaria" a un agente logueado.
+
+Cuando exista la pantalla de venta —deliberadamente fuera de alcance— ese va a ser el lugar natural para el tráfico frío.
+
+#### El componente compartido: `src/components/auth/PublicHeaderAuth.tsx`
+
+```ts
+variant: "marketplace" | "agency"
+```
+
+Una sola prop, obligatoria y cerrada a dos literales: **no hay default**, así que un consumidor nuevo está forzado a decidir explícitamente si su pantalla lleva captación. Esa es justamente la decisión que no puede tomarse por descuido.
+
+**⚠ EXISTE PORQUE ANTES ERAN DOS COPIAS Y YA HABÍAN DIVERGIDO.** El enlace estaba escrito a mano en `(public)/page.tsx` y en `AgencyMapView.tsx`, y **el bloque de detección de sesión estaba duplicado carácter por carácter** (`useState(false)` + `useEffect` + `createClient()` + `getUser()`). Una de las dos copias tenía `shrink-0` y la otra no: mientras el texto fue "Ingresar" (ocho caracteres) esa diferencia no se notó, y **dejaba de no notarse exactamente con el texto nuevo**, que es tres veces más largo.
+
+Es el mismo patrón que el proyecto ya se cobró dos veces (`AgenciesTable`, con las condiciones de fila escritas dos veces y desincronizadas; y `AgentCell`, que se centralizó **por ese precedente**). **La detección de sesión vive ahí y en ningún otro lado**, y eso es lo que vuelve imposible una tercera copia: quien mañana necesite la puerta en otra pantalla no tiene el bloque a mano para copiar, tiene un componente para importar.
+
+#### ⚠ TRAMPA 1 — el mecanismo que apaga el salto de layout
+
+El texto depende de si hay sesión, y eso se sabe **después del primer pintado** (`isAuthed` arranca en `false` y un efecto de cliente lo corrige). Sin mitigación, el bloque se encogería al resolverse: **medido, 195,2 px en `sm`+ y 22,7 px por debajo**, en el elemento más prominente del encabezado, en cada carga, para todo cliente que paga.
+
+**La solución es de CSS y no de datos: los DOS estados se renderizan siempre, apilados en la MISMA celda de una grilla de 1×1** (`grid` + `col-start-1 row-start-1` en las dos ramas). El ancho del contenedor es el del más ancho de los dos, **estable desde el primer pintado**, y cambiar de estado solo alterna cuál se ve.
+
+**⚠ LA RAMA INACTIVA SE APAGA CON `invisible` (`visibility: hidden`), NUNCA CON `hidden` (`display: none`), Y ESA ES TODA LA MECÁNICA.** El que no se ve **tiene que seguir ocupando su celda**: es lo que hace que la grilla mida el máximo. `display: none` lo sacaría del cálculo y el ancho volvería a depender de la sesión, o sea que **la "limpieza" obvia reintroduce exactamente el salto que esto existe para apagar**. De paso, `visibility: hidden` saca el subárbol del orden de tabulación y del árbol de accesibilidad, así que el enlace apagado no es enfocable ni lo anuncia un lector de pantalla.
+
+**⚠ Corolario para cualquier cambio futuro de qué se oculta por tamaño de pantalla:** lo que se apaga por breakpoint es **un enlace de adentro** de una rama (`hidden sm:inline-flex` sobre el `<a href="/register">`), **nunca una rama entera**. Sacar una rama del documento devuelve el ancho a depender de la sesión. Se verificó sobre el HTML emitido por el build que las dos ramas siguen siendo hermanas en la celda `1/1` y que ninguna lleva `hidden`.
+
+**Lo que NO se apagó, y es honesto decirlo:** queda el cambio de **texto**, dentro de una caja que ya no se mueve. Apagarlo del todo exigiría conocer la sesión en el primer pintado, o sea volver **dinámica** la home (hoy `○ Static` en el build) — renderizar en cada request la pantalla más visitada del producto por un parpadeo que solo ven los agentes.
+
+#### ⚠ TRAMPA 2 — las guardas de ancho del encabezado de la home
+
+Son tres slots en `justify-between` dentro de 56 px de alto, y **el del medio es el único que cede**:
+
+| Guarda | Dónde | Contra qué protege |
+|---|---|---|
+| `gap-3` | el `<header>` | que los slots se toquen al apretarse |
+| `shrink-0` | el `<Link>` del Wordmark | que la marca se deforme |
+| `shrink-0` | la raíz de `PublicHeaderAuth` | que la puerta se achique o se parta |
+| `min-w-0` | el contenedor del `CityPicker` | **un item de flex no puede achicarse por debajo de su contenido sin esto**, así que empujaría al resto fuera |
+| `truncate` | el nombre de la ciudad | que un nombre largo desborde |
+
+**⚠ SIN ESAS GUARDAS EL FALLO ES SILENCIOSO:** lo que desborda **lo recorta el `overflow-hidden` del contenedor raíz**. No aparece una barra de scroll, no hay error, no hay síntoma — solo texto cortado o partido en dos líneas, visible únicamente en un teléfono.
+
+**El encabezado del sitio de marca tenía las cinco y el de la home NO tenía NINGUNA.** O sea que el problema ya estaba resuelto, en el archivo equivocado. Esta pieza lo trasplantó.
+
+**⚠ Y EL CASO MÁXIMO ES EL CASO NORMAL: la única ciudad activa de la base es "Santiago del Estero", diecinueve caracteres** — o sea, también la más larga. No hay un caso benigno que sirva de referencia.
+
+#### ⚠ TRAMPA 3 — el nombre de la ciudad iba SUELTO, y por eso no se podía recortar
+
+El arreglo del `CityPicker` fue **envolver el nombre en su propio `<span className="truncate">`**, no agregarle una clase a algo. La causa es específica: el nombre era un **nodo de texto pelado dentro de un contenedor flex**, y eso lo convierte en un **item anónimo**, al que **no se le puede aplicar ninguna clase**. No es que faltara `truncate`: no había dónde ponerlo. Sin envoltorio, "Santiago del Estero" se partía en **dos líneas dentro de un encabezado de alto fijo** (`h-14`).
+
+Van además `w-full` en el disparador (para que ocupe el ancho que le concedan) y `shrink-0` en el chevron, para que lo que se recorte sea el nombre y no el indicador de que hay un desplegable.
+
+#### Los anchos MEDIDOS, y el umbral del nombre de la ciudad
+
+> **No son estimaciones.** Se cargaron con `fontkit` los `.woff2` que sirve el build (`.next/static/media`) y, como son **fuentes variables** que `fontkit` no puede instanciar en esos subconjuntos, se aplicó la variación de peso a mano: normalización del eje `wght` → tabla `avar` → deltas de `HVAR`, más el kerning del layout base.
+
+DM Sans 500 a 14 px; Noto Serif 700 a 24 px con `tracking-[-0.01em]`:
+
+| Texto / slot | Ancho |
+|---|---|
+| "Marka." (marca) | **85,1 px** |
+| "Santiago del Estero" | 126,7 px → **slot 148,7 px** (+ `gap-1.5` 6 + chevron 16) |
+| "Iniciar sesión" | **86,1 px** |
+| "Ir al panel" | **63,4 px** |
+| "Sumá tu inmobiliaria" | 134,5 px → **botón 160,5 px** (+ `px-3` 24 + borde 2) |
+| "Ingresar" (variante `agency`) | 53,2 px |
+| Puerta `< sm` = `máx(86,1 · 63,4)` | **86,1 px** |
+| Puerta `≥ sm` = `máx(160,5 + 12 + 86,1 · 63,4)` | **258,6 px** |
+
+**⚠ EL NÚMERO QUE HAY QUE TENER A MANO ANTES DE AGREGARLE NADA AL ENCABEZADO: desde 376 px de viewport el nombre de la ciudad entra completo; por debajo se recorta con puntos suspensivos.** En un teléfono de 375 px con `px-4` quedan 343 px útiles, de los cuales marca + puerta + dos `gap-3` se llevan 195,2 y al selector le quedan **147,8 contra los 148,7 que necesita: falta menos de un píxel**. A 360 px faltan 15,9 y a 320 px faltan 55,9.
+
+**El presupuesto es ese y no hay más:** el mapa ocupa todo lo que queda (`h-dvh` + lock de scroll del documento), así que **no existe ningún lugar "abajo" donde poner nada** — estos 56 px son todo el chrome de la home.
+
+Contexto para dimensionar: con el reparto anterior de esta misma pieza —cuando el que quedaba en pantalla chica era el llamado y no el ingreso— ese umbral estaba en **451 px**, o sea que **ningún teléfono mostraba el nombre entero**.
 
 ### Infraestructura de buscadores
 
@@ -1378,6 +1500,13 @@ npm run storage:huerfanos:borrar   # ⚠ destructivo. Ver "Auditoría y limpieza
 | `NEXT_PUBLIC_SITE_URL` corta si falta, en vez de caer a un valor por defecto | Caer a `localhost` sería el peor de los dos mundos: el sitio construiría bien y **publicaría direcciones de localhost** en la vista previa de los enlaces y en el mapa del sitio, sin que nada avise. Un fallo al construir se ve; una dirección equivocada indexada, no |
 | Del modal se extrajeron **solo dos cosas**: la tabla de íconos de amenities y el registro de la consulta | Son las dos que **no se pueden duplicar sin que se rompan en silencio**: la tabla son 16 entradas exhaustivas por tipo (una amenity nueva en un solo lado no falla, solo muestra el ícono genérico), y el insert lleva encima cuatro decisiones de las cuales **la más frágil es una OMISIÓN** (`agent_name`), y las omisiones no se copian: se olvidan. El resto de la presentación son bloques de 12-25 líneas que solo componen helpers ya compartidos: extraerlos acoplaría dos pantallas que tienen que poder evolucionar distinto |
 | En el modal el título NO es enlace; en la tarjeta de la lista SÍ | El modal vive sobre el mapa, donde un título clickeable se toca por accidente y saca al visitante del mapa sin que lo haya pedido. En la lista el visitante está leyendo, y el título como enlace es lo que espera |
+| La puerta al área privada es UN componente compartido con variantes, no un enlace por pantalla | Estaba escrito en dos archivos con la detección de sesión duplicada **carácter por carácter**, y las copias ya divergían (una tenía `shrink-0` y la otra no). Con "Ingresar" no se notaba; con un texto tres veces más largo, sí. Mismo remedio que `AgentCell` tras el precedente de `AgenciesTable` |
+| En el sitio de marca de una agencia NO va la captación | Ese sitio es lo que la agencia **compra con su plan**, y el marketplace es **por ciudad**: un llamado a sumar inmobiliarias ahí usa el espacio que paga un cliente para captar a su competencia directa, de su misma ciudad. Le da un argumento fácil para no renovar |
+| En la ficha de propiedad tampoco va, por ahora | Quien llega desde un buscador está buscando una casa; y esa página existe para **renderizarse entera en el servidor**, así que un llamado que dependa de la sesión obligaría a estrenar una isla de cliente contra su razón de ser |
+| El llamado de captación NO es terracota | En la home el terracota ya es del FAB "Ver lista / Ver mapa", la acción principal **del visitante**, que es el 99 % del tráfico. Mismo criterio que DESIGN §11 aplica a los dos botones del `LocationPicker`. La jerarquía contra el enlace vecino la da la caja, no el color |
+| En pantalla chica se cae el LLAMADO y no el ingreso | Los cuatro elementos no entran en un teléfono (medido). El ingreso es la función que un cliente usa **todos los días** y el celular es donde más se navega: esconderlo ahí le agrega un paso a quien ya paga para ganar una conversión eventual de quien todavía no |
+| Los dos estados de sesión se apilan en una celda y el inactivo se apaga con `visibility`, no con `display` | El que no se ve tiene que **seguir ocupando su celda** para que la grilla mida el máximo de los dos. Con `display: none` el ancho vuelve a depender de la sesión y reaparece el salto (medido: 195,2 px en `sm`+). La "limpieza" obvia es justamente lo que lo rompe |
+| El estado de carga de la home renderiza el encabezado REAL, no una imitación | Los tres slots eran bloques grises con anchos escritos a mano, y el de la derecha medía 64 px **dimensionados para la palabra "Ingresar"**: un ancho fijo que imita a otro componente es una copia que hay que mantener sincronizada, y no se mantuvo. Ni la marca ni la puerta dependen de la ciudad |
 
 ---
 
