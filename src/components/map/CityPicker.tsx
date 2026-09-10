@@ -54,18 +54,30 @@ export function CityPicker() {
   }, [isOpen, showSearch]);
 
   return (
-    <div className="relative" ref={containerRef}>
+    // ⚠ `min-w-0`: este componente es el elemento ELÁSTICO del encabezado
+    // público (marca y puerta al panel van con `shrink-0`, éste cede). Sin
+    // `min-w-0` un item de flex no puede achicarse por debajo de su contenido,
+    // así que empujaría a los demás fuera del encabezado.
+    <div className="relative min-w-0" ref={containerRef}>
       <button
         onClick={() => setIsOpen((v) => !v)}
-        className="flex items-center gap-1.5 font-sans text-sm font-medium text-black transition-colors hover:text-graphite"
+        className="flex w-full items-center gap-1.5 font-sans text-sm font-medium text-black transition-colors hover:text-graphite"
         aria-haspopup="listbox"
         aria-expanded={isOpen}
       >
-        {city?.name ?? "Seleccioná ciudad"}
+        {/* ⚠ EL NOMBRE VA ENVUELTO EN UN <span> CON `truncate`, Y NO SUELTO.
+            Antes era un nodo de texto pelado dentro de un flex: eso lo vuelve un
+            item anónimo, al que no se le pueden aplicar clases, así que nada
+            impedía que "Santiago del Estero" —la única ciudad activa, y de paso
+            la más larga posible— se partiera en DOS LÍNEAS dentro de un
+            encabezado de alto fijo (`h-14`). Con el envoltorio, un nombre que no
+            entra se corta con puntos suspensivos, que es el mismo tratamiento
+            que `AgencyMapView` ya le da al nombre de la agencia. */}
+        <span className="truncate">{city?.name ?? "Seleccioná ciudad"}</span>
         <ChevronDown
           size={16}
           className={cn(
-            "text-graphite transition-transform duration-[120ms]",
+            "shrink-0 text-graphite transition-transform duration-[120ms]",
             isOpen && "rotate-180"
           )}
         />
