@@ -1,12 +1,11 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { SlidersHorizontal, MapIcon, List } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 import { useMapFilters, selectActiveFiltersCount } from "@/store/mapFiltersStore";
 import { Wordmark } from "@/components/brand/Wordmark";
+import { PublicHeaderAuth } from "@/components/auth/PublicHeaderAuth";
 import { FilterPanel } from "@/components/map/FilterPanel";
 import { PropertyModal } from "@/components/map/PropertyModal";
 import { PropertyList } from "@/components/properties/PropertyList";
@@ -44,19 +43,6 @@ export function AgencyMapView({
   const selectedPropertyId = useMapFilters((s) => s.selectedPropertyId);
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const [showMap, setShowMap] = useState(true);
-  // Sesión del agente: si está logueado, el CTA del header pasa a "Ir al panel".
-  const [isAuthed, setIsAuthed] = useState(false);
-
-  // Detecta sesión client-side (igual que la home). IIFE async dentro del efecto.
-  useEffect(() => {
-    const supabase = createClient();
-    (async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      setIsAuthed(!!user);
-    })();
-  }, []);
 
   return (
     <div className="flex flex-col h-dvh bg-paper overflow-hidden">
@@ -94,13 +80,14 @@ export function AgencyMapView({
           </span>
         )}
 
-        {/* Derecha — CTA */}
-        <Link
-          href={isAuthed ? "/dashboard" : "/login"}
-          className="shrink-0 font-sans text-sm font-medium text-graphite hover:text-black transition-colors"
-        >
-          {isAuthed ? "Ir al panel" : "Ingresar"}
-        </Link>
+        {/* Derecha — CTA.
+            ⚠ VARIANTE `agency`: ACÁ NO VA LA CAPTACIÓN, y no es un olvido. Este
+            sitio es lo que la agencia compra con su plan (`has_white_label`), y
+            el marketplace es POR CIUDAD: un llamado a "sumá tu inmobiliaria" en
+            el encabezado de un cliente estaría invitando a su competencia
+            directa, de su misma ciudad, en el espacio que él paga. El enlace
+            queda con el texto y el destino de siempre. Ver PublicHeaderAuth. */}
+        <PublicHeaderAuth variant="agency" />
       </header>
 
       {/* ── Cuerpo ─────────────────────────────────────────────── */}

@@ -605,12 +605,70 @@ Los textos de estado vacío son constructivos: sugieren una acción siguiente.
 
 Estos componentes nacen del modelo marketplace multi-ciudad. Mantienen el mismo sistema de color, tipografía y espaciado ya definido.
 
+### Encabezado público (home del mapa) — tres slots en 56 px
+
+El único chrome que existe en la home: el mapa ocupa todo lo que queda (`h-dvh` + lock de scroll), así que **no hay ningún lugar "abajo" donde poner nada** y estos 56 px son todo el presupuesto. Tres slots en `justify-between`, con `gap-3`:
+
+```
+≥ sm (640px)
+┌──────────────────────────────────────────────────────────────────────┐
+│ Marka.      Santiago del Estero ⌄   [Sumá tu inmobiliaria]  Iniciar s.│  h-14
+└──────────────────────────────────────────────────────────────────────┘
+  shrink-0    min-w-0 + truncate       shrink-0 (componente compartido)
+
+< sm — el llamado se cae, el ingreso queda
+┌────────────────────────────────────────────┐
+│ Marka.    Santiago del Estero ⌄  Iniciar s.│  h-14
+└────────────────────────────────────────────┘
+```
+
+**Los dos enlaces de la derecha, y su jerarquía.** El principal lleva al registro y el secundario al ingreso, para quien ya es cliente:
+
+| | Tratamiento | Por qué |
+|---|---|---|
+| **"Sumá tu inmobiliaria"** → `/register` | Botón **secundario** de §6: `h-9`, `border-stone`, texto `black`, hover `bg-mist` + `border-graphite` | Ver el ⚠ de color, abajo |
+| **"Iniciar sesión"** → `/login` | **Ghost** de §6: texto `graphite` → `black` en hover | Es una vuelta, no un llamado |
+
+La jerarquía entre los dos **no la da el color: la da la caja**. Uno tiene borde y padding, el otro es texto pelado. Alcanza y sobra para que se lea cuál es cuál.
+
+> ⚠ **EL LLAMADO NO ES TERRACOTA, Y ES DELIBERADO.** En esta pantalla el terracota ya está tomado por el FAB "Ver lista / Ver mapa" (§16), que es la acción principal **del visitante** — y el visitante es el 99 % del tráfico. Dos elementos terracota compitiendo confunden cuál es el paso siguiente. Es el mismo criterio, con las mismas palabras, que §11 ya aplica a los dos botones del `LocationPicker` (*"el terracota está reservado para el CTA de publicar"*). El llamado a sumar una inmobiliaria es una **puerta lateral**, no el paso siguiente de quien está mirando el mapa.
+
+**⚠ Las guardas de ancho son funcionales, no prolijidad.** El slot del medio es el **único que cede**: la marca y el bloque de la derecha van con `shrink-0`, y el `CityPicker` con `min-w-0` afuera y `truncate` adentro. Sin eso el nombre de la ciudad empuja al resto fuera del encabezado, y lo que sobra **lo recorta en silencio** el `overflow-hidden` del contenedor raíz: no aparece barra de scroll ni error. Es el mismo tratamiento que el encabezado del sitio de marca (`AgencyMapView`) ya tenía y a éste le faltaba entero.
+
+**⚠ Por debajo de `sm` (640 px) el que NO se muestra es el LLAMADO** (`hidden sm:inline-flex` sobre el enlace a `/register`). **El ingreso se ve siempre, en todos los tamaños.** Los cuatro elementos no entran en un teléfono, así que hay que sacar uno, y **el criterio es de producto, no de layout**: el ingreso es la función que un cliente usa **todos los días**, y el celular es el dispositivo donde más se navega, así que esconderlo ahí le agrega un paso a quien ya paga para ganar una conversión eventual de quien todavía no.
+
+Anchos medidos contra las fuentes que sirve el build (DM Sans 500 a 14 px, Noto Serif 700 a 24 px), en un teléfono de 375 px con `px-4` → **343 px útiles**:
+
+| | Ancho |
+|---|---|
+| Marca "Marka." | 85,1 px |
+| Selector con "Santiago del Estero" (texto 126,7 + gap 6 + chevron 16) | 148,7 px |
+| Puerta al panel en `< sm` — `máx("Iniciar sesión" 86,1 · "Ir al panel" 63,4)` | 86,1 px |
+| Dos `gap-3` | 24 px |
+| **Queda para el selector** | **147,8 px** contra 148,7 que necesita |
+
+O sea que a 375 px **falta menos de un píxel** y el nombre se corta por un pelo; **desde 376 px entra completo**, que cubre todos los teléfonos actuales (390, 393, 412, 430…). Con el reparto anterior —cuando el que quedaba en pantalla chica era el llamado— ese umbral estaba en **451 px**, o sea que ningún teléfono mostraba el nombre entero.
+
+> ⚠ **Consecuencia asumida, y hay que tenerla presente: en un teléfono la captación no se ve en NINGÚN lado.** No es que se mueva a otro lugar: no está. La alternativa evaluada y **no implementada** es ponerla al pie de la lista de propiedades, que es la única superficie pública del celular que scrollea (el mapa es `h-dvh` con el scroll del documento bloqueado, así que no hay ningún "abajo" donde colgar nada). Queda anotado para el cierre del grupo, no resuelto acá.
+
+**⚠ El bloque de la derecha no cambia de ancho al resolverse la sesión.** El texto depende de si hay sesión, y eso se sabe después del primer pintado. Los **dos** estados se renderizan siempre, apilados en la misma celda de una grilla de 1×1: el ancho es el del más ancho de los dos, estable desde el primer pintado, y cambiar de estado solo alterna cuál se ve. Se usa `invisible` (`visibility: hidden`) y **no** `hidden` (`display: none`), porque el que no se ve tiene que seguir ocupando su celda para que la grilla mida el máximo — y de paso `visibility: hidden` lo saca del orden de tabulación y del árbol de accesibilidad. Sin esto, un agente logueado vería el encabezado **moverse en cada carga**: medido, **195,2 px en `sm`+** (de 258,6 a 63,4) y **22,7 px por debajo** (de 86,1 a 63,4). El mecanismo tiene que sobrevivir a cualquier cambio en qué enlace se oculta por tamaño: lo que se apaga por breakpoint es un **enlace de adentro** de una rama, nunca una rama entera — sacar una rama del documento devolvería el ancho a depender de la sesión.
+
+**⚠ El estado de carga usa el encabezado REAL**, con un solo placeholder: el del selector de ciudad, que es lo único que efectivamente está esperando al `cityStore`. Ni la marca ni la puerta al panel dependen de la ciudad. Antes los tres slots eran bloques grises con anchos escritos a mano y el de la derecha medía 64 px, dimensionado para la palabra "Ingresar": **un ancho fijo que imita a otro componente es una copia que hay que mantener sincronizada, y no se mantuvo.**
+
+**Dónde NO va este llamado, y por qué:**
+
+- **Sitio de marca de una agencia (`/[slug]`)** — el encabezado conserva "Ingresar" tal cual. El motivo es **comercial y firme**: ese sitio es literalmente lo que la agencia compra con su plan (`has_white_label`), y el marketplace es **por ciudad**, así que invitar ahí a sumar inmobiliarias sería usar el espacio que paga un cliente para captar a su competencia directa, de su misma ciudad. Le daría un argumento fácil para no renovar.
+- **Página pública de la propiedad (`/propiedades/[slug]`)** — no lleva ninguna entrada al área privada. Quien llega desde un buscador está buscando una casa, no una plataforma para publicar; y esa página existe para **renderizarse entera en el servidor**, así que un llamado que dependa de la sesión obligaría a estrenar una isla de cliente contra su razón de ser.
+
+Las dos exclusiones se expresan como la variante `agency` (o la ausencia) del componente compartido, no copiando el encabezado.
+
 ### CityPicker (selector de ciudad)
 
 El visitante puede estar en una ciudad pero querer ver otra. El selector es discreto, vive en el header.
 
 - Ubicación: header, a la izquierda del logo o junto a él
 - Trigger: nombre de la ciudad activa en DM Sans 14px Medium + ícono `chevron-down` 16px, color `black`
+- ⚠ **Es el slot elástico del encabezado y el único que cede** (`min-w-0` afuera, `truncate` en el nombre, `shrink-0` en el chevron). El nombre va envuelto en su propio `<span>` y no suelto: un nodo de texto dentro de un flex es un item anónimo, al que no se le pueden aplicar clases, así que nada impedía que un nombre largo **se partiera en dos líneas dentro de un encabezado de alto fijo**. Un nombre que no entra se corta con puntos suspensivos — mismo tratamiento que el nombre de la agencia en el encabezado del sitio de marca. No es hipotético: la única ciudad activa es "Santiago del Estero", diecinueve caracteres, o sea el caso máximo y no uno benigno
 - Al abrir: dropdown con lista de ciudades activas, búsqueda si hay más de 8
 - Ciudad seleccionada en el dropdown: fondo `terracota-subtle`, texto `terracota`
 - Las ciudades se ordenan alfabéticamente; la ciudad detectada por geolocalización aparece primera con un label sutil "Cerca tuyo" en DM Sans 11px `graphite`

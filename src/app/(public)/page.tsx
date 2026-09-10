@@ -4,11 +4,11 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { SlidersHorizontal, MapIcon, List } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 import { useCityStore } from "@/store/cityStore";
 import { useMapFilters, selectActiveFiltersCount } from "@/store/mapFiltersStore";
 import { CityPicker } from "@/components/map/CityPicker";
 import { Wordmark } from "@/components/brand/Wordmark";
+import { PublicHeaderAuth } from "@/components/auth/PublicHeaderAuth";
 import { FilterPanel } from "@/components/map/FilterPanel";
 import { PropertyModal } from "@/components/map/PropertyModal";
 import { PropertyList } from "@/components/properties/PropertyList";
@@ -21,6 +21,35 @@ const MapView = dynamic(
   }
 );
 
+// ─── Encabezado público del marketplace ───────────────────────
+//
+// UNA sola definición, consumida por el estado de carga y por el render real.
+// Antes estaban escritos dos veces en este mismo archivo y solo el real se
+// mantenía: el de carga había quedado con anchos fijos a mano.
+//
+// ⚠ LAS GUARDAS DE ANCHO NO SON DECORATIVAS. Son tres slots en
+// `justify-between` dentro de 56 px de alto, y el del medio es el ÚNICO que
+// cede: la marca y la puerta al panel van con `shrink-0` (esta última lo trae
+// de fábrica), y el `CityPicker` con `min-w-0` + `truncate` adentro. Sin eso,
+// el nombre de la ciudad empuja al resto fuera del encabezado y lo que sobra lo
+// recorta en silencio el `overflow-hidden` del contenedor raíz — no aparece
+// ninguna barra de scroll ni ningún error. Es exactamente el tratamiento que ya
+// tenía el encabezado del sitio de marca (`AgencyMapView`) y que a éste le
+// faltaba entero.
+function PublicHeader({ cityPicker }: { cityPicker: React.ReactNode }) {
+  return (
+    <header className="relative z-50 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-stone bg-paper px-4 md:px-6">
+      <Link href="/" aria-label="Ir al mapa" className="shrink-0">
+        <Wordmark size="md" variant="dark" />
+      </Link>
+
+      {cityPicker}
+
+      <PublicHeaderAuth variant="marketplace" />
+    </header>
+  );
+}
+
 export default function PublicPage() {
   const city = useCityStore((s) => s.city);
   const isLoading = useCityStore((s) => s.isLoading);
@@ -29,39 +58,33 @@ export default function PublicPage() {
   const selectedPropertyId = useMapFilters((s) => s.selectedPropertyId);
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const [showMap, setShowMap] = useState(true);
-  // Sesión del agente: si está logueado, el CTA del header pasa a "Ir al panel".
-  // Por defecto false → mostramos "Ingresar" sin layout shift mientras resuelve.
-  const [isAuthed, setIsAuthed] = useState(false);
 
   // Inicializa la ciudad activa una sola vez para toda la app
   useEffect(() => {
     initCity();
   }, [initCity]);
 
-  // Detecta sesión client-side (sin volver dinámica la home ni fetchear el perfil).
-  // IIFE async dentro del efecto (CLAUDE.md: no bajar la regla de ESLint).
-  useEffect(() => {
-    const supabase = createClient();
-    (async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      setIsAuthed(!!user);
-    })();
-  }, []);
-
   // ── Estado de carga: skeleton del layout (header + panel + mapa) ──
   if (isLoading) {
     return (
       <div className="flex flex-col h-dvh bg-paper overflow-hidden">
-        {/* Header */}
-        <header className="h-14 flex items-center justify-between px-4 md:px-6 bg-paper border-b border-stone shrink-0">
-          <Link href="/" aria-label="Ir al mapa">
-            <div className="h-5 w-24 rounded-sm bg-stone/30 animate-pulse" />
-          </Link>
-          <div className="h-7 w-32 rounded-md bg-stone/30 animate-pulse" />
-          <div className="h-5 w-16 rounded-sm bg-stone/30 animate-pulse" />
-        </header>
+        {/* ⚠ EL ENCABEZADO DE CARGA ES EL ENCABEZADO REAL, no una imitación.
+            Antes los tres slots eran bloques grises con anchos escritos a mano,
+            y el de la derecha medía `w-16` — 64 px, dimensionados a ojo para la
+            palabra "Ingresar". Con el texto de captación ese hueco quedaba
+            chico y la home SALTABA al terminar de cargar, rompiendo justo lo que
+            el comentario de este archivo prometía.
+            La raíz del problema era que ese hueco imitaba algo que no depende de
+            la ciudad: ni la marca ni la puerta al panel esperan al `cityStore`.
+            Renderizando los dos de verdad no queda ningún ancho que mantener
+            sincronizado, y de paso la puerta ya es usable mientras carga el
+            mapa. El ÚNICO placeholder que queda es el del selector de ciudad,
+            que es lo único que efectivamente está cargando. */}
+        <PublicHeader
+          cityPicker={
+            <div className="h-7 w-32 min-w-0 animate-pulse rounded-md bg-stone/30" />
+          }
+        />
 
         <div className="flex flex-1 overflow-hidden">
           {/* FilterPanel skeleton (desktop) */}
@@ -99,20 +122,7 @@ export default function PublicPage() {
   return (
     <div className="flex flex-col h-dvh bg-paper overflow-hidden">
       {/* ── Header ─────────────────────────────────────────────── */}
-      <header className="relative h-14 flex items-center justify-between px-4 md:px-6 bg-paper border-b border-stone shrink-0 z-50">
-        <Link href="/" aria-label="Ir al mapa">
-          <Wordmark size="md" variant="dark" />
-        </Link>
-
-        <CityPicker />
-
-        <Link
-          href={isAuthed ? "/dashboard" : "/login"}
-          className="font-sans text-sm font-medium text-graphite hover:text-black transition-colors"
-        >
-          {isAuthed ? "Ir al panel" : "Ingresar"}
-        </Link>
-      </header>
+      <PublicHeader cityPicker={<CityPicker />} />
 
       {/* ── Cuerpo ─────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
