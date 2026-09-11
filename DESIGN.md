@@ -444,6 +444,47 @@ Altura estándar: `44px` (cumple accesibilidad táctil). Padding horizontal: `16
 
 Todos en DM Sans 11px SemiBold uppercase, `rounded-sm`, padding `4px 8px`.
 
+### Los dos carteles: `ErrorBanner` y `Notice`
+
+Viven juntos en `src/components/feedback/` y **no son intercambiables**. Elegir mal el componente es elegir mal el mensaje.
+
+| | `ErrorBanner` | `Notice` |
+|---|---|---|
+| Qué comunica | **algo que la persona intentó, falló** | un **estado de la cuenta que dura** |
+| ¿Se cierra? | **Sí**, con una ✕ a la derecha | **No**: se va cuando el estado cambia |
+| Cuándo aparece | después de una acción | ya está cuando entrás a la pantalla |
+| Render | Client Component (`"use client"`) | **Server Component** |
+| Tratamiento | `bg-terracota-subtle`, borde `terracota/20`, `rounded-md`, `px-4 py-3`; texto `text-error` | tres tonos (§2): `info` sobre `mist` · `warning` terracota suave · `error` |
+
+```
+┌──────────────────────────────────────────────────────┐
+│  No se pudo eliminar la propiedad. Intentá de nuevo. ✕│   ErrorBanner
+└──────────────────────────────────────────────────────┘
+```
+
+- **⚠ EL MARGEN VIENE DE AFUERA, y es una restricción medida, no un gusto de API.** De las cuatro pantallas que lo usan, **dos** lo tienen suelto dentro de un fragmento y necesitan `mb-4` (`PropertiesTable`, `AgenciesTable`), y **dos** viven en un contenedor con `space-y-6` que ya separa a sus hijos (`SubscriptionContent`, `TeamContent`). Un margen fijo adentro del componente **rompe dos pantallas en una dirección o las otras dos en la contraria**: o quedan pegadas o con el doble de aire. Cada llamador pasa el suyo por `className`.
+- **Se renderiza `null` si no hay mensaje**, así que el llamador no escribe su propio `{error && (…)}` — que era la línea que se olvidaba al agregar la quinta pantalla.
+- **Historia:** estaba escrito a mano en las cuatro, y las copias **ya habían divergido** (dos con `mb-4` y dos sin). Mismo patrón que el proyecto ya se cobró con `AgenciesTable` y `AgentCell`.
+
+⚠ **Los errores de FORMULARIO son otra familia y no usan esto:** un `<p className="font-sans text-sm text-error">` pelado, debajo del campo o del botón, sin caja y sin cierre (`ProfileForm`, `AgencyLogoForm`, `AgencyPhoneForm`, `AgencyIdentityForm`, el alta de `TeamContent`). Van con su campo, no como cartel de pantalla.
+
+### Aviso de que la agencia no se está viendo en el mapa
+
+En la pantalla principal del panel, en el hueco de ancho completo entre el título y las tarjetas. **Es lo primero que ve la inmobiliaria al entrar**, y por eso está ahí y no en otro lado.
+
+**⚠ EL TÍTULO DICE LA CONSECUENCIA, NUNCA EL ESTADO ADMINISTRATIVO.** Quien lo lee es un corredor: le importa que sus propiedades no se están viendo, no que una columna diga `canceled`. El motivo va en el cuerpo.
+
+| Motivo | Componente | Tono | Título |
+|---|---|---|---|
+| Sin aprobar / rechazada | `AgencyApprovalNotice` | `info` / `error` | "Tu cuenta está en revisión" / "Tu solicitud no fue aprobada" |
+| Suscripción de baja o vencida | `AgencyVisibilityNotice` | **`warning`** | "Tus propiedades no se están mostrando en el mapa" |
+| Plan todavía sin activar | `AgencyVisibilityNotice` | **`info`** | "Tus propiedades todavía no se ven en el mapa" |
+
+- **⚠ `warning` y no `error` para la suscripción**, por el precedente de `/dashboard/suscripcion`: puede ser una baja acordada, una prueba que terminó o un pago pendiente. **El sistema no sabe cuál, así que no acusa a nadie.** Y dice explícitamente **que no se perdió nada** — el miedo real frente a "no se ven tus propiedades" es haber perdido el trabajo de cargarlas.
+- **⚠ `info` y no `warning` para el plan sin activar, y esto no es negociable.** Es el **estado normal de una cuenta recién creada** (el plan lo activa a mano el dueño de la plataforma): no falló nada y nadie hizo nada mal. Un tono de alarma frenaría justo a la agencia que queremos que cargue su cartera. El cuerpo **invita a seguir** antes que cualquier otra cosa.
+- **⚠ UN SOLO CARTEL, SIEMPRE.** No son condiciones independientes: es un único motivo resuelto en el servidor, y la pantalla elige cuál de los dos componentes lo cuenta. Una agencia sin aprobar **y** dada de baja ve **uno**: el de aprobación, que es la primera condición.
+- **No se repite en la disposición compartida** (quedaría dentro del contenedor que scrollea y se iría de pantalla, y repetido en las siete pantallas se vuelve ruido) **ni en `/dashboard/suscripcion`**, que ya tiene su propio aviso más largo y con el correo de contacto.
+
 ### Página pública de la propiedad (`/propiedades/[slug]`)
 
 La misma propiedad que el modal, pero como **página propia con dirección propia**: indexable por buscadores y compartible por WhatsApp. No es "el modal en grande" — es una lectura larga en una columna, sin nada fijo y sin nada recortado.

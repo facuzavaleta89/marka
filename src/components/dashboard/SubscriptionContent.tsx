@@ -3,8 +3,9 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, X, PauseCircle } from "lucide-react";
+import { Check, PauseCircle } from "lucide-react";
 import { Notice } from "@/components/feedback/Notice";
+import { ErrorBanner } from "@/components/feedback/ErrorBanner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -302,19 +303,9 @@ export function SubscriptionContent({
           </div>
         </div>
 
-        {/* Banner de error */}
-        {error && (
-          <div className="flex items-start gap-3 bg-terracota-subtle border border-terracota/20 rounded-md px-4 py-3">
-            <p className="flex-1 font-sans text-sm text-error">{error}</p>
-            <button
-              onClick={() => setError(null)}
-              className="text-graphite hover:text-black shrink-0"
-              aria-label="Cerrar"
-            >
-              <X size={16} />
-            </button>
-          </div>
-        )}
+        {/* Banner de error. SIN margen propio: el contenedor de arriba lleva
+            `space-y-6` y ya separa a sus hijos. */}
+        <ErrorBanner message={error} onDismiss={() => setError(null)} />
 
         {/* Tarjeta del plan que rige + opciones de upgrade.
             flex-wrap + justify-center: las cards mantienen ancho fijo y se

@@ -13,6 +13,25 @@ import type { ApprovalStatus, PlanUsage } from "@/types";
 // Existe para que los cuatro puntos de entrada al alta (el botón, los dos
 // estados vacíos y la ruta del formulario) apliquen exactamente el mismo
 // criterio, en vez de que cada uno arme el suyo.
+//
+// ══════════════════════════════════════════════════════════════
+// ⚠ NO USAR ESTO PARA SABER SI LA AGENCIA SE VE EN EL MAPA.
+// ══════════════════════════════════════════════════════════════
+//
+// Para eso está `getVisibilityBlock`, que es el espejo de OTRA cosa: la función
+// `agency_is_publicly_visible()`. Publicar y verse no son la misma pregunta, y
+// este helper responde mal la segunda en dos direcciones opuestas:
+//
+//   · LE SOBRA `plan_limit`. Una agencia con el cupo lleno no puede publicar,
+//     pero SÍ se está viendo. Usar esto para el aviso de visibilidad le diría
+//     que desapareció del mapa —falso— justo cuando evalúa pagar un plan mayor.
+//   · LE FALTA `plan <> 'free'`. La agencia del plan de aterrizaje no dispara
+//     NINGÚN motivo acá (está aprobada, su estado no es canceled/past_due y
+//     tiene cupo), y sin embargo no se ve. Este helper se quedaría mudo.
+//
+// Y hay una diferencia más fina en el estado de la suscripción: acá 'pending'
+// NO bloquea (ver la lista negra de abajo), pero para la visibilidad sí, porque
+// la base exige `status = 'active'`. Ver `getVisibilityBlock`.
 export type PublishBlockReason =
   | "not_approved"
   | "subscription_inactive"

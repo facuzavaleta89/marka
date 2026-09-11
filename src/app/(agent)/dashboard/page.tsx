@@ -4,8 +4,10 @@ import { LayoutDashboard, Building2, Eye, Layers } from "lucide-react";
 import { StatsCard } from "@/components/dashboard/StatsCard";
 import { NewPropertyButton } from "@/components/dashboard/NewPropertyButton";
 import { AgencyApprovalNotice } from "@/components/dashboard/AgencyApprovalNotice";
+import { AgencyVisibilityNotice } from "@/components/dashboard/AgencyVisibilityNotice";
 import { getLatestRejectionNote } from "@/lib/utils/getLatestRejectionNote";
 import { getPublishBlock } from "@/lib/utils/getPublishBlock";
+import { getVisibilityBlock } from "@/lib/utils/getVisibilityBlock";
 import { formatPrice } from "@/lib/utils/formatPrice";
 import { getActiveOperations } from "@/lib/utils/propertyOperations";
 import { getPlanUsage } from "@/lib/utils/getPlanUsage";
@@ -96,6 +98,11 @@ export default async function DashboardPage() {
   // anticipar el rechazo, no para reemplazarlo.
   const publishBlock = getPublishBlock(planUsage, agency.approval_status);
 
+  // ¿Las propiedades de esta agencia se están viendo en el mapa? Es OTRA
+  // pregunta que la de arriba —publicar y verse no son lo mismo— y por eso es
+  // otro helper. Ver el encabezado de getVisibilityBlock.
+  const visibilityBlock = getVisibilityBlock(planUsage, agency.approval_status);
+
   const usageDescription =
     planUsage.over > 0
       ? `Límite del plan: ${planUsage.limit} · ${planUsage.used} activas`
@@ -111,15 +118,34 @@ export default async function DashboardPage() {
         />
       </div>
 
-      {/* Aviso de estado de la cuenta. Va acá, entre el título y las tarjetas:
-          es el único hueco de ancho completo del layout y lo primero que ve la
-          agencia al entrar. No se renderiza nada si está aprobada. */}
-      {agency.approval_status !== "approved" && (
+      {/* Aviso de que la agencia NO se está viendo en el mapa. Va acá, entre el
+          título y las tarjetas: es el único hueco de ancho completo del layout y
+          lo primero que ve la agencia al entrar. Si se está viendo, no se
+          renderiza nada.
+
+          ⚠ UN SOLO CARTEL, SIEMPRE, Y LA ESTRUCTURA ES LO QUE LO GARANTIZA. No
+          son dos condiciones independientes que podrían dar verdadera a la vez:
+          es UN solo `visibilityBlock` con UN solo `reason`, y el ternario elige
+          cuál de los dos componentes lo cuenta. Que la agencia esté sin aprobar
+          Y además dada de baja no cambia nada — `getVisibilityBlock` ya resolvió
+          la prioridad (aprobación primero, igual que los triggers de la base) y
+          devolvió un motivo solo.
+
+          ⚠ Y NO VA EN EL LAYOUT COMPARTIDO: ahí quedaría dentro del contenedor
+          que scrollea y se iría de pantalla al bajar, y repetido en las siete
+          pantallas del panel se vuelve ruido que nadie lee. Tampoco se monta en
+          /dashboard/suscripcion: esa pantalla ya tiene su propio aviso, más
+          largo y con el correo de contacto. */}
+      {visibilityBlock && (
         <div className="mb-8">
-          <AgencyApprovalNotice
-            status={agency.approval_status}
-            rejectionNote={rejectionNote}
-          />
+          {visibilityBlock.reason === "not_approved" ? (
+            <AgencyApprovalNotice
+              status={agency.approval_status}
+              rejectionNote={rejectionNote}
+            />
+          ) : (
+            <AgencyVisibilityNotice reason={visibilityBlock.reason} />
+          )}
         </div>
       )}
 

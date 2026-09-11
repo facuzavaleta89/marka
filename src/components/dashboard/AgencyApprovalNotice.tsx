@@ -11,6 +11,19 @@ import { Notice } from "@/components/feedback/Notice";
 // teléfono. Lo ÚNICO que no puede es publicar propiedades. Por eso el mensaje
 // no es un error ni una pared: dice qué falta y qué SÍ se puede hacer mientras
 // tanto.
+//
+// ⚠ Y DICE TAMBIÉN QUE LO YA CARGADO NO SE MUESTRA, que es la mitad de la
+// historia que a este cartel le faltaba. La aprobación es la PRIMERA de las tres
+// condiciones de `agency_is_publicly_visible()`, así que una agencia sin aprobar
+// tampoco aparece en el mapa — y eso no es teórico para una RECHAZADA, que puede
+// tener cartera entera cargada de cuando estaba aprobada (los triggers de
+// aprobación y suscripción son solo de INSERT: rechazar no borra ni despublica
+// nada). Decir únicamente "no vas a poder publicar" la dejaba creyendo que lo
+// suyo seguía a la vista.
+//
+// Este cartel es el que se muestra cuando `getVisibilityBlock` devuelve
+// `not_approved`; los otros dos motivos los cubre `AgencyVisibilityNotice`.
+// Nunca se muestran los dos juntos (ver el montaje en dashboard/page.tsx).
 export function AgencyApprovalNotice({
   status,
   rejectionNote,
@@ -33,8 +46,9 @@ export function AgencyApprovalNotice({
         icon={<Clock size={18} />}
       >
         Estamos verificando la matrícula de tu inmobiliaria. Hasta que la
-        aprobemos no vas a poder publicar propiedades, pero sí podés ir dejando
-        todo listo: completá tu perfil y los datos de tu inmobiliaria.
+        aprobemos no vas a poder publicar, y las propiedades que ya tengas
+        cargadas no se muestran en el mapa. Mientras tanto podés ir dejando todo
+        listo: completá tu perfil y los datos de tu inmobiliaria.
       </Notice>
     );
   }
@@ -45,23 +59,16 @@ export function AgencyApprovalNotice({
       title="Tu solicitud no fue aprobada"
       icon={<ShieldX size={18} />}
     >
-      {rejectionNote ? (
-        <>
-          <span className="block">
-            Motivo:{" "}
-            <span className="text-black">{rejectionNote}</span>
-          </span>
-          <span className="mt-1.5 block">
-            Corregí los datos de tu inmobiliaria y tu solicitud vuelve a
-            revisión automáticamente.
-          </span>
-        </>
-      ) : (
+      {rejectionNote && (
         <span className="block">
-          Corregí los datos de tu inmobiliaria y tu solicitud vuelve a revisión
-          automáticamente.
+          Motivo: <span className="text-black">{rejectionNote}</span>
         </span>
       )}
+      <span className={rejectionNote ? "mt-1.5 block" : "block"}>
+        Mientras tanto tus propiedades no se muestran en el mapa y no podés
+        publicar nuevas. Corregí los datos de tu inmobiliaria y tu solicitud
+        vuelve a revisión automáticamente.
+      </span>
       {showEditLink && (
         <Link
           href="/dashboard/preferencias"
