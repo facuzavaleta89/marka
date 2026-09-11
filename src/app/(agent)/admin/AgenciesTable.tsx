@@ -15,6 +15,7 @@ import {
   CircleSlash,
   ArrowLeftRight,
 } from "lucide-react";
+import { ErrorBanner } from "@/components/feedback/ErrorBanner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -605,19 +606,13 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
         </div>
       </div>
 
-      {/* Banner de error */}
-      {error && (
-        <div className="mb-4 flex items-start gap-3 bg-terracota-subtle border border-terracota/20 rounded-md px-4 py-3">
-          <p className="flex-1 font-sans text-sm text-error">{error}</p>
-          <button
-            onClick={() => setError(null)}
-            className="text-graphite hover:text-black shrink-0"
-            aria-label="Cerrar"
-          >
-            <X size={16} />
-          </button>
-        </div>
-      )}
+      {/* Banner de error. `mb-4` desde acá: este bloque va suelto dentro del
+          fragmento, sin un contenedor que separe a sus hijos. */}
+      <ErrorBanner
+        message={error}
+        onDismiss={() => setError(null)}
+        className="mb-4"
+      />
 
       {/* Formulario de rechazo (panel inline, no diálogo: pide un texto) */}
       {toReject && (

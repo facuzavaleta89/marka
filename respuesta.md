@@ -1,235 +1,376 @@
-# Documentación del cierre — C3 y el grupo de captación y difusión
+# Tres piezas de coherencia — informe de ejecución
 
-> **Modo ejecución, solo documentación.** Se modificaron **dos** archivos: `CLAUDE.md` y
-> `PENDIENTES.md`. **No se tocó `src/`, `scripts/`, el archivo de migración ni `DESIGN.md`.**
-> **No se ejecutó ningún comando de git** ni SQL de ninguna clase.
-> **Fecha:** 10 sep 2026.
-
-**Verificación de que no se tocó código** (por marca de tiempo, ya que no se puede usar git):
-
-```
-### src/ scripts/ supabase/ + DESIGN.md
-11:09:30.3061670130  src/app/(public)/page.tsx
-11:09:30.3061670130  src/components/auth/PublicHeaderAuth.tsx
-11:09:30.3061670130  src/components/map/AgencyMapView.tsx
-11:09:30.3061670130  src/components/map/CityPicker.tsx
-11:09:30.3061670130  DESIGN.md
-### lo que sí se editó en esta tanda
-11:16:36  CLAUDE.md
-11:19:25  PENDIENTES.md
-```
-
-Los cinco primeros comparten un timestamp **idéntico al nanosegundo** y son anteriores al inicio
-de esta tanda (~11:10): son de las tandas de implementación previas, no de ésta.
+> **Modo ejecución.** **No se ejecutó ningún comando de git** y **no se tocó la base**.
+> No se tocaron `CLAUDE.md` ni `PENDIENTES.md`.
+> **Fecha:** 11 sep 2026.
 
 ---
 
-## 1. CLAUDE.md — qué agregué, modifiqué y corregí
+## 1. Archivos creados y modificados
 
-### Agregado: una sección nueva
+### Creados (3)
 
-**`### El encabezado público — tres variantes, y la puerta de captación`**, insertada entre "Las
-dos puertas a la ficha" y "Infraestructura de buscadores" (queda con las demás superficies
-públicas, y después de que white-label y la ficha ya están introducidas, que es a las que
-referencia). Cubre, en este orden:
-
-- **El antes**, con el dato medido: las únicas apariciones de la palabra "inmobiliaria" en toda la
-  superficie pública eran **comentarios de código**.
-- **Tabla de las tres superficies** (home / sitio de marca / ficha) con dónde vive cada encabezado
-  y qué ofrece.
-- **La home**: tabla de los tres enlaces con destino, tratamiento y comportamiento en `< sm` y
-  `≥ sm`; por qué el llamado **no es terracota** (el FAB ya lo usa; precedente literal de DESIGN
-  §11 con el `LocationPicker`); y por qué **el que se cae en pantalla chica es el llamado y no el
-  ingreso**, con la consecuencia asumida escrita.
-- **Por qué en el sitio de marca no va la captación** — con la razón comercial completa: ese sitio
-  es lo que la agencia compra con `has_white_label`, el marketplace es **por ciudad**, y el llamado
-  usaría el espacio que paga un cliente para captar a su competencia de la misma ciudad. Con el
-  argumento textual que le daría para no renovar.
-- **Por qué en la ficha tampoco va, por ahora** — quien llega busca una casa, y la página existe
-  para renderizarse entera en el servidor: un llamado dependiente de sesión obligaría a estrenar
-  una isla de cliente contra su razón de ser.
-- **El componente compartido**: ruta, firma, por qué la prop no tiene default, y que **absorbió la
-  detección de sesión** que estaba duplicada carácter por carácter.
-- **Trampa 1 — el mecanismo antisalto**: la grilla 1×1, y que la rama inactiva se apaga con
-  `invisible` y **nunca** con `hidden`, porque tiene que seguir ocupando la celda. Con el corolario
-  para futuros cambios de breakpoint: se apaga **un enlace de adentro**, nunca una rama entera.
-- **Trampa 2 — las guardas de ancho**: tabla de las cinco, contra qué protege cada una, que el
-  fallo es **silencioso** (lo recorta el `overflow-hidden` del raíz), y que el caso máximo —
-  "Santiago del Estero", 19 caracteres — **es el caso normal**, porque es la única ciudad activa.
-- **Trampa 3 — el nombre suelto**: por qué el arreglo fue **envolverlo** y no agregarle una clase
-  (un nodo de texto en un flex es un item anónimo: no había dónde poner `truncate`).
-- **Los anchos medidos** con el método (fontkit + `wght` → `avar` → `HVAR`), la tabla completa, y
-  **el umbral: desde 376 px el nombre entra completo**.
-
-### Agregado: siete filas en "Decisiones de Arquitectura"
-
-Componente compartido con variantes · sin captación en el sitio de marca · sin captación en la
-ficha · el llamado no es terracota · en pantalla chica se cae el llamado · `visibility` y no
-`display` para la rama inactiva · el estado de carga renderiza el encabezado real.
-
-### Agregado: tres entradas en la estructura de carpetas
-
-`PublicHeaderAuth.tsx` bajo `components/auth/`; la nota de `PublicHeader` en `(public)/page.tsx`
-(con el ⚠ de que la rama `if (!city)` **no** lo usa); y las guardas del `CityPicker`.
-
-### Corregido
-
-| Dónde | Qué decía | Qué dice |
-|---|---|---|
-| **Estado** (párr. de apertura) | *"⚠ **El grupo de captación y difusión NO está cerrado**: falta convertir el botón «Ingresar»…"* | El grupo **CERRADO** el 10 sep, con qué trajo la pieza (desduplicación + guardas) |
-| **Baseline medido** | *"última medición: 8 sep 2026"* | 10 sep 2026 (los números no cambiaron) |
-| **Hoja de ruta de modelo** | *"**Pendiente:** registro opcional de visitantes; **página y link por propiedad**"* | Pendiente **solo** el registro opcional (C1). Ver el punto 3 |
-
----
-
-## 2. PENDIENTES.md — qué cerré, abrí y ajusté
-
-### Cerrado
-
-- **C3**, con el nivel de detalle del archivo: qué quedó, **qué encontró el diagnóstico que el
-  ítem no anticipaba** (la duplicación con divergencia iniciada, las guardas ausentes, y el tercer
-  lugar que apareció — el esqueleto con el ancho viejo), una **tabla de cinco descartes**, el
-  mecanismo antisalto marcado como la trampa a no romper, y el método de medición de anchos.
-- **El grupo entero**, en "Cerrados recientemente": **GRUPO DE CAPTACIÓN Y DIFUSIÓN — CERRADO
-  (7–10 sep 2026), tres piezas**, con el hilo común (la app pública era muda hacia afuera), el
-  resumen de C2, D2 y C3, los descartes del grupo juntos, lo que dejó abierto, y el apartado de
-  método.
-- **Encabezado del archivo** (`Última actualización`) reescrito al estado nuevo.
-
-### Los cinco descartes registrados en C3
-
-Los tres que el prompt pedía, más dos que aparecieron midiendo:
-
-1. **La pantalla intermedia** — es una pieza propia y merece pensarse aparte; el enlace va directo
-   al registro, que ya dice para quién es en cuatro lugares.
-2. **La captación en el sitio de marca** — razón comercial completa.
-3. **La captación en la ficha** — los dos motivos (busca una casa / Server Component).
-4. **El terracota para el llamado** — ya lo usa el FAB "Ver lista / Ver mapa".
-5. **Resolver la sesión en el servidor** — volvería la home `ƒ (Dynamic)`.
-
-### Abierto (cuatro ítems, los cuatro verificados en el código antes de escribirlos)
-
-| Ítem | Dónde lo puse | Verificación |
-|---|---|---|
-| **C4 · La captación no se ve en el celular** | BLOQUE C, después de C3 | `hidden … sm:inline-flex` en el `<a href="/register">` de `PublicHeaderAuth.tsx` |
-| **El subclaim oculto en pantallas chicas** | Deuda técnica (primero de la lista) | `AuthLayout.tsx:56` → `hidden … md:block`; textos en `RegisterForm.tsx:29-30` y `LoginForm.tsx:17` |
-| **"Sin ciudades" sin encabezado** | Bugs / observaciones menores | `(public)/page.tsx:107-120`: `<div>` centrado, dos párrafos, **cero `href`** |
-| **El último píxel del nombre de la ciudad** | Pulido estético | Medido: 147,8 disponibles contra 148,7 necesarios |
-
-**C4 lleva la alternativa evaluada y no hecha**: el **pie de la lista de propiedades**, con el
-argumento de por qué es la única candidata (`PropertyList` es la única superficie pública del
-celular que scrollea; el mapa es `h-dvh` con el scroll del documento bloqueado, y los dos FABs ya
-están tomados), los a favor y los en contra, y la nota de que **se entrelaza con la pantalla
-intermedia descartada**.
-
-### Ajustado
-
-- **"Tamaños de botones"** (Pulido estético) — se le sumó el `h-9` del llamado del encabezado
-  como **desviación consciente** de los 44 px de DESIGN §6, para que la pasada pareja la confirme
-  o la unifique en vez de "arreglarla" sin contexto.
-
-### Lo que revisé y NO toqué
-
-Barrí el resto del archivo buscando cifras que esta pieza dejara viejas. **No encontré ninguna.**
-El calendario de lanzamiento, el bloque de limpieza de datos previo al lanzamiento, la deuda
-técnica existente, las decisiones de producto abiertas y V2 **no dicen nada que C3 contradiga**.
-No inventé trabajo ahí.
-
----
-
-## 3. Afirmaciones falsas que encontré
-
-### (a) En CLAUDE.md — corregida
-
-> *"**Pendiente:** registro opcional de visitantes; **página y link por propiedad**."*
-
-**Falsa desde el 8 sep**: "página y link por propiedad" es C2, que está hecha — y el propio párrafo
-de Estado, cuatro líneas más arriba, ya lo decía. **No la dejó falsa esta pieza sino la anterior**,
-pero está en el mismo bloque de hoja de ruta que C3 tenía que actualizar, así que la corregí en el
-mismo movimiento y lo reporto acá.
-
-### (b) En `src/components/auth/PublicHeaderAuth.tsx:77` — **NO corregida, por el modo**
-
-El comentario del mecanismo antisalto dice:
-
-> *"el ancho del bloque se movería **~80 px** en el elemento más prominente del encabezado"*
-
-**Ese número es falso.** Medido contra las fuentes del build: el salto real sería de **195,2 px en
-`sm`+** (258,6 → 63,4) y de **22,7 px por debajo** (86,1 → 63,4). Ninguno de los dos se parece a
-80. Es un residuo de la estimación por conteo de caracteres de la primera tanda, que sobrevivió a
-la medición real y a la inversión del breakpoint.
-
-**No lo toqué porque esta tanda es solo documentación y `src/` está fuera de alcance.** Los números
-correctos quedaron en CLAUDE.md → "El encabezado público" y en PENDIENTES.md → C3, así que la
-documentación no repite el error. **Es un arreglo de una línea para la próxima tanda que toque ese
-archivo** — y encaja exactamente en el patrón que CLAUDE.md → "Método de Diagnóstico" ya advierte:
-un comentario que afirma un número desactualiza la sospecha.
-
-### (c) Nada más
-
-Las tres afirmaciones del prompt sobre lo que trajo la pieza —duplicación con divergencia, guardas
-ausentes en la home, salto de layout— se verificaron **las tres** contra el código y son exactas.
-
----
-
-## 4. Los números que medí
-
-**Método:** se cargaron con `fontkit` los `.woff2` que sirve el build (`.next/static/media`). Como
-son **fuentes variables** que `fontkit` no puede instanciar en esos subconjuntos, la variación de
-peso se aplicó a mano: normalización del eje `wght` → tabla `avar` → deltas de `HVAR`, más el
-kerning del layout base. **Control de sanidad:** el mismo texto a peso 400 mide 84,3 px y a 500,
-86,1 px — la variación efectivamente se aplica.
-
-### Anchos de texto (DM Sans 500 a 14 px; Noto Serif 700 a 24 px con `tracking-[-0.01em]`)
-
-| Texto | Ancho |
+| Archivo | Qué es |
 |---|---|
-| "Marka." | **85,1 px** |
-| "Santiago del Estero" | **126,7 px** |
-| "Iniciar sesión" | **86,1 px** |
-| "Ir al panel" | **63,4 px** |
-| "Sumá tu inmobiliaria" | **134,5 px** |
-| "Ingresar" (variante `agency`) | **53,2 px** |
+| `src/lib/utils/getVisibilityBlock.ts` | El helper nuevo: espejo de `agency_is_publicly_visible()`, sus tres condiciones en su mismo orden. Tres motivos. |
+| `src/components/dashboard/AgencyVisibilityNotice.tsx` | Los dos carteles nuevos (suscripción de baja · plan sin activar). Presentacional puro. |
+| `src/components/feedback/ErrorBanner.tsx` | El banner descartable extraído, junto a `Notice`. Client Component, margen desde afuera. |
 
-### Slots
+### Modificados (9)
 
-| Slot | Ancho | Composición |
-|---|---|---|
-| Marca | 85,1 px | — |
-| Selector de ciudad | **148,7 px** | 126,7 + `gap-1.5` 6 + chevron 16 |
-| Botón del llamado | 160,5 px | 134,5 + `px-3` 24 + borde 2 |
-| Puerta `< sm` | **86,1 px** | `máx(86,1 · 63,4)` |
-| Puerta `≥ sm` | **258,6 px** | `máx(160,5 + 12 + 86,1 · 63,4)` |
+| Archivo | Qué cambió |
+|---|---|
+| `src/app/(agent)/dashboard/page.tsx` | Calcula `visibilityBlock` y monta **un solo** cartel: el de aprobación o el nuevo, nunca los dos. |
+| `src/components/dashboard/AgencyApprovalNotice.tsx` | Los dos textos ahora dicen también que **lo ya cargado no se muestra en el mapa**. Era la media historia que faltaba. |
+| `src/lib/utils/getPublishBlock.ts` | Solo comentarios: la contraparte de la distinción con el helper nuevo. **Cero cambios de comportamiento.** |
+| `src/proxy.ts` | `/register/plan` en `PROTECTED_PREFIXES` + se corrigió el comentario que afirmaba algo falso. |
+| `src/components/dashboard/PropertiesTable.tsx` | Copia 1 → `<ErrorBanner className="mb-4">`. Se sacó el import de `X`, que quedó sin uso. |
+| `src/app/(agent)/admin/AgenciesTable.tsx` | Copia 2 → `<ErrorBanner className="mb-4">`. `X` sigue en uso (4 veces), se mantiene. |
+| `src/components/dashboard/SubscriptionContent.tsx` | Copia 3 → `<ErrorBanner>` sin margen. Se sacó el import de `X`. |
+| `src/components/dashboard/TeamContent.tsx` | Copia 4 → `<ErrorBanner>` sin margen. `X` sigue en uso (1 vez). |
+| `DESIGN.md` | §6: dos secciones nuevas — "Los dos carteles: `ErrorBanner` y `Notice`" y "Aviso de que la agencia no se está viendo en el mapa". |
 
-### El umbral
-
-| Viewport | Dispone el selector | Necesita | Resultado |
-|---|---|---|---|
-| 320 px | 92,8 | 148,7 | recorta (−55,9) |
-| 360 px | 132,8 | 148,7 | recorta (−15,9) |
-| **375 px** | **147,8** | **148,7** | **recorta (−0,9)** |
-| 390 / 393 / 412 / 430 px | 162,8 / 165,8 / 184,8 / 202,8 | 148,7 | ✅ completo |
-| 640 px (`sm`) | 240,3 | 148,7 | ✅ completo (+91,6) |
-
-**Umbral: desde 376 px de viewport el nombre de la ciudad entra completo.** Con el reparto
-anterior de esta misma pieza —cuando en pantalla chica quedaba el llamado— el umbral era
-**451 px**, o sea que **ningún teléfono** lo mostraba entero.
-
-### Salto de layout que el mecanismo apaga
-
-**195,2 px en `sm`+ · 22,7 px por debajo.**
-
-### Datos de la base (solo lectura)
-
-**Una sola ciudad activa: "Santiago del Estero", 19 caracteres** — o sea, el caso máximo y el caso
-normal a la vez.
+**No se tocó** la base, ni `/api/geocode`, ni los errores de formulario ni los bloques de éxito
+repetidos (reportados en el punto 9).
 
 ---
 
-## 5. Baseline
+## 2. El helper nuevo
 
-Corrido **después** de escribir los dos `.md`. Se borraron `.next` y `tsconfig.tsbuildinfo` antes
-de medir; **no apareció el ruido de herramienta: ningún error en `.next/**`.**
+### Firma
+
+```ts
+export type VisibilityBlockReason = "not_approved" | "not_current" | "plan_not_active";
+export type VisibilityBlock = { reason: VisibilityBlockReason };
+
+export function getVisibilityBlock(
+  planUsage: PlanUsage,
+  approvalStatus: ApprovalStatus
+): VisibilityBlock | null
+```
+
+**Devuelve solo el motivo, no el mensaje** — a diferencia de `getPublishBlock`, que lleva un
+`message` corto. Acá los textos son párrafos con negritas y un enlace, o sea JSX: meterlos en el
+helper lo obligaría a saber de presentación.
+
+### Los tres motivos, y cómo mapean a las tres condiciones de la base
+
+La función de la base, medida por MCP:
+
+```sql
+WHERE a.id = target_agency_id
+  AND a.approval_status = 'approved'   -- condición 1
+  AND s.status = 'active'              -- condición 2
+  AND s.plan <> 'free'                 -- condición 3
+```
+
+El helper las evalúa **en ese mismo orden**:
+
+| Condición | Falla cuando | Motivo |
+|---|---|---|
+| 1 · aprobación | `approval_status !== 'approved'` | `not_approved` |
+| 2 · estado | `status === 'canceled'` o `'past_due'` | `not_current` |
+| 2 · estado | `status === 'pending'` | **`plan_not_active`** |
+| 3 · plan | `plan === 'free'` | `plan_not_active` |
+
+**Prioridad:** aprobación primero, igual que `getPublishBlock` y que el orden alfabético en que
+Postgres dispara los tres triggers de `properties`. Si el panel ordenara distinto, el cartel y el
+error al guardar contarían historias diferentes sobre la misma agencia.
+
+⚠ **La condición 2 produce dos motivos distintos, y no es una licencia: es el hallazgo de la
+tanda.** Está en el punto 9.
+
+### Verificación de la decisión 2: **ninguna consulta nueva** ✅
+
+Medido antes de escribir. `PlanUsage` (`src/types/index.ts`) expone `plan` y `status`:
+
+```ts
+export interface PlanUsage {
+  plan: SubscriptionPlan;
+  status: SubscriptionStatus;
+  …
+}
+```
+
+Y `dashboard/page.tsx` ya tenía los tres datos: `agency.approval_status` de
+`requireAgentSession()` (`:29`) y `planUsage` de `getPlanUsage` (`:84`, dentro del `Promise.all`
+que ya existía). **El helper es una función pura sobre datos ya presentes.**
+
+### Cómo quedó escrita la distinción, en los dos archivos
+
+**En `getVisibilityBlock.ts`** (encabezado):
+
+```
+//   getPublishBlock   → "¿puede CARGAR una propiedad nueva?"
+//                       Espejo de los TRES TRIGGERS de `properties`.
+//   getVisibilityBlock → "¿lo que ya cargó SE VE en el mapa?"
+//                       Espejo de la FUNCIÓN `agency_is_publicly_visible()`.
+//
+// Parecen lo mismo y no lo son. Usar aquel para esto falla en DOS DIRECCIONES
+// OPUESTAS […]
+//   · LE SOBRA UN MOTIVO. Una agencia con el cupo del plan lleno NO puede
+//     publicar, pero SÍ se está viendo en el mapa. […]
+//   · LE FALTA UNA CONDICIÓN. La agencia en el plan de aterrizaje (`free`) no
+//     produce ningún bloqueo de publicación […] y sin embargo NO SE VE.
+```
+
+**En `getPublishBlock.ts`** (agregado, sin tocar la lógica):
+
+```
+// ⚠ NO USAR ESTO PARA SABER SI LA AGENCIA SE VE EN EL MAPA.
+// […]
+//   · LE SOBRA `plan_limit`. […] le diría que desapareció del mapa —falso— justo
+//     cuando evalúa pagar un plan mayor.
+//   · LE FALTA `plan <> 'free'`. […] Este helper se quedaría mudo.
+//
+// Y hay una diferencia más fina en el estado de la suscripción: acá 'pending'
+// NO bloquea […], pero para la visibilidad sí, porque la base exige
+// `status = 'active'`. Ver `getVisibilityBlock`.
+```
+
+Cada archivo apunta al otro por nombre, así que quien llegue por cualquiera de los dos encuentra
+la respuesta a "¿por qué son dos?".
+
+---
+
+## 3. Los tres mensajes, tal como los lee una inmobiliaria
+
+### Motivo 1 — sin aprobar o rechazada (`AgencyApprovalNotice`, **corregido**)
+
+**Pendiente** — tono `info`, ícono reloj:
+
+> **Tu cuenta está en revisión**
+> Estamos verificando la matrícula de tu inmobiliaria. Hasta que la aprobemos no vas a poder
+> publicar, **y las propiedades que ya tengas cargadas no se muestran en el mapa**. Mientras tanto
+> podés ir dejando todo listo: completá tu perfil y los datos de tu inmobiliaria.
+
+**Rechazada** — tono `error`, ícono escudo:
+
+> **Tu solicitud no fue aprobada**
+> Motivo: *(el que escribió el dueño, si lo hay)*
+> **Mientras tanto tus propiedades no se muestran en el mapa y no podés publicar nuevas.** Corregí
+> los datos de tu inmobiliaria y tu solicitud vuelve a revisión automáticamente.
+> → *Corregir los datos*
+
+**Lo agregado es lo que está en negrita.** Antes los dos decían solo que no se podía publicar.
+⚠ Y no es teórico para una **rechazada**: puede tener la cartera entera cargada de cuando estaba
+aprobada, porque los triggers de aprobación son **solo de `INSERT`** — rechazar no borra ni
+despublica nada. Leía "no vas a poder publicar" y se quedaba creyendo que lo suyo seguía a la vista.
+
+De paso se **desduplicó** el texto del rechazo, que estaba escrito dos veces (una en cada rama del
+ternario de `rejectionNote`) y ahora es una sola frase.
+
+### Motivo 2 — suscripción de baja o vencida (nuevo)
+
+Tono **`warning`**, ícono pausa:
+
+> **Tus propiedades no se están mostrando en el mapa**
+> Tu suscripción no está activa, así que por ahora tus propiedades salieron del mapa público.
+> **Tus datos están intactos:** tus propiedades, tus fotos y tu equipo siguen acá, y vuelven a
+> verse apenas se reactive.
+> → *Ver mi suscripción*
+
+**Conserva las dos cosas que el texto de `/dashboard/suscripcion` hace bien**, con el porqué
+escrito en el código: `warning` y no `error` porque *puede ser una baja acordada, una prueba que
+terminó o un pago pendiente — el sistema no sabe cuál, así que no acusa a nadie*; y dice
+explícitamente **que no se perdió nada**.
+
+**Es la versión corta del que ya vive en la pantalla de suscripción**, con enlace a esa pantalla —
+donde están el detalle completo y el correo de contacto. Así los dos carteles **no dicen lo mismo
+con otras palabras**: este avisa y deriva, aquel explica.
+
+### Motivo 3 — plan todavía sin activar (nuevo)
+
+Tono **`info`**, ícono reloj:
+
+> **Tus propiedades todavía no se ven en el mapa**
+> Tu plan todavía no está activo. Seguí cargando tus propiedades con tranquilidad: **se publican
+> solas apenas lo activemos**, sin que tengas que volver a tocarlas.
+> → *Ver mi suscripción*
+
+**`info` y no `warning`, y eso es deliberado:** es el estado **normal** de una cuenta recién
+creada, porque el plan lo activa a mano el dueño. No falló nada. Un tono de alarma frenaría justo
+a la agencia que queremos que cargue su cartera esta semana. Por eso el cuerpo **invita a seguir**
+antes que cualquier otra cosa.
+
+⚠ **No nombra el plan que tiene, y es a propósito:** cubre dos situaciones con un solo texto — la
+que todavía no eligió ninguno (`free` + `active`) y la que ya lo pidió y espera la activación
+(`pending`). *"Tu plan todavía no está activo"* es cierto en las dos.
+
+### Chequeo de que ningún cartel contradice a otro
+
+| Par | ¿Se pisan? |
+|---|---|
+| Aprobación vs. los dos nuevos | **No**: nunca se muestran juntos (punto 4) |
+| Nuevo de suscripción vs. el de `/dashboard/suscripcion` | **No**: distinta pantalla, y el corto deriva al largo |
+| Nuevo de plan vs. el bloqueo de "Nueva propiedad" | **No**: el botón **no está bloqueado** en ese estado, y el cartel no dice que lo esté — dice justamente lo contrario ("seguí cargando") |
+
+---
+
+## 4. Cómo se garantiza que nunca haya dos carteles
+
+**Por estructura, no por disciplina.** Tres capas, cada una suficiente:
+
+**(1) Hay un solo motivo, no dos banderas.** `getVisibilityBlock` devuelve **un** `reason`. Que la
+agencia esté sin aprobar *y además* dada de baja no produce dos avisos: el helper ya resolvió la
+prioridad (condición 1 primero) y devolvió uno solo.
+
+**(2) El montaje es un ternario sobre ese único motivo**, no dos condicionales independientes
+(`dashboard/page.tsx`):
+
+```tsx
+{visibilityBlock && (
+  <div className="mb-8">
+    {visibilityBlock.reason === "not_approved" ? (
+      <AgencyApprovalNotice status={agency.approval_status} rejectionNote={rejectionNote} />
+    ) : (
+      <AgencyVisibilityNotice reason={visibilityBlock.reason} />
+    )}
+  </div>
+)}
+```
+
+⚠ **Esto reemplazó a `{agency.approval_status !== "approved" && (…)}`**, que era una condición
+suelta: si el cartel nuevo se hubiera montado al lado con su propia condición, **los dos podrían
+dar verdadero a la vez**. Ahora son ramas de la misma expresión: es imposible por construcción.
+
+**(3) El tipo lo hace además un error de compilación.** La prop de `AgencyVisibilityNotice` es:
+
+```ts
+reason: Exclude<VisibilityBlockReason, "not_approved">
+```
+
+Así que **pasarle el motivo de aprobación no compila**. TypeScript además estrecha el tipo en la
+rama `else` del ternario, por lo que el llamador pasa el chequeo sin ningún cast.
+
+---
+
+## 5. Cómo se resolvió el margen del banner
+
+**Viene de afuera, por `className`**, y el componente no trae ninguno propio:
+
+```tsx
+<div className={cn("flex items-start gap-3 rounded-md border border-terracota/20 bg-terracota-subtle px-4 py-3", className)}>
+```
+
+**Verifiqué el contenedor de cada una de las cuatro antes de decidir**, y la divergencia original
+resultó ser **comportamiento correcto, no un descuido**:
+
+| Pantalla | Contenedor raíz | ¿Separa a sus hijos? | Margen |
+|---|---|---|---|
+| `PropertiesTable` | `<>` (fragmento) | no | **`className="mb-4"`** |
+| `AgenciesTable` | `<>` (fragmento) | no | **`className="mb-4"`** |
+| `SubscriptionContent` | `<div className="space-y-6">` | **sí** | ninguno |
+| `TeamContent` | `<div className="space-y-6">` | **sí** | ninguno |
+
+Un margen fijo adentro del componente **rompería dos pantallas en una dirección o las otras dos en
+la contraria**: o quedan pegadas o con el doble de aire. El porqué quedó escrito en el JSDoc de la
+prop y en DESIGN.md §6.
+
+**De paso, el componente devuelve `null` si no hay mensaje**, así que las cuatro pantallas dejaron
+de escribir su propio `{error && (…)}` — la línea que se olvida al agregar la quinta.
+
+**Verificación de que no quedó ninguna copia:**
+
+```
+$ grep -rn "flex items-start gap-3 bg-terracota-subtle|items-start gap-3 rounded-md border border-terracota" src/
+src/components/feedback/ErrorBanner.tsx:47
+```
+
+**Una sola ocurrencia: la del componente.**
+
+---
+
+## 6. El prefijo del proxy, probado contra todas las rutas
+
+`PROTECTED_PREFIXES = ["/dashboard", "/admin", "/register/plan"]`, evaluado con `startsWith`
+contra las 22 rutas del build:
+
+```
+ruta                                   protegida?             esperado
+/                                      no                     PUBLICA OK
+/[slug]                                no                     PUBLICA OK
+/propiedades/[slug]                    no                     PUBLICA OK
+/robots.txt                            no                     PUBLICA OK
+/sitemap.xml                           no                     PUBLICA OK
+/apple-icon.png                        no                     PUBLICA OK
+/login                                 no                     PUBLICA OK
+/register                              no                     PUBLICA OK      ← la clave
+/register/plan                         SI (/register/plan)    privada OK
+/logout                                no                     PUBLICA OK
+/api/geocode                           no                     PUBLICA OK
+/dashboard                             SI (/dashboard)        privada OK
+/dashboard/equipo                      SI (/dashboard)        privada OK
+/dashboard/leads                       SI (/dashboard)        privada OK
+/dashboard/perfil                      SI (/dashboard)        privada OK
+/dashboard/preferencias                SI (/dashboard)        privada OK
+/dashboard/propiedades                 SI (/dashboard)        privada OK
+/dashboard/propiedades/nueva           SI (/dashboard)        privada OK
+/dashboard/propiedades/[id]/editar     SI (/dashboard)        privada OK
+/dashboard/suscripcion                 SI (/dashboard)        privada OK
+/admin                                 SI (/admin)            privada OK
+/_not-found                            no                     PUBLICA OK
+
+discrepancias: 0
+
+--- la pregunta puntual ---
+"/register".startsWith("/register/plan")      = false
+"/register/plan".startsWith("/register/plan") = true
+```
+
+✅ **`/register` sigue pública.** La pantalla de alta no exige sesión, así que una inmobiliaria
+nueva puede registrarse.
+
+**El comentario corregido**, que era la razón por la que nadie volvió a mirar esta lista:
+
+```ts
+// ⚠ ACÁ DECÍA QUE CON /dashboard Y /admin "ALCANZA", PORQUE "TODAS LAS PANTALLAS
+// DEL AGENTE CUELGAN DE /dashboard". ERA FALSO […]
+// ⚠ EL PREFIJO ES `/register/plan` COMPLETO, NUNCA `/register` A SECAS. […]
+// ⚠ `/api/geocode` NO va en esta lista, y es deliberado […]
+```
+
+Le agregué también la nota de `/api/geocode`, para que la próxima persona que lea la lista no
+intente "completarla".
+
+---
+
+## 7. Cómo probar cada uno de los tres estados
+
+**Las dos agencias de la base están aprobadas, en plan `profesional` y `active`** — o sea las dos
+visibles, así que **hoy el cartel no se le muestra a nadie** y cada caso hay que fabricarlo. Todo
+lo de abajo es **reversible desde el panel `/admin`**, salvo donde se indica.
+
+| Estado | Cómo fabricarlo | Cómo volver |
+|---|---|---|
+| **Sin aprobar / rechazada** | `/admin` → menú `⋯` de la agencia → **Rechazar** (pide un motivo, que aparece en el cartel) o **Reabrir** (la deja en `pending`) | **Aprobar** desde el mismo menú |
+| **Suscripción de baja** | `/admin` → **Dar de baja**. Es un sí/no en diálogo | **Reactivar**, que repone los `has_*` del catálogo |
+| **Plan sin activar** | **No hay botón que lleve a `free`.** Dos caminos, abajo | — |
+
+### El tercero es el que cuesta, y conviene saber por qué
+
+**No existe ninguna acción del panel que devuelva una agencia a `plan = 'free'`.** `changePlanAction`
+rechaza explícitamente el destino `free` y `cancelSubscriptionAction` **conserva el `plan`** a
+propósito (es la memoria de a qué reactivar). Dos formas de llegar:
+
+1. **La natural, y la que va a pasar sola la semana que viene: registrar una inmobiliaria nueva.**
+   `/register` → elegir un plan en `/register/plan` → el alta queda en `plan='free'` +
+   `status='pending'`. **Aprobarla desde `/admin` y NO activarle el plan.** Ahí se ve el cartel en
+   su caso real. ⚠ Si además se toca **"Cancelar solicitud"**, queda `free` + `active`, que es la
+   otra mitad del mismo motivo.
+2. **Un `UPDATE` a mano** sobre `subscriptions` (`plan='free'`, y opcionalmente
+   `status='pending'`). ⚠ **No lo hice: esta tanda no toca la base.** Y hay que devolver también
+   `property_limit`/`has_*`, o la agencia queda con el cupo de su plan viejo.
+
+⚠ **Hay un tercer camino para el mismo cartel y no requiere fabricar nada:** desde
+`/dashboard/suscripcion` de una agencia real, **pedir un upgrade**. Eso pone `status='pending'` y
+el cartel aparece. **Es también la prueba de un problema serio que encontré midiendo — punto 9.**
+
+---
+
+## 8. Baseline
+
+Se borraron `.next` y `tsconfig.tsbuildinfo` antes de medir. **No apareció el ruido de herramienta.**
 
 ### `npx tsc --noEmit`
 
@@ -238,7 +379,7 @@ de medir; **no apareció el ruido de herramienta: ningún error en `.next/**`.**
 EXIT_TSC=0
 ```
 
-Salida vacía. **Exit code 0. 0 errores.** ✅
+Salida vacía. **0 errores, exit code 0.** ✅
 
 ### `npm run lint`
 
@@ -265,7 +406,9 @@ This API returns functions which cannot be memoized without leading to stale UI.
 EXIT_LINT=0
 ```
 
-**0 errores, 1 warning** — el único conocido, mismo archivo y misma línea. **Exit code 0.** ✅
+**0 errores, 1 warning** — el único conocido, mismo archivo y línea. **Exit code 0.** ✅
+Los tres componentes nuevos **no agregaron ningún warning**, y los dos imports de `X` que quedaron
+sin uso se sacaron (si no, serían errores de lint).
 
 ### `npx next build`
 
@@ -274,77 +417,114 @@ EXIT_LINT=0
 - Environments: .env.local
 
   Creating an optimized production build ...
-✓ Compiled successfully in 7.1s
+✓ Compiled successfully in 7.7s
   Running TypeScript ...
-  Finished TypeScript in 7.9s ...
-  Collecting page data using 3 workers ...
-✓ Generating static pages using 3 workers (20/20) in 1379ms
-  Finalizing page optimization ...
+  Finished TypeScript in 8.5s ...
+✓ Generating static pages using 3 workers (20/20) in 1561ms
 
 Route (app)
-┌ ○ /
-├ ○ /_not-found
-├ ƒ /[slug]
-├ ƒ /admin
-├ ƒ /api/geocode
-├ ○ /apple-icon.png
-├ ƒ /dashboard
-├ ƒ /dashboard/equipo
-├ ƒ /dashboard/leads
-├ ƒ /dashboard/perfil
-├ ƒ /dashboard/preferencias
-├ ƒ /dashboard/propiedades
-├ ƒ /dashboard/propiedades/[id]/editar
-├ ƒ /dashboard/propiedades/nueva
-├ ƒ /dashboard/suscripcion
-├ ƒ /login
-├ ƒ /logout
-├ ƒ /propiedades/[slug]
-├ ƒ /register
-├ ƒ /register/plan
-├ ○ /robots.txt
-└ ƒ /sitemap.xml
+┌ ○ /                                     ├ ƒ /dashboard/propiedades
+├ ○ /_not-found                           ├ ƒ /dashboard/propiedades/[id]/editar
+├ ƒ /[slug]                               ├ ƒ /dashboard/propiedades/nueva
+├ ƒ /admin                                ├ ƒ /dashboard/suscripcion
+├ ƒ /api/geocode                          ├ ƒ /login
+├ ○ /apple-icon.png                       ├ ƒ /logout
+├ ƒ /dashboard                            ├ ƒ /propiedades/[slug]
+├ ƒ /dashboard/equipo                     ├ ƒ /register
+├ ƒ /dashboard/leads                      ├ ƒ /register/plan
+├ ƒ /dashboard/perfil                     ├ ○ /robots.txt
+├ ƒ /dashboard/preferencias               └ ƒ /sitemap.xml
 
 ƒ Proxy (Middleware)
-
-○  (Static)   prerendered as static content
-ƒ  (Dynamic)  server-rendered on demand
-
 EXIT_BUILD=0
 ```
 
-**Verde, exit code 0, 22 rutas** (contadas una por una). `/` sigue `○ (Static)`, `/sitemap.xml`
-sigue `ƒ`, `/robots.txt` sigue `○`. ✅ **Nada se movió**, como correspondía a una tanda que solo
-toca `.md`.
+**Verde, exit code 0, 22 rutas** — sin cambios, como se esperaba. `/` sigue `○`, `/sitemap.xml`
+sigue `ƒ`, `/robots.txt` sigue `○`. ✅ (Reformateé en dos columnas por espacio.)
 
 ---
 
-## 6. Qué de este prompt resultó falso
+## 9. Lo que resultó falso, y una decisión que tuve que tomar
 
-**Nada de lo que el prompt afirma resultó falso.** Los tres hallazgos que enumera —el enlace
-duplicado con copias ya divergentes, el encabezado de la home sin ninguna guarda de ancho mientras
-el del sitio de marca las tenía todas, y el salto de layout por el cambio de texto según sesión—
-se verificaron contra el código y son exactos.
+### (a) 🔴 EL HALLAZGO: **pedir un upgrade te saca del mapa**
 
-**Dos precisiones, ninguna contradice el prompt:**
+**Es lo más importante de esta tanda y no estaba en el prompt.**
 
-1. **Los lugares a tocar eran "dos y medio", no dos.** Además de los dos archivos con el enlace,
-   apareció un tercero: el **esqueleto de carga** de la home tenía el ancho del slot derecho
-   escrito a mano (`w-16` = 64 px, dimensionados para la palabra "Ingresar"). No estaba en la lista
-   y era obligatorio: sin ajustarlo, la home saltaba al terminar de cargar. Quedó registrado en
-   C3 como "el tercer lugar".
-2. **La afirmación de que "no hay una sola línea de la interfaz que le hable" a una inmobiliaria
-   era literalmente cierta**, verificada por barrido exhaustivo: las tres apariciones de la palabra
-   "inmobiliaria" en toda la superficie pública eran comentarios de código. Lo dejo asentado porque
-   es de las afirmaciones fáciles de escribir de memoria y ésta estaba medida.
+La condición 2 de la función de visibilidad es `s.status = 'active'` — **lista blanca**. El dominio
+de esa columna tiene **cuatro** valores (medido: `CHECK (status = ANY (ARRAY['active','pending','past_due','canceled']))`).
+Entonces **`pending` NO se ve en el mapa**.
 
-**Y una cosa que el prompt no podía saber:** el comentario del propio componente
-(`PublicHeaderAuth.tsx:77`) contiene un número falso (~80 px contra los 195,2 / 22,7 reales). Está
-en el punto 3(b), sin corregir por estar fuera del alcance de esta tanda.
+Y `pending` significa *"pidió un plan y espera que se lo activen"*. Lo escriben dos lugares:
+
+```
+src/app/(agent)/register/plan/actions.ts:76      status: "pending",
+src/app/(agent)/dashboard/suscripcion/actions.ts:75  status: "pending",
+```
+
+**La consecuencia, concreta:** una agencia con `profesional` activa y sus propiedades en el mapa
+entra a `/dashboard/suscripcion`, toca "Pasar a Premium" **y desaparece del mapa** hasta que el
+dueño le active el upgrade a mano. **Pedir pagar más te apaga.**
+
+⚠ **Y contradice lo que el propio proyecto dice de sí mismo:** `SubscriptionContent.tsx:204-205`
+afirma que *"'pending' […] es una agencia al día"* y la excluye de su aviso a propósito;
+`getPublishBlock` la deja publicar; y `CLAUDE.md` dice que al pedir un upgrade *"el cliente sigue
+operando con lo que rige hasta la activación"*. **Todo eso es cierto salvo para la visibilidad**,
+que es lo único que el cliente paga.
+
+**No lo arreglé: el arreglo está en la base** (la función, o el CHECK del gate) **o en
+`requestPlanUpgradeAction`**, y esta tanda no toca ninguna de las dos. Queda para el cierre.
+
+### (b) 🟠 La decisión que tuve que tomar: **tres motivos, pero la condición 2 produce dos**
+
+El prompt dice "TRES MOTIVOS, TRES MENSAJES" y define el segundo como *"NO ESTÁ AL DÍA (baja o
+vencida)"*. Al mirar la función de la base, la condición 2 **también atrapa `pending`**, que no es
+ni "baja" ni "vencida".
+
+Las tres salidas posibles y por qué elegí la tercera:
+
+| Opción | Por qué no / sí |
+|---|---|
+| Meter `pending` en "no está al día" | ❌ **Le diría "tu suscripción está dada de baja" a alguien que acaba de pedir un plan.** Falso y alarmante, y contradice a `/dashboard/suscripcion`, que dice lo contrario en la misma app |
+| Tratar `pending` como visible | ❌ **El helper mentiría**: la base dice que no se ve. Sería justo el defecto que el proyecto documenta como el más caro |
+| **`pending` → el mensaje de "plan sin activar"** | ✅ **Es cierto** (su plan efectivamente no está activo), **no alarma**, y **mantiene los tres mensajes** que el prompt pidió |
+
+**Elegí la tercera y no la considero una improvisación**: mantiene la cuenta de mensajes, respeta
+el criterio de tono del prompt, y no inventa un cuarto cartel. Pero **es una decisión que el
+prompt no anticipó** y por eso la declaro acá en vez de acomodarla.
+
+⚠ **Con un residuo que dejo dicho:** para la agencia del caso (a) —`profesional` activa que pide
+un upgrade— el cartel dice *"Tu plan todavía no está activo"*, que es **ambiguo**: ella tiene
+Profesional. Es lo más honesto que se puede decir sin arreglar el problema de fondo, y al menos le
+explica por qué desapareció del mapa, que hoy no le explica nada.
+
+### (c) 🟢 Todo lo demás del prompt resultó cierto y está medido
+
+- **El estado de aterrizaje no dispara ningún bloqueo:** `getPublishBlock` le devuelve `null`
+  (aprobada ✓, estado no bloqueante ✓, y `canCreate` verdadero porque `PLANS.free.propertyLimit`
+  es 1). Puede cargar su primera propiedad y creer que está publicada.
+- **Las cuatro copias del banner ya habían divergido:** dos con `mb-4`, dos sin.
+- **`/register/plan` estaba fuera de la lista** y el comentario del proxy afirmaba lo contrario.
+- **El aviso de aprobación contaba media historia.**
+
+### (d) 🟡 Lo que reporto y NO toqué, como se pidió
+
+- **Los errores de formulario** — `<p className="font-sans text-sm text-error">` pelado, en
+  `ProfileForm` (×2), `AgencyLogoForm`, `AgencyPhoneForm`, `AgencyIdentityForm` y el alta de
+  `TeamContent`. **Seis ocurrencias, cinco archivos.** Otra familia: van con su campo, no como
+  cartel de pantalla.
+- **Los bloques de éxito** — `<p className="font-sans text-sm text-success">` en `AgencyPhoneForm`,
+  `AgencyLogoForm`, `ProfileForm` (×2), `AgencyIdentityForm` y `PreferencesContent`. **Seis
+  copias idénticas en clases**, cuatro con el texto embebido.
+- **Un tercer molde fuera del panel** — `LoginForm:111`, `RegisterForm:262` y `PlanSelector:134`
+  usan un error con fondo pero sin borde ni cierre (`px-3 py-2`), y `PlanSelector` le suma `mt-5`.
+- ⚠ **Conviene resolverlos juntos**, porque los éxitos y los errores de formulario **conviven en el
+  mismo archivo a dos líneas de distancia** (`ProfileForm:235` / `:238`;
+  `AgencyIdentityForm:148` / `:150`). Extraer solo la mitad es cómo empiezan estas divergencias.
 
 ---
 
 ## Estado final
 
-Dos archivos `.md` modificados. Baseline intacto en los tres frentes, 22 rutas con el mismo nombre
-y el mismo tipo. **No se ejecutó ningún comando de git**, según lo indicado.
+Doce archivos tocados (3 creados, 9 modificados). Baseline intacto en los tres frentes, 22 rutas
+con el mismo nombre y el mismo tipo. **No se ejecutó ningún comando de git** ni SQL de escritura:
+el trabajo queda en el árbol para que lo revises.

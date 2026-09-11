@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { UserPlus, X, Mail, Phone, Trash2 } from "lucide-react";
+import { ErrorBanner } from "@/components/feedback/ErrorBanner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -110,19 +111,10 @@ export function TeamContent({ members, currentUserId }: TeamContentProps) {
         <CreateAgentForm onClose={() => setShowForm(false)} />
       )}
 
-      {/* Banner de error de borrado */}
-      {error && (
-        <div className="flex items-start gap-3 bg-terracota-subtle border border-terracota/20 rounded-md px-4 py-3">
-          <p className="flex-1 font-sans text-sm text-error">{error}</p>
-          <button
-            onClick={() => setError(null)}
-            className="text-graphite hover:text-black shrink-0"
-            aria-label="Cerrar"
-          >
-            <X size={16} />
-          </button>
-        </div>
-      )}
+      {/* Banner de error. SIN margen propio: el contenedor de arriba ya separa a
+          sus hijos. (El comentario decía "de borrado" y era falso: este mismo
+          estado lo escribe también el alta de agentes.) */}
+      <ErrorBanner message={error} onDismiss={() => setError(null)} />
 
       {/* Lista del equipo */}
       <TeamList
