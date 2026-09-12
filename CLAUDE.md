@@ -20,9 +20,9 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 
 **Distribución:** web responsive + PWA instalable. No hay app nativa ni stores.
 
-**Estado:** Deployado en Vercel, **sin datos reales todavía** (lo cargado es de prueba; el lanzamiento con inmobiliarias fundadoras se apunta a octubre). MVP + multi-agente completos. **Fase White-label cerrada** en lo esencial: Sub-pieza A (ruta `/[slug]` + mapa filtrado + gate de plan), B1 (subir logo) y B2a (mostrar logo + nombre + "powered by Marka." en el header) hechas y probadas. **B2b (variante admin en `disabled`) y C (slug editable) quedan EN PAUSA**. **Fase de modelo de agencias CERRADA** (ago 2026): solo-agencias, matrícula + aprobación manual, bloqueo de publicación en la base, sesión unificada. Ver "Aprobación de agencias" abajo. **Fase de cobrabilidad CERRADA** (31 ago – 1 sep 2026): la visibilidad pública ahora depende de que la agencia esté al día (ver "Visibilidad pública de las propiedades") y el panel `/admin` dejó de ser de una sola vía —cancelar solicitud, vencimiento, baja/reactivación, eliminación y cambio de plan (ver "Panel de plataforma")—. **Ese era el bloqueante para poder cobrar y ya no lo es.** **Fase de modelo de la propiedad CERRADA** (3 sep 2026): una propiedad puede ofrecerse en **varias operaciones a la vez** con precio y moneda propios por operación, el **precio es opcional** ("a convenir") y las propiedades en alquiler llevan **requisitos para el inquilino**. Ver "Operaciones, precios y requisitos de la propiedad". **Grupo de archivos de Storage CERRADO** (5–6 sep 2026), en tres tandas: policies finas por agencia, borrado de archivos en los caminos que no lo hacían, y una herramienta de línea de comandos que audita y limpia huérfanos. El bucket quedó en **9 objetos y 707 kB, sin un solo huérfano**; venía de 24 objetos y 6,4 MB con el 89 % del peso en basura. Ver "Imágenes y Storage". **Grupo de blindaje CERRADO** (7 sep 2026, última de sus cinco tandas): una agencia **ya no puede existir sin fila de suscripción** —lo garantiza un trigger en la base— y el choque de matrícula duplicada al aprobar **se explica**, con la matrícula en conflicto y la regla, en vez de un "no se pudo" genérico. Ver "Suscripciones y límites" y "Aprobación de agencias". **La consulta sobrevive al agente** (7 sep 2026): borrar un agente con consultas a su nombre **antes fallaba siempre** contra una clave foránea; ahora la consulta se **desvincula** y conserva el nombre de quien la atendió en una **copia congelada que escribe la base**, no el cliente. En la misma tanda: el registro de una consulta **ya no falla en silencio** en el mapa público, y el aviso previo al borrado de un agente **dice también qué pasa con sus consultas**. Ver "La consulta sobrevive al agente". **Cada propiedad tiene su página pública propia** (7–8 sep 2026): `/propiedades/[slug]`, renderizada en el servidor e indexable, con vista previa enriquecida al compartir el enlace, botón de compartir, mapa del sitio y archivo de instrucciones para buscadores. Y **el modal dice quién publica**: logo y nombre de la inmobiliaria más el nombre del agente que atiende. Ver "Página pública de la propiedad" y "Quién publica". **Grupo de captación y difusión CERRADO** (10 sep 2026, con su tercera y última pieza): el enlace del encabezado público que decía **"Ingresar"** —sin decir para quién era— es ahora una **puerta de captación**: un llamado a sumar la inmobiliaria que lleva al registro, más el ingreso como enlace secundario. La pieza además **desduplicó** ese enlace, que estaba escrito en dos archivos y cuyas copias ya habían empezado a divergir, y le puso al encabezado de la home las **guardas de ancho** que tenía el del sitio de marca y a él le faltaban enteras. Ver "El encabezado público".
+**Estado:** Deployado en Vercel, **sin datos reales todavía** (lo cargado es de prueba; el lanzamiento con inmobiliarias fundadoras se apunta a octubre). MVP + multi-agente completos. **Fase White-label cerrada** en lo esencial: Sub-pieza A (ruta `/[slug]` + mapa filtrado + gate de plan), B1 (subir logo) y B2a (mostrar logo + nombre + "powered by Marka." en el header) hechas y probadas. **B2b (variante admin en `disabled`) y C (slug editable) quedan EN PAUSA**. **Fase de modelo de agencias CERRADA** (ago 2026): solo-agencias, matrícula + aprobación manual, bloqueo de publicación en la base, sesión unificada. Ver "Aprobación de agencias" abajo. **Fase de cobrabilidad CERRADA** (31 ago – 1 sep 2026): la visibilidad pública ahora depende de que la agencia esté al día (ver "Visibilidad pública de las propiedades") y el panel `/admin` dejó de ser de una sola vía —cancelar solicitud, vencimiento, baja/reactivación, eliminación y cambio de plan (ver "Panel de plataforma")—. **Ese era el bloqueante para poder cobrar y ya no lo es.** **Fase de modelo de la propiedad CERRADA** (3 sep 2026): una propiedad puede ofrecerse en **varias operaciones a la vez** con precio y moneda propios por operación, el **precio es opcional** ("a convenir") y las propiedades en alquiler llevan **requisitos para el inquilino**. Ver "Operaciones, precios y requisitos de la propiedad". **Grupo de archivos de Storage CERRADO** (5–6 sep 2026), en tres tandas: policies finas por agencia, borrado de archivos en los caminos que no lo hacían, y una herramienta de línea de comandos que audita y limpia huérfanos. El bucket quedó en **9 objetos y 707 kB, sin un solo huérfano**; venía de 24 objetos y 6,4 MB con el 89 % del peso en basura. Ver "Imágenes y Storage". **Grupo de blindaje CERRADO** (7 sep 2026, última de sus cinco tandas): una agencia **ya no puede existir sin fila de suscripción** —lo garantiza un trigger en la base— y el choque de matrícula duplicada al aprobar **se explica**, con la matrícula en conflicto y la regla, en vez de un "no se pudo" genérico. Ver "Suscripciones y límites" y "Aprobación de agencias". **La consulta sobrevive al agente** (7 sep 2026): borrar un agente con consultas a su nombre **antes fallaba siempre** contra una clave foránea; ahora la consulta se **desvincula** y conserva el nombre de quien la atendió en una **copia congelada que escribe la base**, no el cliente. En la misma tanda: el registro de una consulta **ya no falla en silencio** en el mapa público, y el aviso previo al borrado de un agente **dice también qué pasa con sus consultas**. Ver "La consulta sobrevive al agente". **Cada propiedad tiene su página pública propia** (7–8 sep 2026): `/propiedades/[slug]`, renderizada en el servidor e indexable, con vista previa enriquecida al compartir el enlace, botón de compartir, mapa del sitio y archivo de instrucciones para buscadores. Y **el modal dice quién publica**: logo y nombre de la inmobiliaria más el nombre del agente que atiende. Ver "Página pública de la propiedad" y "Quién publica". **Grupo de captación y difusión CERRADO** (10 sep 2026, con su tercera y última pieza): el enlace del encabezado público que decía **"Ingresar"** —sin decir para quién era— es ahora una **puerta de captación**: un llamado a sumar la inmobiliaria que lleva al registro, más el ingreso como enlace secundario. La pieza además **desduplicó** ese enlace, que estaba escrito en dos archivos y cuyas copias ya habían empezado a divergir, y le puso al encabezado de la home las **guardas de ancho** que tenía el del sitio de marca y a él le faltaban enteras. Ver "El encabezado público". **Grupo de coherencia del panel CERRADO** (10–11 sep 2026, cinco tandas): era un grupo chico —un cartel, un banner y una ruta— y **destapó el bug más caro medido hasta ahora**: pedir un plan mayor **sacaba a la agencia del mapa** hasta que el dueño se lo activara a mano, porque el pedido escribía `status: 'pending'` y la regla de visibilidad exige `'active'`. **Una agencia que quería pagar más se apagaba sola.** De ahí salió la regla que gobierna el modelo de planes: **un pedido abierto se detecta por `pending_plan`, NUNCA por el estado** (ver "Un pedido de plan abierto"). En la misma tanda: el panel ahora **dice cuándo una agencia no se está viendo** (cartel de tres motivos, nunca dos a la vez, con un helper nuevo espejo de la regla de visibilidad), el **banner de error** se extrajo de las cuatro copias que ya habían divergido, `/register/plan` entró a la lista de rutas protegidas, y **dos mensajes dejaron de prometer lo que el cupo del aterrizaje no permite**. Ver "El cartel de visibilidad del panel" y "El estado de aterrizaje y su cupo".
 
-**Baseline de calidad medido (no documentado de memoria; última medición: 10 sep 2026):** `npx tsc --noEmit` 0 errores (exit 0), `npm run lint` **0 errores y 1 warning** (`PropertyForm.tsx:808`, exit 0), `npx next build` verde (exit 0) con **22 rutas**. Cualquier error nuevo, un warning distinto del único conocido, o una ruta que aparezca sin motivo, es una regresión.
+**Baseline de calidad medido (no documentado de memoria; última medición: 12 sep 2026):** `npx tsc --noEmit` 0 errores (exit 0), `npm run lint` **0 errores y 1 warning** (`PropertyForm.tsx:808`, exit 0), `npx next build` verde (exit 0) con **22 rutas**. Cualquier error nuevo, un warning distinto del único conocido, o una ruta que aparezca sin motivo, es una regresión.
 
 > ⚠ **Las rutas pasaron de 19 a 22, y es la ÚNICA vez que el número se movió.** Las tres nuevas son de la página pública de la propiedad: **`/propiedades/[slug]`** (la página, dinámica), **`/sitemap.xml`** (dinámica: ver "Infraestructura de buscadores") y **`/robots.txt`** (estática). Las dos últimas no son código de aplicación sino **archivos de convención de Next**, que cuentan como ruta en ese listado igual que `/apple-icon.png`, que ya estaba. Las 19 anteriores siguen las 19, con el mismo nombre y el mismo tipo (`○`/`ƒ`).
 >
@@ -131,7 +131,9 @@ Sobre `properties` hay **tres triggers** que rechazan el alta, y los tres usan `
 
 - **Por qué TRIGGERS y no policies RLS:** `createPropertyAction` usa **service role** cuando un admin publica a nombre de otro agente, y el service role **saltea las policies**. Los triggers corren siempre, sin importar el rol. Es la única barrera que cubre los dos caminos.
 - **⚠ EL ORDEN DE LA TABLA NO ES DECORATIVO, Y LOS NOMBRES TAMPOCO.** Postgres dispara los triggers de una tabla **en orden alfabético de nombre**, y como los tres comparten SQLSTATE, **el primero que falla es el mensaje que ve el agente**. `agency_approved` < `agency_subscription` < `property_limit` da exactamente la prioridad que queremos: aprobación → suscripción → cupo. Renombrar cualquiera cambia el mensaje que se muestra.
-- **El bloqueo por suscripción es por LISTA NEGRA (`canceled`/`past_due`), NUNCA por "distinto de `active`".** El dominio tiene CUATRO valores y `'pending'` significa *"pidió un upgrade y espera que se lo activen"*: esa agencia está al día y publica normalmente. Bloquear por `<> 'active'` le cortaría el alta **justo por haber querido pagar más**.
+- **El bloqueo por suscripción es por LISTA NEGRA (`canceled`/`past_due`), NUNCA por "distinto de `active`".** El dominio tiene CUATRO valores y `'pending'` significa **"todavía no tiene nada activo"**: es una agencia recién registrada que eligió un plan y espera la activación manual. Esa agencia **publica normalmente** —para que pueda ir cargando su cartera mientras espera—, **aunque todavía no se vea en el mapa**. Bloquear por `<> 'active'` le cortaría el alta sin motivo.
+  ⚠ **ACÁ ESTABA LA SEGUNDA COPIA DE LA AFIRMACIÓN FALSA QUE ESCONDIÓ EL BUG DEL UPGRADE**, y sobrevivió a la tanda que corrigió la otra: decía que `'pending'` significaba *"pidió un upgrade y espera que se lo activen"* y que *"esa agencia está al día y publica normalmente"*, y cerraba con *"le cortaría el alta justo por haber querido pagar más"*. Era **cierto de publicar y falso de verse** — y peor: nombraba como caso normal justo el que era el bug. Desde el 11 sep 2026 pedir un upgrade **no toca el estado**, así que `'pending'` ya no puede querer decir eso. Ver "Un pedido de plan abierto".
+  ⚠ **Y la asimetría con la visibilidad sigue en pie, a propósito:** este trigger usa **lista negra** (`'pending'` publica) y `agency_is_publicly_visible()` usa **lista blanca** (`'pending'` no se ve). No es una contradicción sin resolver: es el comportamiento deseado —una agencia nueva carga su cartera mientras espera, y aparece cuando le activan el plan—. Antes del arreglo esa asimetría **mordía**, porque `'pending'` también alcanzaba a agencias que ya pagaban.
 - **Los de aprobación y suscripción van solo en INSERT** a propósito: editar una propiedad ya cargada sigue permitido aunque la agencia se rechace o se dé de baja después. No se le quitan a nadie las propiedades que ya publicó, ni la posibilidad de corregirlas mientras negocia su reactivación. (Efecto lateral conocido: **reactivar una propiedad pausada es un UPDATE y no pasa por el gate de suscripción** — ver PENDIENTES.md.)
 - **`check_agency_subscription()` NO bloquea "sin fila de suscripción"** a propósito: ese caso ya lo cubre `check_property_limit()`, que trata "sin fila" como límite 0. Duplicarlo solo cambiaría el mensaje por uno menos preciso.
 - **`check_property_limit()` trata "sin fila de suscripción" como límite 0** (antes `max_allowed` quedaba `NULL`, la comparación daba `NULL` y el insert pasaba **sin límite alguno**).
@@ -203,6 +205,67 @@ En el cambio de plan el campo viene **precargado** con el valor vigente, justame
 - El conteo de propiedades usa **siempre `agency_id`**, nunca `agent_id`. Usar el helper `getPlanUsage` de `@/lib/utils/getPlanUsage`.
 - `is_featured` solo puede ser `true` si la suscripción tiene `has_featured` (hoy: premium). Las server actions lo fuerzan a `false` silenciosamente si la agencia no lo tiene. **El gating se hace por el booleano `has_featured` (vía `planUsage.hasFeatured`), NUNCA comparando el nombre del plan (`=== "premium"`).**
 - La creación de `agencies`, el insert de `agents` y la escritura de `subscriptions` en el registro se hacen **con service role** (`admin.ts`), nunca con el client normal.
+
+#### ⚠ UN PEDIDO DE PLAN ABIERTO SE DETECTA POR `pending_plan`, NUNCA POR `status`
+
+> **Es la regla más importante del modelo de planes, y salió del bug más caro medido hasta ahora.**
+> Si vas a escribir cualquier cosa que necesite saber "¿esta agencia pidió un plan?", la respuesta
+> es **`pending_plan != null`**. Mirar el estado da la respuesta correcta solo para la mitad de los
+> casos, y en silencio.
+
+**Qué pasaba.** `requestPlanUpgradeAction` escribía `pending_plan` **y `status: 'pending'`**. Y
+`agency_is_publicly_visible()` exige `s.status = 'active'`. Entonces una agencia con su plan
+andando y sus propiedades publicadas entraba a `/dashboard/suscripcion`, tocaba "Pasar a
+{plan mayor}", y **sus propiedades desaparecían del mapa** hasta que el dueño le activara el plan
+a mano. **Una agencia que quería pagar más se apagaba sola, justo por haber querido pagar más.**
+
+**⚠ LA CAUSA DE FONDO NO ERA LA REGLA DE LA BASE: ERA QUE EL ESTADO SIGNIFICABA DOS COSAS
+INCOMPATIBLES.**
+
+| Lo que significaba `'pending'` | ¿Correcto que no se vea? |
+|---|---|
+| "soy nueva, elegí un plan y espero que me lo activen" (lo escribe `selectPlanAction`) | **sí**: todavía no tiene nada activo |
+| "ya tengo un plan andando y quiero pasar a uno mayor" (lo escribía la del dashboard) | **no**: está al día, paga, y sus propiedades están publicadas |
+
+Y **la regla de visibilidad solo puede asumir una de las dos**. El arreglo fue quitarle el segundo
+sentido: **pedir un upgrade ya no toca `status`**, solo anota `pending_plan`. Así `'pending'`
+significa una sola cosa —**"todavía no tenés nada activo"**— que es exactamente lo que la regla
+asume. **La regla de la base NO se tocó** (ni la función, ni los triggers, ni las policies): con el
+estado significando una sola cosa, las cinco quedaron correctas sin cambiar una línea.
+
+**Los cinco lugares que se corrigieron por esta regla**, con la condición que quedó:
+
+| # | Dónde | Antes | Ahora |
+|---|---|---|---|
+| 1 | `changePlanAction` — la barrera que impide cambiar el plan con un pedido abierto (`admin/actions.ts:988`) | `sub.status === "pending"` | **`sub.pending_plan !== null`** |
+| 2 | `availableActions` — el botón "Cambiar de plan" (`AgenciesTable.tsx:352-360`) | `status === "active" && plan !== "free"` | **`… && !hasPendingPlan`** |
+| 3 | `SubscriptionContent` — la condición que deshabilita los otros upgrades (`:207`) | `status === "pending" && pendingPlan !== null` | **`pendingPlan !== null`** |
+| 4 | `planCategoryOf` — el filtro "Plan pendiente" del panel (`AgenciesTable.tsx:169`) | `sub.status === "pending"` | **`sub.pending_plan != null`** |
+| 5 | La métrica "Planes · Esperan activación" (`admin/page.tsx:116`) | `.eq("status", "pending")` | **`.not("pending_plan", "is", null)`** |
+
+**⚠ Y POR QUÉ SE ROMPÍAN A MEDIAS Y EN SILENCIO, que es lo que las volvía difíciles de ver:** las
+cinco **siguen funcionando** para el camino del registro, donde `selectPlanAction` **sí** escribe
+`'pending'` (y ahí es correcto: ver la decisión 3 de esa tanda). El agujero aparecía **solo** con
+una agencia que ya tenía plan pago. **Una prueba con una cuenta nueva las habría visto andar
+perfecto.** Al probar cualquier cosa de este modelo hay que recorrer **los dos caminos**.
+
+**Una guarda nueva que la regla hizo necesaria** (`cancelSubscriptionAction`, `admin/actions.ts:612`):
+dar de baja a una agencia con un pedido abierto **se rechaza**. Antes era imposible —el pedido
+dejaba el estado en `'pending'` y la acción solo se ofrecía sobre `'active'`—; con el pedido sin
+tocar el estado, la agencia queda en `'active'` y la acción la alcanzaba, dejando un estado
+absurdo: **dada de baja pero con el botón "Activar plan" todavía ofrecido**, y activarlo desharía
+la baja. ⚠ **Va DESPUÉS del chequeo de `plan === 'free'`, y el orden es el motivo:** una agencia
+recién registrada tiene plan `free` **y** pedido abierto a la vez, y para ella el mensaje correcto
+es *"no tiene un plan pago que dar de baja"*, no *"resolvé el pedido"*.
+
+**El resultado es simétrico y vale la pena tenerlo presente:** la combinación
+`canceled` + `pending_plan` está bloqueada **por los dos lados** — no se puede pedir un upgrade
+estando de baja (`requestPlanUpgradeAction` rechaza `canceled`/`past_due`) ni dar de baja con un
+pedido abierto (la guarda nueva).
+
+**⚠ Lo que NO se tocó, y da ganas de tocar:** la línea `status: "active"` de `activatePlanAction`.
+Para un upgrade pasó a ser un **no-op** y parece residuo, pero **es lo que saca del `'pending'` a
+una agencia recién registrada**. Sacarla rompe el otro camino.
 
 #### Toda agencia nace con su suscripción — el trigger, no el código
 
@@ -329,7 +392,11 @@ prometer lo que la base va a rechazar si alguna vez alguien borra una fila a man
 │   │   ├── agency/
 │   │   │   └── AgencyUnavailable.tsx    ← Página "sitio no disponible" (estado disabled: sin has_white_label o agencia no aprobada). Sub-pieza A
 │   │   ├── feedback/
-│   │   │   └── Notice.tsx               ← Aviso persistente reutilizable (Server Component, tonos info/warning/error). NO es el "banner de error" descartable
+│   │   │   ├── Notice.tsx               ← Aviso PERSISTENTE reutilizable (Server Component, tonos
+│   │   │   │                              info/warning/error). Describe un estado que dura
+│   │   │   └── ErrorBanner.tsx          ← Banner de error DESCARTABLE (Client Component, ✕ para cerrar).
+│   │   │                                  Extraído de sus 4 copias, que ya habían divergido.
+│   │   │                                  ⚠ El margen viene de afuera: ver "Avisos persistentes"
 │   │   ├── properties/
 │   │   │   ├── PropertyCard.tsx         ← Card editorial reutilizable. Kicker con todas las operaciones,
 │   │   │   │                              UN precio (el de getDisplayOperationPrice, según el filtro).
@@ -360,7 +427,12 @@ prometer lo que la base va a rechazar si alguna vez alguien borra una fila a man
 │   │   │   ├── AgencyPhoneForm.tsx       ← Teléfono de la agencia (solo admin). Sub-pieza B1
 │   │   │   ├── AgencyLogoForm.tsx        ← Logo de la agencia (solo admin): upload client-side + updateAgencyLogoAction. Valida tipo/tamaño, cache-buster en preview. Sub-pieza B1
 │   │   │   ├── AgencyIdentityForm.tsx   ← Nombre + matrícula (solo admin). Editable si pending/rejected; solo lectura con candado si approved. La regla REAL la aplica la action
-│   │   │   ├── AgencyApprovalNotice.tsx ← Aviso de dominio: pendiente / rechazada (con el motivo). Presentacional puro, null si está aprobada
+│   │   │   ├── AgencyApprovalNotice.tsx ← Aviso de dominio: pendiente / rechazada (con el motivo).
+│   │   │   │                              Presentacional puro, null si está aprobada. Es UNA de las dos
+│   │   │   │                              ramas del cartel de visibilidad de /dashboard
+│   │   │   ├── AgencyVisibilityNotice.tsx ← La OTRA rama: suscripción de baja · plan sin activar.
+│   │   │   │                              ⚠ Su prop lleva Exclude<…,"not_approved">: pasarle el motivo
+│   │   │   │                              de aprobación no compila (garantía de "un solo cartel")
 │   │   │   ├── SubscriptionContent.tsx  ← Card del plan que rige + cards de upgrade (solo planes superiores) + AlertDialog de confirmación
 │   │   │   ├── NewPropertyButton.tsx    ← CTA "Nueva propiedad" + bloqueo por getPublishBlock (agencia no aprobada O cupo lleno), con mensaje distinto para cada motivo
 │   │   │   ├── LeadsContent.tsx         ← Tabla de Consultas (client). AgentCell: los 3 estados de la columna
@@ -398,7 +470,13 @@ prometer lo que la base va a rechazar si alguna vez alguien borra una fila a man
 │   │       ├── waMessage.ts             ← generateWaUrl(): string | null
 │   │       ├── getPlanUsage.ts          ← Helper server: cuenta por agency_id
 │   │       ├── resolveAgentSession.ts   ← ÚNICO lugar donde vive "traer el agente logueado + su agencia". Unión de 3 estados, cacheado por request. requireAgentSession() corta; resolveAgentSession() devuelve
-│   │       ├── getPublishBlock.ts       ← Espejo en la interfaz de los dos triggers de properties: ¿se puede publicar, y si no, por qué? Fuente única del criterio para los 4 puntos de entrada
+│   │       ├── getPublishBlock.ts       ← Espejo en la interfaz de los TRES triggers de properties:
+│   │       │                              ¿se puede PUBLICAR, y si no, por qué? Fuente única del
+│   │       │                              criterio para los 4 puntos de entrada al alta
+│   │       ├── getVisibilityBlock.ts    ← ⚠ EL OTRO, y NO es lo mismo: espejo de la FUNCIÓN
+│   │       │                              agency_is_publicly_visible() — ¿lo que ya cargó SE VE en el
+│   │       │                              mapa? Usar aquel para esto falla en dos direcciones
+│   │       │                              opuestas (ver "Los dos helpers que parecen lo mismo")
 │   │       ├── getLatestRejectionNote.ts ← Motivo del último rechazo (agency_reviews, service role) verificando pertenencia antes de devolver nada
 │   │       ├── licenseNumber.ts         ← Formato y normalización de la matrícula, compartidos por el alta y por Preferencias
 │   │       ├── resolveAgencyBySlug.ts   ← Resuelve slug → agencia + suscripción + ciudad (service role). 3 estados: not_found / disabled / active. `disabled` = 3 gates (aprobación + has_white_label + pago vía RPC agency_is_publicly_visible). White-label
@@ -514,11 +592,148 @@ prometer lo que la base va a rechazar si alguna vez alguien borra una fila a man
 - **El parámetro `reason` es un CÓDIGO corto, nunca el texto**: el route handler lo valida contra una whitelist y `login/page.tsx` (Server) lo mapea a un mensaje fijo. Renderizar texto que venga de la URL sería una puerta a inyección de contenido.
 - El botón "Cerrar sesión" del sidebar **no** usa esta ruta: sigue con `logoutAction` (un `<form>` → server action), que ahí sí es lo correcto.
 
-### Avisos persistentes — Notice + AgencyApprovalNotice
+### Avisos persistentes — Notice + ErrorBanner + AgencyApprovalNotice
 
-- **`src/components/feedback/Notice.tsx`**: aviso persistente reutilizable. Server Component, sin estado, sin botón de cerrar, `role="status"`, tres tonos (`info`/`warning`/`error`). **No confundir con el "banner de error"** que está copiado a mano en cuatro pantallas (`AgenciesTable`, `PropertiesTable`, `SubscriptionContent`, `TeamContent`): aquel es descartable, tiene `useState` de cliente y comunica que algo falló. Este describe un estado que dura.
-- **Aviso de suscripción que no rige (`SubscriptionContent`)**: `Notice` en tono **`warning`, no `error`** — puede ser una baja acordada, una prueba que terminó o un pago pendiente, y el sistema no sabe cuál, así que no acusa a nadie. **Bug que cierra:** esa pantalla solo preguntaba por `'pending'`, así que `canceled` y `past_due` caían en la misma rama que una suscripción sana y la agencia dada de baja **veía su plan anterior como plan actual, con su fecha de vencimiento y sin un solo aviso** — era la única pantalla que no se lo decía (el bloqueo al publicar sí, y sus propiedades ya no estaban en el mapa). Ahora avisa, **oculta la fecha** (*"plan activo hasta el X"* de un plan dado de baja es justo la contradicción) y **no ofrece ningún upgrade**. ⚠ `'pending'` NO entra en esa rama y no debe entrar: es una agencia al día esperando activación.
-- **`src/components/dashboard/AgencyApprovalNotice.tsx`**: el de dominio. Presentacional puro — recibe `status` y `rejectionNote` ya resueltos en el server y **no consulta nada**; devuelve `null` si la agencia está aprobada. Montado en `/dashboard` (entre el título y la grilla de tarjetas, el único hueco de ancho completo) y en `/dashboard/preferencias` (con `showEditLink={false}`, porque es la pantalla del enlace y ahí se corrige lo que motivó el rechazo).
+- **`src/components/feedback/Notice.tsx`**: aviso persistente reutilizable. Server Component, sin estado, sin botón de cerrar, `role="status"`, tres tonos (`info`/`warning`/`error`). Describe **un estado de la cuenta que dura**.
+- **`src/components/feedback/ErrorBanner.tsx`**: el otro, y **viven juntos a propósito en la misma carpeta porque la confusión entre los dos es el error de tipo que se comete**. ⚠ Acá decía que el banner de error *"está copiado a mano en cuatro pantallas"*: **era cierto y dejó de serlo** — se extrajo el 10 sep 2026, después de que las copias divergieran (dos con `mb-4` y dos sin).
+
+| | `Notice` | `ErrorBanner` |
+|---|---|---|
+| Qué comunica | un **estado que dura** | **algo que la persona intentó, falló** |
+| ¿Se cierra? | **no**: se va cuando el estado cambia | **sí**, con una ✕ (`useState` del llamador) |
+| Render | **Server Component** | Client Component (`"use client"`) |
+| Cuándo aparece | ya está al entrar a la pantalla | después de una acción |
+
+  **⚠ EL MARGEN VIENE DE AFUERA (`className`), Y ES UNA RESTRICCIÓN MEDIDA, NO UN GUSTO DE API.** De las cuatro pantallas que lo usan, **dos** lo tienen suelto dentro de un fragmento y necesitan `mb-4` (`PropertiesTable`, `AgenciesTable`) y **dos** viven en un contenedor con `space-y-6` que ya separa a sus hijos (`SubscriptionContent`, `TeamContent`). Un margen fijo adentro del componente **rompe dos pantallas en una dirección o las otras dos en la contraria**: o quedan pegadas o con el doble de aire. La divergencia original de las copias **era comportamiento correcto**, no descuido. Y **devuelve `null` si no hay mensaje**, así que ningún llamador escribe su propio `{error && (…)}` — la línea que se olvidaba al agregar la quinta pantalla.
+  ⚠ **Los errores de FORMULARIO son otra familia y NO usan esto:** un `<p className="font-sans text-sm text-error">` pelado, debajo del campo o del botón, sin caja y sin cierre. Van con su campo, no como cartel de pantalla (ver PENDIENTES.md).
+- **Aviso de suscripción que no rige (`SubscriptionContent`)**: `Notice` en tono **`warning`, no `error`** — puede ser una baja acordada, una prueba que terminó o un pago pendiente, y el sistema no sabe cuál, así que no acusa a nadie. **Bug que cierra:** esa pantalla solo preguntaba por `'pending'`, así que `canceled` y `past_due` caían en la misma rama que una suscripción sana y la agencia dada de baja **veía su plan anterior como plan actual, con su fecha de vencimiento y sin un solo aviso** — era la única pantalla que no se lo decía (el bloqueo al publicar sí, y sus propiedades ya no estaban en el mapa). Ahora avisa, **oculta la fecha** (*"plan activo hasta el X"* de un plan dado de baja es justo la contradicción) y **no ofrece ningún upgrade**. ⚠ `'pending'` NO entra en esa rama y no debe entrar — pero **el motivo cambió y acá estaba escrito el viejo**: decía *"es una agencia al día esperando activación"*, que era el sentido de `'pending'` **cuando significaba dos cosas**. Desde el 11 sep 2026 significa una sola: **una agencia recién registrada que todavía no tiene nada activo**. Sigue sin entrar en la rama de `canceled`/`past_due` porque no le dieron de baja nada, pero tampoco es "una agencia al día": es una que todavía no arrancó. Ver "Un pedido de plan abierto".
+- **`src/components/dashboard/AgencyApprovalNotice.tsx`**: el de dominio. Presentacional puro — recibe `status` y `rejectionNote` ya resueltos en el server y **no consulta nada**; devuelve `null` si la agencia está aprobada. Montado en `/dashboard` y en `/dashboard/preferencias` (con `showEditLink={false}`, porque es la pantalla del enlace y ahí se corrige lo que motivó el rechazo). ⚠ **En `/dashboard` ya NO se monta por su propia condición**: es una de las dos ramas del ternario del cartel de visibilidad, que es lo que garantiza que nunca se vea junto al otro aviso (ver "El cartel de visibilidad del panel"). ⚠ **Y sus dos textos se corrigieron:** decían solo que no se podía publicar, y **omitían que lo ya cargado tampoco se muestra en el mapa** — la aprobación es la PRIMERA condición de `agency_is_publicly_visible()`. No era teórico para una agencia **rechazada**, que puede tener la cartera entera cargada de cuando estaba aprobada (los triggers de aprobación son solo de `INSERT`: rechazar no borra ni despublica nada), y leía *"no vas a poder publicar"* quedándose con que lo suyo seguía a la vista.
+
+### El cartel de visibilidad del panel — tres motivos, UNO SOLO a la vez
+
+> Antes el panel **no decía nada** cuando las propiedades de una agencia no se estaban mostrando en
+> el mapa: el listado se veía igual, el contador del plan se veía igual, y la agencia se enteraba
+> recién si entraba a la pantalla de suscripción. Era el peor momento posible para no avisar,
+> porque es justo cuando tiene que decidir si paga.
+
+**Dónde va:** en `/dashboard`, entre el título y la grilla de tarjetas — el único hueco de ancho
+completo del layout y lo primero que ve al entrar.
+
+**⚠ NO va en el layout compartido:** ahí quedaría dentro del contenedor que scrollea y se iría de
+pantalla al bajar, y repetido en las siete pantallas del panel se vuelve ruido que nadie lee.
+**Tampoco en `/dashboard/suscripcion`**, que ya tiene su propio aviso, más largo y con el correo de
+contacto.
+
+**Los tres motivos y quién los cuenta:**
+
+| Motivo | Componente | Tono | Título |
+|---|---|---|---|
+| `not_approved` | `AgencyApprovalNotice` | `info` / `error` | "Tu cuenta está en revisión" / "Tu solicitud no fue aprobada" |
+| `not_current` | `AgencyVisibilityNotice` | **`warning`** | "Tus propiedades no se están mostrando en el mapa" |
+| `plan_not_active` | `AgencyVisibilityNotice` | **`info`** | "Tus propiedades todavía no se ven en el mapa" |
+
+#### ⚠ LA GARANTÍA DE QUE NUNCA SE MUESTRAN DOS: no es disciplina, son tres capas
+
+1. **Un solo motivo, no dos banderas.** `getVisibilityBlock` devuelve **un** `reason`. Que la
+   agencia esté sin aprobar **y además** dada de baja no produce dos avisos: el helper ya resolvió
+   la prioridad y devolvió uno.
+2. **En la estructura: un ternario sobre ese único motivo**, no dos condicionales independientes
+   (`dashboard/page.tsx:139-150`). ⚠ Esto **reemplazó** a un `{agency.approval_status !== "approved" && (…)}`
+   suelto: con dos condiciones separadas los dos carteles podían dar verdadero a la vez.
+3. **En los tipos: `reason: Exclude<VisibilityBlockReason, "not_approved">`**
+   (`AgencyVisibilityNotice.tsx:45`). **Pasarle el motivo de aprobación NO COMPILA**, y TypeScript
+   estrecha el tipo en la rama `else` del ternario, así que el llamador pasa sin ningún cast. La
+   regla dejó de ser una convención que se olvida.
+
+#### ⚠ LOS DOS HELPERS QUE PARECEN LO MISMO Y NO LO SON
+
+|  | `getPublishBlock` | `getVisibilityBlock` |
+|---|---|---|
+| Pregunta | **"¿puede CARGAR una propiedad nueva?"** | **"¿lo que ya cargó SE VE en el mapa?"** |
+| Espejo de | los **TRES TRIGGERS** de `properties` | la **FUNCIÓN** `agency_is_publicly_visible()` |
+| Motivos | `not_approved` · `subscription_inactive` · `plan_limit` | `not_approved` · `not_current` · `plan_not_active` |
+| El estado | **lista negra** (`canceled`/`past_due`) | **lista blanca** (`= 'active'`) |
+
+**⚠ USAR EL PRIMERO PARA LO SEGUNDO FALLA EN DOS DIRECCIONES OPUESTAS**, y las dos se pagan caro.
+La explicación está escrita en el encabezado de los dos archivos, cada uno apuntando al otro por
+nombre:
+
+- **LE SOBRA UN MOTIVO.** Una agencia con el cupo del plan lleno **no puede publicar**, pero **SÍ
+  se está viendo** en el mapa. Avisarle que no se ve sería mentirle **justo a quien está por
+  decidir si paga un plan mayor**.
+- **LE FALTA UNA CONDICIÓN.** La agencia del aterrizaje (`plan = 'free'`) **no produce ningún
+  bloqueo de publicación** —el botón está habilitado y la propiedad se guarda sin error— y sin
+  embargo **no se ve**. Aquel helper se quedaría **mudo en el caso más frecuente de todos**.
+
+**Y hay una diferencia más fina en el estado:** para publicar, `'pending'` **no** bloquea (lista
+negra, para que una agencia nueva pueda ir cargando su cartera mientras espera); para la
+visibilidad **sí**, porque la base exige `= 'active'`. **Publicar y verse no son la misma
+pregunta**, y este es el punto exacto donde se separan.
+
+**`getVisibilityBlock` replica las tres condiciones de la función EN SU MISMO ORDEN** (aprobación →
+estado → plan), que es además el orden en que Postgres dispara los tres triggers. Si el panel
+ordenara distinto, **el cartel de la pantalla y el error al guardar contarían historias diferentes
+sobre la misma agencia.** Y **no cuesta ninguna consulta**: `approvalStatus` viene de
+`requireAgentSession()` y `status`/`plan` de `getPlanUsage()`, los dos ya pedidos por esa página.
+
+### ⚠ El estado de aterrizaje y su cupo — y la regla que salió de ahí
+
+**El estado completo de una agencia recién aprobada cuyo plan todavía no se activó:**
+
+| | Valor |
+|---|---|
+`agencies.approval_status` | `approved`
+`subscriptions.plan` | **`free`**
+`subscriptions.status` | `active` (no eligió plan) o `pending` (lo eligió y espera)
+`subscriptions.property_limit` | **1** — medido en las dos fuentes: `PLANS.free.propertyLimit` y el `DEFAULT` de la columna
+`agency_is_publicly_visible()` | **`false`** (falla la tercera condición, `plan <> 'free'`)
+`getPublishBlock` | **`null`** mientras tenga cupo: **puede cargar, sin ningún error**
+
+**O sea: puede cargar UNA propiedad, y esa propiedad NO se ve en el mapa hasta que el plan se
+active.** ⚠ Y es el estado de **toda alta nueva**, porque el plan lo activa a mano el dueño.
+
+**Dos mensajes distintos lo explican, y cuentan la MISMA historia** — se leen como una sola
+conversación en dos momentos, antes de cargar y después:
+
+| Momento | Dónde | Qué dice |
+|---|---|---|
+| **Antes de cargar** | el cartel de `/dashboard` (`plan_not_active`) | *"**Ya podés cargar tu primera propiedad**, así vas conociendo el formulario. Por ahora el límite es de **una sola propiedad**, porque tu plan todavía no está activo. La que cargues queda guardada tal cual y **se publica sola cuando lo activemos**, sin que tengas que volver a tocarla. **Ahí vas a poder cargar el resto de tu cartera.**"* |
+| **Cuando llegó al límite** | bajo el botón "Nueva propiedad" (`PlanLimitMessage`, rama `plan === 'free'`) | *"Llegaste al límite de lo que podés cargar por ahora. Cuando activemos tu plan **vas a poder cargar el resto de tu cartera**."* → `Ver mi suscripción` |
+
+**⚠ La última frase es LITERALMENTE la misma en los dos, a propósito:** el cartel la promete y el
+mensaje la cumple. Y los dos mandan al **mismo** destino (`Ver mi suscripción`), **nunca a
+"Ver planes"**, que es el enlace del canal de venta.
+
+**⚠ Y una cosa que el primer mensaje NO PUEDE DECIR NI SUGERIR: que esa propiedad sea "de prueba",
+un "ejemplo" o algo descartable.** No se borra nunca: cuando el plan se active **queda publicada
+como una más**. Si la agencia la carga creyendo que es un simulacro, pone cualquier cosa, y esa
+cualquier cosa **termina en el mapa público con su nombre**. Por eso el texto afirma lo contrario
+en positivo —*"queda guardada tal cual"*, *"se publica sola"*— en vez de negar la palabra "prueba",
+que plantearla ya la sugiere.
+
+**El número del cupo se DERIVA del catálogo**, no se tipea en la prosa (`FREE_LIMIT_LABEL` en
+`AgencyVisibilityNotice.tsx`, con la forma singular/plural que ya usan `SubscriptionContent` y
+`PlanSelector`): el número ya vive en dos lugares —el catálogo y el `DEFAULT` de la columna— y un
+tercero escrito en una frase es la copia que nadie va a acordarse de actualizar.
+
+#### ⚠ LA REGLA: antes de invitar a pagar más, verificar que pagar sea lo que destraba
+
+**Es la segunda vez que el proyecto se tropieza con exactamente esto**, y las dos veces el síntoma
+fue el mismo mensaje: *"Alcanzaste el límite de tu plan Gratis. Pasá a Inicial para publicar más."*
+
+| | Cuándo | A quién se lo decía | Causa |
+|---|---|---|---|
+| **1ª** | al agregar el motivo `subscription_inactive` | a una agencia **dada de baja** | un **ternario binario**: el motivo nuevo cayó en el `else`. Se cerró con un `switch` exhaustivo con guarda `never` |
+| **2ª** | al aparecer el estado de aterrizaje | a una agencia **con el plan por activarse** | una **rama que ramificaba por el plan siguiente del catálogo sin preguntarse si ese plan resuelve algo** |
+
+**El `switch` con guarda `never` cerró la primera vía y no la segunda**: el motivo `plan_limit`
+llegaba bien, y lo que fallaba era la ramificación **dentro** de su mensaje. Hoy `PlanLimitMessage`
+tiene **tres** ramas (aterrizaje → no invita a nada · plan de venta → invita al upgrade, que es un
+canal de venta legítimo · plan tope → ofrece contacto).
+
+**Lo que hay que llevarse: un bloqueo correcto con el mensaje equivocado manda a la persona a
+resolver algo que no la destraba, y en el peor momento — cuando está esperando otra cosa.** Antes
+de escribir "pasá a {plan}", preguntarse si pasar de plan es lo que efectivamente la destraba.
 
 ### Plan usage — getPlanUsage
 - Siempre `src/lib/utils/getPlanUsage.ts`. Cuenta por `agency_id`. Solo en server.
@@ -1342,7 +1557,7 @@ Schema en `supabase/migrations/20240101000000_initial_schema.sql`.
 |---|---|
 | `cities` | Mercados. Centro del mapa y zoom por ciudad. **No tiene límites geográficos** (solo `center_lat`/`center_lng`/`default_zoom`): por eso el buscador de direcciones usa un umbral de distancia en vez del ejido real |
 | `agencies` | Inmobiliarias. `city_id` NOT NULL. `tenant_type` (`agency`/`individual`) **legacy**: el registro escribe siempre `'agency'`; nada de la base la lee (verificado: 0 funciones y 0 policies la mencionan). `phone_wa` NOT NULL. `license_number` (matrícula, TEXT nullable) + `approval_status` (`pending`/`approved`/`rejected`, DEFAULT `pending`). `brand_color` para white-label futuro |
-| `subscriptions` | `plan` (el que RIGE) + `pending_plan` (pedido, esperando activación) + `status` (`active`/`pending`/`past_due`/`canceled`), `property_limit`, entitlements `has_*`, `activated_at` (desde cuándo rige el pago) y `current_period_end` (vencimiento; **lo escribe el panel, no lo vigila nadie**). Por agencia |
+| `subscriptions` | `plan` (el que RIGE) + `pending_plan` (pedido, esperando activación) + `status` (`active`/`pending`/`past_due`/`canceled`), `property_limit`, entitlements `has_*`, `activated_at` (desde cuándo rige el pago) y `current_period_end` (vencimiento; **lo escribe el panel, no lo vigila nadie**). Por agencia. ⚠ **`status = 'pending'` significa UNA sola cosa: "todavía no tiene nada activo"** (agencia recién registrada que eligió plan y espera). **NO significa "pidió un upgrade"**: para eso está `pending_plan`, que es **la única señal de que hay un pedido abierto**. Ver "Un pedido de plan abierto". ⚠ **`past_due` NO lo escribe ningún camino del código** (medido): está en el CHECK y lo leen tres lugares, pero es inalcanzable — hoy la columna tiene **tres** valores producibles, no cuatro |
 | `agents` | `id` = `auth.users.id`. `agency_id` NOT NULL. `role` (`admin`/`agent`) gatea la sección Equipo. `email` denormalizado de auth.users (copia de lectura) |
 | `properties` | `agency_id` y `city_id` NOT NULL; `location` GEOGRAPHY generada. **Tres pares de operación** (`for_sale`/`sale_price`/`sale_currency` y sus equivalentes de `rent` y `temp_rent`): al menos una activa, precio y moneda siempre juntos o los dos NULL (= "a convenir"). **Requisitos de alquiler** en dos JSONB: `rent_requirements` (lista cerrada) y `rent_requirements_other` (hasta 5 strings de hasta 300). `location_source` (TEXT nullable, CHECK `manual`/`suggested`): de dónde salió la coordenada. **Dato de medición: no gatea nada** |
 | `property_images` | `is_cover` + `sort_order` |
@@ -1506,6 +1721,13 @@ npm run storage:huerfanos:borrar   # ⚠ destructivo. Ver "Auditoría y limpieza
 | El llamado de captación NO es terracota | En la home el terracota ya es del FAB "Ver lista / Ver mapa", la acción principal **del visitante**, que es el 99 % del tráfico. Mismo criterio que DESIGN §11 aplica a los dos botones del `LocationPicker`. La jerarquía contra el enlace vecino la da la caja, no el color |
 | En pantalla chica se cae el LLAMADO y no el ingreso | Los cuatro elementos no entran en un teléfono (medido). El ingreso es la función que un cliente usa **todos los días** y el celular es donde más se navega: esconderlo ahí le agrega un paso a quien ya paga para ganar una conversión eventual de quien todavía no |
 | Los dos estados de sesión se apilan en una celda y el inactivo se apaga con `visibility`, no con `display` | El que no se ve tiene que **seguir ocupando su celda** para que la grilla mida el máximo de los dos. Con `display: none` el ancho vuelve a depender de la sesión y reaparece el salto (medido: 195,2 px en `sm`+). La "limpieza" obvia es justamente lo que lo rompe |
+| Un pedido de plan abierto se detecta por `pending_plan`, NUNCA por `status` | El estado significaba dos cosas incompatibles —"soy nueva y no tengo nada activo" y "ya tengo un plan y quiero uno mayor"— y la regla de visibilidad solo puede asumir una. Con las dos mezcladas, **pedir un plan mayor sacaba a la agencia del mapa**: quería pagar más y se apagaba sola |
+| Pedir un upgrade NO toca `status`, y la regla de la base NO se tocó | Quitarle al estado su segundo sentido lo deja significando una sola cosa, que es justo lo que `agency_is_publicly_visible()` asume. Cambiar la función para que aceptara `'pending'` habría dejado visible a una agencia recién registrada que todavía no tiene nada activo |
+| Dos helpers separados para "¿puede publicar?" y "¿se ve en el mapa?" | Usar el de publicación para la visibilidad falla en dos direcciones opuestas: le SOBRA el cupo lleno (esa agencia sí se ve) y le FALTA `plan <> 'free'` (el aterrizaje no bloquea nada y no se ve). Son espejos de cosas distintas: los tres triggers contra la función |
+| El cartel del panel garantiza "uno solo" por estructura y por tipos, no por disciplina | Un solo `reason`, un ternario sobre él (no dos condicionales que pueden dar verdadero a la vez) y un `Exclude` en la prop que hace que pasar el motivo equivocado **no compile** |
+| Antes de invitar a pagar más, verificar que pagar sea lo que destraba | **Es la segunda vez con el mismo síntoma.** Un bloqueo correcto con el mensaje equivocado manda a la persona a resolver algo que no la destraba, en el momento exacto en que está esperando otra cosa |
+| El cupo del aterrizaje NO se subió: se corrigieron los mensajes | Con una propiedad la agencia igual aprende a usar el formulario, y el número del cupo es andamio del modelo (`PLANS.free`), no una preferencia de producto. Lo que estaba mal era prometerle que podía "seguir cargando" |
+| El banner de error recibe su margen desde afuera | Dos de las cuatro pantallas lo tienen suelto en un fragmento y necesitan `mb-4`; las otras dos viven en un `space-y-6` que ya separa. Un margen fijo adentro rompe dos en una dirección o las otras dos en la contraria |
 | El estado de carga de la home renderiza el encabezado REAL, no una imitación | Los tres slots eran bloques grises con anchos escritos a mano, y el de la derecha medía 64 px **dimensionados para la palabra "Ingresar"**: un ancho fijo que imita a otro componente es una copia que hay que mantener sincronizada, y no se mantuvo. Ni la marca ni la puerta dependen de la ciudad |
 
 ---
@@ -1517,6 +1739,37 @@ Cuando el usuario reporta un síntoma visual, **inspeccionar el estado real del 
 **⚠ Y un patrón propio de este repo, que ya costó cinco veces: los comentarios que afirman que un caso ESTÁ CUBIERTO son los más peligrosos, porque desactivan la sospecha.** El ejemplo que lo cerró: `getPlanUsage` decía *"ese caso ya lo bloquea el límite 0"* mientras el límite que ese mismo archivo calculaba era **1**. Nadie volvió a mirar el caso justamente porque el comentario decía que estaba resuelto. Los otros cuatro fueron de la misma familia: dos cláusulas `ON DELETE` que la base no tenía; un *"el único código que borra logos y avatares"* que había dejado de ser único; y un **"Estado consistente"** en `deleteAgentAction` que describía un estado que **no lo era** —las propiedades ya reasignadas y el avatar ya borrado, sobre un agente todavía vivo—. **Un comentario que afirma una propiedad de la base o de otro archivo hay que medirlo antes de creerle**, sobre todo si es la razón por la que algo no se está revisando.
 
 **El caso del "Estado consistente" agrega un matiz que los otros cuatro no tenían: el comentario que miente puede estar A DOS LÍNEAS del que dice la verdad.** El mismo bloque explicaba, arriba, que el borrado fallaba **siempre** en ese caso — o sea que quien lo escribió sabía que esa rama se ejecutaba de verdad, y aun así el mensaje de adentro describía un fallo transitorio. **La cercanía no es evidencia de coherencia**: hay que leer cada afirmación por separado.
+
+### ⚠ El sexto caso (11 sep 2026) agrega DOS cosas que los cinco anteriores no tenían
+
+El bug del upgrade —pedir un plan mayor apagaba a la agencia del mapa— estuvo escondido detrás de
+**tres** afirmaciones falsas, no una. Y lo que las hacía distintas de las anteriores es esto:
+
+**(1) LAS TRES ERAN FALSAS A MEDIAS, Y LA MITAD VERDADERA ERA LA QUE SE LEÍA.** Ninguna decía algo
+completamente equivocado: decían algo cierto **de una pregunta** y falso **de la otra**.
+
+| Dónde | Decía | Por qué engañaba |
+|---|---|---|
+| `requestPlanUpgradeAction` | *"el cliente sigue operando con lo que tiene hasta que el admin active"* | cierto del **cupo** y de las **funcionalidades**; falso de **aparecer en el mapa**, que es lo único que la agencia paga |
+| `getPublishBlock` | *"'pending' … esa agencia está al día y **publica normalmente**"* | cierto de **publicar**; falso de **verse** |
+| `CLAUDE.md` (la línea del upgrade) | lo mismo que la primera | ídem |
+
+**Los cinco casos anteriores se desmentían con una medición puntual** (¿existe esa cláusula `ON
+DELETE`? ¿cuánto vale ese límite?). **Estos tres no**: había que notar que *"operar normal"* y
+*"verse en el mapa"* son dos preguntas distintas, y que el comentario respondía la primera cuando
+la que importaba era la segunda. **La corrección de un comentario a medias no es medir un valor:
+es separar las dos preguntas que estaba mezclando.**
+
+**(2) EL COMENTARIO FALSO ESTABA EN TRES ARCHIVOS QUE SE CONFIRMABAN ENTRE SÍ, Y UNO ERA ESTE.**
+No fue un comentario aislado: la action, el helper y la documentación decían lo mismo, así que
+**cualquiera de los tres que se leyera confirmaba a los otros dos**. Ahí está el salto respecto del
+"Estado consistente", donde la contradicción convivía en el mismo bloque: acá **no había ninguna
+contradicción visible**, porque las tres copias estaban de acuerdo. **Tres fuentes coincidiendo no
+son tres verificaciones: pueden ser una sola afirmación copiada.**
+
+⚠ **Y la tercera copia vivía en este archivo.** Es el motivo por el que una afirmación falsa en
+`CLAUDE.md` se corrige **en la misma tanda que el código** y no se deja para el cierre: mientras
+esté escrita acá, es la fuente que alguien va a citar para no volver a mirar.
 
 ## Diseño
 
