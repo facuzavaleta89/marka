@@ -193,7 +193,18 @@ export function SubscriptionContent({
 
   // Hay un upgrade pedido esperando activación manual del admin. El plan que
   // rige (`plan`) NO cambia mientras tanto; `pendingPlan` es solo el pedido.
-  const hasPendingRequest = status === "pending" && pendingPlan !== null;
+  //
+  // ⚠ SE PREGUNTA SOLO POR `pendingPlan`. Antes era
+  // `status === "pending" && pendingPlan !== null`, y el `status` sobraba en el
+  // mejor de los casos: desde que pedir un upgrade dejó de tocar el estado (le
+  // apagaba las propiedades a una agencia al día), esa condición habría quedado
+  // en `false` con un pedido abierto y el efecto habría sido doble y contradictorio
+  // en la misma pantalla: la tarjeta del plan pedido seguiría diciendo "Pendiente"
+  // —porque `isPendingCard` mira `pendingPlan`, no el estado— mientras las de al
+  // lado se REACTIVABAN invitando a pedir otro. Y ese segundo pedido pisa el
+  // primero sin ningún aviso, porque `requestPlanUpgradeAction` no compara contra
+  // lo que ya había.
+  const hasPendingRequest = pendingPlan !== null;
 
   // ⚠ SUSCRIPCIÓN QUE NO RIGE. Antes esta pantalla solo preguntaba por
   // 'pending', así que 'canceled' y 'past_due' caían en la MISMA rama que una

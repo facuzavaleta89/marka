@@ -149,10 +149,24 @@ const APPROVAL_FILTERS: { key: ApprovalStatus; label: string }[] = [
 
 // Categoría de suscripción de una fila. SIEMPRE devuelve una categoría (nunca
 // null): la última rama absorbe lo que no encaja en las tres primeras.
+//
+// ⚠ "TIENE UN PEDIDO ABIERTO" SE PREGUNTA POR `pending_plan`, NO POR `status`.
+// Antes era `sub.status === "pending"` y alcanzaba porque pedir un upgrade
+// escribía ese estado. Desde que `requestPlanUpgradeAction` dejó de tocarlo, un
+// upgrade pedido queda en 'active' y habría caído en `paidActive`, o sea que
+// **habría desaparecido del filtro "Plan pendiente"** — que es justamente cómo
+// el dueño revisa qué tiene que activar. Con `pending_plan` entran los DOS
+// caminos: la agencia recién registrada (que además queda en 'pending') y la que
+// pidió un upgrade teniendo plan pago.
+//
+// Va PRIMERO a propósito: un pedido abierto es lo accionable de esa fila, y es
+// lo que el dueño está buscando cuando filtra. Una fila con `status = 'pending'`
+// pero sin `pending_plan` (estado inconsistente que ningún camino produce) cae en
+// "other", que es el cajón de sastre: no desaparece del listado.
 function planCategoryOf(row: AgencyRow): PlanCategory {
   const sub = row.subscription;
   if (!sub) return "other";
-  if (sub.status === "pending") return "pendingPlan";
+  if (sub.pending_plan != null) return "pendingPlan";
   if (sub.status === "active" && sub.plan !== "free") return "paidActive";
   if (sub.status === "active" && sub.plan === "free") return "free";
   // Categoría propia: una agencia dada de baja es un grupo que el dueño va a
@@ -175,6 +189,23 @@ function formatActivatedAt(value: string | null): string {
 
 // ─── Sub-componentes ──────────────────────────────────────────
 
+// ⚠ ESTE BADGE MUESTRA EL ESTADO DE LA SUSCRIPCIÓN Y NADA MÁS. Una agencia con
+// una solicitud abierta dice "Activa", que es LA VERDAD: está al día, paga, y sus
+// propiedades se ven en el mapa. Se decidió NO señalar el pedido acá, por tres
+// razones:
+//
+//   1. Toda esta pieza existe para que el estado deje de significar dos cosas.
+//      Meterle el pedido al badge sería reconstruir la misma confusión un nivel
+//      más arriba, en la interfaz.
+//   2. El pedido ya tiene su propia columna, PEGADA a ésta: el orden de la tabla
+//      es "Plan · Pidió · Estado", y la celda de "Pidió" lo muestra en terracota,
+//      que es el acento que se lleva el ojo. En las tarjetas de celular aparece
+//      como la línea "Pidió {plan}", también en terracota.
+//   3. Lo que el dueño usa para encontrar el trabajo no es el badge: es el filtro
+//      "Plan pendiente" y la métrica de la pantalla principal, y las dos
+//      preguntan ahora por `pending_plan`.
+//
+// O sea: la información está, en el lugar hecho para ella y a dos celdas de acá.
 function SubscriptionStatusBadge({ sub }: { sub: AgencySubscription | null }) {
   // Sin fila de suscripción no hay estado que mostrar: se dice explícitamente,
   // no se deja un hueco (ni un "undefined").
@@ -300,13 +331,33 @@ function availableActions(row: AgencyRow): RowActionAvailability {
     cancelPlan: hasPendingPlan,
     // Solo tiene sentido dar de baja un plan PAGO y vigente: 'free' es el estado
     // de aterrizaje, no algo contratado.
-    suspend: sub != null && sub.status === "active" && sub.plan !== "free",
+    //
+    // ⚠ Y NO con una solicitud abierta: hay que resolverla primero (activar o
+    // cancelar). Sin `!hasPendingPlan` se ofrecería dar de baja a una agencia que
+    // pidió un upgrade —combinación que antes era imposible, porque el pedido
+    // dejaba el estado en 'pending'— y el resultado sería una agencia dada de
+    // baja con el botón "Activar plan" todavía a la vista, que al tocarlo
+    // desharía la baja. Lo repite cancelSubscriptionAction del lado del server.
+    suspend:
+      sub != null &&
+      sub.status === "active" &&
+      sub.plan !== "free" &&
+      !hasPendingPlan,
     // Misma condición que dar de baja, y por el mismo motivo: se le cambia el
     // plan a quien TIENE un plan de venta vigente. Con una solicitud sin
     // resolver está activar/cancelar, y con la suscripción de baja está
     // reactivar (que necesita el `plan` guardado intacto). Lo repite
     // changePlanAction del lado del server.
-    changePlan: sub != null && sub.status === "active" && sub.plan !== "free",
+    //
+    // ⚠ `!hasPendingPlan` reemplaza lo que antes hacía el estado: el pedido ya no
+    // deja la suscripción en 'pending', así que sin esto el botón aparecería con
+    // una solicitud abierta y la action lo rechazaría con un error. Arreglar solo
+    // un lado deja o un botón que falla, o una acción sin barrera.
+    changePlan:
+      sub != null &&
+      sub.status === "active" &&
+      sub.plan !== "free" &&
+      !hasPendingPlan,
     restore: sub?.status === "canceled",
     remove: row.can_delete,
   };

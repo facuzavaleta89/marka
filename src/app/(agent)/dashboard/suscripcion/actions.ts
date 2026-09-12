@@ -5,10 +5,30 @@ import { redirect } from "next/navigation";
 import { PLAN_ORDER, type SubscriptionPlan } from "@/types";
 import { resolveAgentSession } from "@/lib/utils/resolveAgentSession";
 
-// Pide un upgrade de plan desde el dashboard. Deja la suscripción de la agencia
-// con pending_plan = <pedido> y status = 'pending'. NO toca `plan` (el que rige)
-// ni property_limit/has_*/activated_at: el cliente sigue operando con lo que
-// tiene hasta que el admin active. (Antes pisaba `plan`, ese era el bug.)
+// Pide un upgrade de plan desde el dashboard. Anota el pedido en `pending_plan`
+// y NADA MÁS: no toca `plan` (el que rige), ni `status`, ni
+// property_limit/has_*/activated_at.
+//
+// ⚠ ACÁ DECÍA QUE ESCRIBÍA `status = 'pending'` Y QUE "el cliente sigue operando
+// con lo que tiene hasta que el admin active". LA SEGUNDA MITAD ERA FALSA, y es
+// la razón por la que el bug no se vio: era cierta para el cupo y para las
+// funcionalidades, y falsa para lo ÚNICO que la agencia paga, que es aparecer en
+// el mapa. `agency_is_publicly_visible()` exige `status = 'active'`, así que
+// escribir 'pending' acá le apagaba las propiedades a una agencia al día —justo
+// por haber querido pagar más— hasta que el dueño le activara el plan a mano.
+//
+// LA CAUSA DE FONDO: 'pending' significaba DOS cosas y solo una justifica estar
+// apagada. "Soy nueva y espero que me activen un plan" (lo escribe
+// `selectPlanAction`, y ahí es correcto: no tiene nada activo) contra "ya tengo
+// un plan andando y quiero uno mayor" (acá, donde es incorrecto). Al dejar de
+// escribirlo desde este camino, el estado pasa a significar una sola cosa
+// —"todavía no tenés nada activo"— que es justo lo que la regla de visibilidad
+// asume. La regla de la base NO se tocó.
+//
+// ⚠ CONSECUENCIA PARA QUIEN LEA ESTE MODELO: desde este cambio, la única señal
+// de que hay un pedido abierto es `pending_plan != null`. Ya no alcanza con
+// mirar el estado, y todo lo que lo hacía se corrigió (la barrera de
+// changePlanAction, el botón y el filtro del panel, la métrica y esta pantalla).
 //
 // Mismo patrón de seguridad que register/plan/actions.ts: el agency_id se deriva
 // del auth.uid() server-side, nunca del cliente, y el UPDATE se acota a esa
@@ -53,8 +73,9 @@ export async function requestPlanUpgradeAction(
     };
   }
 
-  // Solo pending_plan + status. `plan` (el que rige), property_limit, has_* y
-  // activated_at quedan como están.
+  // SOLO pending_plan. `status`, `plan` (el que rige), property_limit, has_* y
+  // activated_at quedan como están: la agencia sigue activa con lo que tiene y
+  // paga, y sus propiedades siguen en el mapa. Ver el encabezado.
   //
   // ⚠ `count: "exact"` NO ES TELEMETRÍA: es la única forma de distinguir "se
   // guardó" de "no había nada que guardar". Un UPDATE acotado con .eq() sobre
@@ -72,7 +93,6 @@ export async function requestPlanUpgradeAction(
     .update(
       {
         pending_plan: plan,
-        status: "pending",
       },
       { count: "exact" }
     )

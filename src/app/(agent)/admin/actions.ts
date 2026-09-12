@@ -592,6 +592,29 @@ export async function cancelSubscriptionAction(input: {
   if (sub.plan === "free") {
     return { error: "Esa agencia no tiene un plan pago que dar de baja" };
   }
+  // ⚠ GUARDA NUEVA, y cubre una combinación que ANTES ERA IMPOSIBLE. Pedir un
+  // upgrade escribía status = 'pending', y esta acción solo se ofrecía sobre
+  // 'active', así que "dada de baja con un pedido abierto" no se podía producir.
+  // Desde que el pedido no toca el estado, la agencia queda en 'active' y esta
+  // acción SÍ la alcanza — dejando un estado absurdo: dada de baja pero con el
+  // botón "Activar plan" todavía ofrecido (`activate: hasPendingPlan`), y
+  // activarlo desharía la baja que el dueño acaba de hacer.
+  //
+  // Que se resuelva el pedido primero (activar o cancelar) y después se dé de
+  // baja. El orden no es negociable: son dos decisiones distintas sobre la misma
+  // suscripción y aplicarlas juntas deja una sin registrar.
+  //
+  // ⚠ VA DESPUÉS DEL CHEQUEO DE 'free', NO ANTES, y el orden de los mensajes es
+  // el motivo: una agencia recién registrada tiene plan 'free' Y un pedido
+  // abierto a la vez. Para ella el mensaje correcto es "no tiene un plan pago
+  // que dar de baja" —que es su situación real— y no "resolvé el pedido", que la
+  // mandaría a hacer algo que no cambia nada.
+  if (sub.pending_plan !== null) {
+    return {
+      error:
+        "Esa agencia tiene una solicitud de plan sin resolver. Activala o cancelala antes de darla de baja.",
+    };
+  }
 
   const admin = createAdminClient();
   const { error: updateError } = await admin
@@ -942,13 +965,27 @@ export async function changePlanAction(input: {
   // Solo se le cambia el plan a una agencia que TIENE un plan de venta vigente.
   // Los otros dos casos ya tienen su propia acción y meterse acá solo generaría
   // ambigüedad:
-  //   - suscripción 'pending' (pidió un plan): activar o cancelar la solicitud.
-  //     Cambiar el plan encima dejaría el pedido colgando sin decir qué pasa con él.
+  //   - con una solicitud abierta: activar o cancelar la solicitud. Cambiar el
+  //     plan encima dejaría el pedido colgando sin decir qué pasa con él, y
+  //     activarlo después degradaría a la agencia al plan que había pedido antes
+  //     del cambio.
   //   - suscripción 'canceled' (dada de baja): reactivar primero. La baja
   //     conserva `plan` justamente para saber a qué volver; pisarlo acá borraría
   //     esa memoria y la reactivación devolvería a la agencia a un plan que nunca
   //     tuvo.
-  if (sub.status === "pending") {
+  //
+  // ⚠ ESTA GUARDA PREGUNTA POR `pending_plan`, NO POR `status`, y el cambio no
+  // es cosmético. Antes decía `sub.status === "pending"` y funcionaba porque
+  // pedir un upgrade escribía ese estado; desde que `requestPlanUpgradeAction`
+  // dejó de tocarlo (le apagaba las propiedades a una agencia al día), el estado
+  // ya no delata el pedido y esta guarda habría dejado de disparar **solo para
+  // los upgrades**: seguiría andando para una agencia recién registrada, que sí
+  // queda en 'pending'. O sea que se habría roto a medias y en silencio, y una
+  // prueba con una cuenta nueva la habría visto funcionar perfecto.
+  //
+  // El dato real de "hay un pedido abierto" es `pending_plan`, y `readSubscription`
+  // ya lo trae: no hace falta ninguna consulta nueva.
+  if (sub.pending_plan !== null) {
     return {
       error:
         "Esa agencia tiene una solicitud de plan sin resolver. Activala o cancelala antes de cambiarle el plan.",

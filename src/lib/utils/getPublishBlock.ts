@@ -45,9 +45,20 @@ export type PublishBlock = {
 
 // ⚠ EL BLOQUEO POR SUSCRIPCIÓN ES POR 'canceled'/'past_due', NUNCA POR
 // "distinta de 'active'". El dominio de la columna tiene CUATRO valores y
-// 'pending' significa "pidió un upgrade y espera que se lo activen": esa agencia
-// está al día y publica normalmente. Bloquear por "≠ active" le cortaría el alta
-// justo por haber querido pagar más. Lista negra explícita, no lista blanca.
+// 'pending' significa "todavía no tiene nada activo": es una agencia recién
+// registrada que eligió un plan y espera la activación manual. Esa agencia
+// PUBLICA normalmente —para que pueda ir cargando su cartera mientras espera—,
+// aunque todavía no se vea en el mapa. Lista negra explícita, no lista blanca.
+//
+// ⚠ ACÁ DECÍA QUE 'pending' SIGNIFICABA "pidió un upgrade y espera que se lo
+// activen" Y QUE ESA AGENCIA "está al día y publica normalmente". Era falso a
+// medias, y ese medio fue la razón por la que un bug real no se vio durante
+// semanas: era cierto de PUBLICAR y falso de VERSE. Pedir un upgrade escribía
+// 'pending', y `agency_is_publicly_visible()` exige `status = 'active'`, así que
+// una agencia al día que quería pagar más se apagaba sola del mapa. Desde el
+// arreglo, pedir un upgrade NO toca el estado (ver requestPlanUpgradeAction) y
+// 'pending' significa una sola cosa. La lógica de este helper nunca estuvo mal:
+// lo que estaba mal era la explicación.
 const BLOCKING_SUBSCRIPTION_STATUSES = ["canceled", "past_due"] as const;
 
 // El orden importa: si la agencia no está aprobada, ese es el motivo que se
