@@ -17,12 +17,16 @@ interface NewPropertyButtonProps {
 // Server Component presentacional: recibe el PlanUsage ya calculado por
 // getPlanUsage() (por agency_id, solo server) — no hace fetch propio.
 //
-// TRES motivos posibles de bloqueo, cada uno con su mensaje (DESIGN.md §12: el
-// botón NUNCA se oculta, se muestra deshabilitado con un mensaje constructivo):
-//   - agencia no aprobada     → no se invita a pagar, se explica qué falta;
+// TRES motivos posibles de bloqueo (DESIGN.md §12: el botón NUNCA se oculta, se
+// muestra deshabilitado con un mensaje constructivo), pero CUATRO mensajes,
+// porque el del cupo se parte según qué plan tenga:
+//   - agencia no aprobada      → no se invita a pagar, se explica qué falta;
 //   - suscripción dada de baja → no se invita a pagar MÁS, se explica cómo
 //                                reactivar lo que ya tenía;
-//   - cupo del plan lleno      → se invita al upgrade.
+//   - cupo lleno con plan de venta → se invita al upgrade (canal de venta
+//                                legítimo: pasar de plan SÍ la destraba);
+//   - cupo lleno en el aterrizaje  → NO se invita a nada: lo que la destraba es
+//                                que le activen el plan, no comprar uno mayor.
 // Confundirlos es mentirle a la persona y mandarla a resolver algo que no la
 // destraba.
 //
@@ -149,10 +153,63 @@ function NotApprovedMessage({
   );
 }
 
-// Cupo lleno: mensaje de upgrade (o de contacto si ya está en el plan tope).
+// Cupo lleno. TRES mensajes, no uno: plan de aterrizaje (no se invita a nada),
+// plan de venta con uno mayor disponible (se invita al upgrade) y plan tope
+// (se ofrece contacto).
 function PlanLimitMessage({ planUsage }: { planUsage: PlanUsage }) {
+  // ── Estado de aterrizaje: aprobada, con el plan todavía sin activar ──
+  //
+  // ⚠ ACÁ CAÍA EN LA RAMA DEL UPGRADE Y LE DECÍA "Alcanzaste el límite de tu plan
+  // Gratis. Pasá a Inicial para publicar más". Era el bloqueo correcto con el
+  // mensaje equivocado: a esta agencia **pasar de plan no le destraba nada**, y
+  // se lo proponía en el momento exacto en que está esperando otra cosa —que el
+  // dueño de la plataforma le active el plan que ya pidió, o que se lo asigne—.
+  //
+  // ⚠ ES LA SEGUNDA VEZ QUE ESTE COMPONENTE COMETE ESTE MISMO ERROR, y la primera
+  // está documentada arriba, en el encabezado: cuando se agregó
+  // 'subscription_inactive', una agencia dada de baja leía exactamente esta misma
+  // frase. Entonces la causa fue un ternario sin rama; ahora es una rama que
+  // ramifica por el plan siguiente en el catálogo sin preguntarse si ese plan
+  // resuelve algo. **El patrón a vigilar: antes de invitar a pagar, verificar que
+  // pagar sea lo que destraba.**
+  //
+  // `plan === "free"` es la condición exacta y no una aproximación: para llegar a
+  // este mensaje `getPublishBlock` ya descartó que la agencia esté sin aprobar y
+  // que su suscripción esté dada de baja o vencida, así que "aprobada + al día +
+  // plan free + cupo lleno" ES el aterrizaje.
+  //
+  // ⚠ UN SOLO TEXTO PARA LAS DOS SITUACIONES del aterrizaje (ya pidió un plan y
+  // espera la activación, o todavía no eligió ninguno). El dato para separarlas
+  // existe —`planUsage.status` vale 'pending' en la primera y 'active' en la
+  // segunda—, pero el cartel de la pantalla principal las cubre con un texto
+  // único a propósito, y estas dos pantallas TIENEN que contar la misma historia:
+  // si una dice "esperá tranquila" y la otra "elegí un plan", la agencia no
+  // entiende nada. El enlace a la suscripción cubre las dos (ahí la que pidió ve
+  // su pedido en "Pendiente" y la que no eligió ve los planes).
+  //
+  // La última frase es la MISMA que cierra ese cartel —"vas a poder cargar el
+  // resto de tu cartera"— para que se lean como una sola conversación.
+  if (planUsage.plan === "free") {
+    return (
+      <p className="font-sans text-xs text-graphite max-w-xs sm:text-right">
+        Llegaste al límite de lo que podés cargar por ahora. Cuando activemos tu
+        plan vas a poder cargar el resto de tu cartera.{" "}
+        <Link
+          href="/dashboard/suscripcion"
+          className="text-terracota hover:underline"
+        >
+          Ver mi suscripción
+        </Link>
+      </p>
+    );
+  }
+
   // Plan siguiente en el orden free → inicial → profesional → premium.
   // Si el plan actual es premium (tope), no hay siguiente.
+  //
+  // ⚠ Llegado acá el plan es de VENTA (free se fue arriba), así que invitar al
+  // upgrade es correcto: para publicar más efectivamente tiene que pasar a uno
+  // mayor. Es un canal de venta legítimo y no se toca.
   const currentIdx = PLAN_ORDER.indexOf(planUsage.plan);
   const nextPlan =
     currentIdx >= 0 && currentIdx < PLAN_ORDER.length - 1

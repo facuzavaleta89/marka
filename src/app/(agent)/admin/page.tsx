@@ -101,10 +101,19 @@ export default async function AdminPage() {
       .eq("status", "active")
       .neq("plan", "free"),
 
+    // Planes pedidos esperando activación manual: la cifra que le dice al dueño
+    // cuánto trabajo tiene.
+    //
+    // ⚠ SE CUENTA POR `pending_plan`, NO POR `status = 'pending'`. Desde que
+    // pedir un upgrade dejó de tocar el estado (le apagaba las propiedades a una
+    // agencia al día), contar por estado SUBCONTARÍA: dejaría afuera a todas las
+    // agencias con plan pago que pidieron uno mayor, que son exactamente las que
+    // más urgente hay que atender. Mismo criterio que `planCategoryOf` y que las
+    // acciones de la fila, que ya preguntaban por `pending_plan`.
     admin
       .from("subscriptions")
       .select("*", { count: "exact", head: true })
-      .eq("status", "pending"),
+      .not("pending_plan", "is", null),
 
     admin.from("agents").select("*", { count: "exact", head: true }),
 

@@ -1,7 +1,30 @@
 import Link from "next/link";
 import { Clock, PauseCircle } from "lucide-react";
 import { Notice } from "@/components/feedback/Notice";
+import { PLANS } from "@/types";
 import type { VisibilityBlockReason } from "@/lib/utils/getVisibilityBlock";
+
+// El cupo que tiene una agencia cuyo plan todavía no está activo, DERIVADO del
+// catálogo y no escrito a mano en la prosa del cartel.
+//
+// ⚠ POR QUÉ SE DERIVA Y NO SE TIPEA. El número ya vive en dos lugares —el
+// catálogo (`PLANS.free.propertyLimit`) y el DEFAULT de
+// `subscriptions.property_limit` en la base, medidos y coincidentes en 1—, y un
+// tercero escrito en una frase es la copia que nadie va a acordarse de
+// actualizar: el día que el aterrizaje cambie de cupo, el cartel mentiría sin
+// que falle nada. Es el mismo criterio que ya usan `SubscriptionContent` y
+// `PlanSelector` para listar los límites de cada plan, con la misma forma de
+// singular/plural.
+//
+// ⚠ POR QUÉ ES EL DE `free` Y NO EL DE LA FILA DE ESA AGENCIA. Los dos caminos
+// que producen este motivo escriben los límites de free: `registerAction` y
+// `selectPlanAction` ponen `property_limit: PLANS.free.propertyLimit`, y el
+// trigger `ensure_agency_subscription` deja el DEFAULT de la columna. O sea que
+// en este estado el cupo ES el de free, por construcción y no por casualidad.
+const FREE_LIMIT_LABEL =
+  PLANS.free.propertyLimit === 1
+    ? "una sola propiedad"
+    : `${PLANS.free.propertyLimit} propiedades`;
 
 // Aviso de que las propiedades de la agencia NO se están mostrando en el mapa
 // público. Presentacional puro: recibe el motivo ya resuelto en el server y no
@@ -74,6 +97,24 @@ export function AgencyVisibilityNotice({
   // tiene: la agencia que todavía no eligió ninguno (`free` + `active`) y la que
   // ya lo pidió y espera la activación (`pending`). "Tu plan todavía no está
   // activo" es cierto en las dos.
+  //
+  // ══════════════════════════════════════════════════════════
+  // ⚠ EL CARTEL DECÍA "SEGUÍ CARGANDO TUS PROPIEDADES" Y ERA UNA PROMESA FALSA.
+  // ══════════════════════════════════════════════════════════
+  //
+  // En este estado el cupo es de UNA propiedad, así que la agencia cargaba la
+  // primera con ese aliento, iba a cargar la segunda, y la frenaba la base con
+  // "Alcanzaste el límite de propiedades de tu plan" — un mensaje que después de
+  // leer "seguí cargando" suena a error cuando no lo es. El cupo no se cambió:
+  // se cambió el texto, para que diga la verdad.
+  //
+  // ⚠ Y HAY UNA COSA QUE ESTE TEXTO NO PUEDE DECIR NI SUGERIR: que esa primera
+  // propiedad sea "de prueba", un "ejemplo" o algo descartable. NO se borra
+  // nunca: cuando el plan se active queda publicada como una más. Si la agencia
+  // la carga creyendo que es un simulacro va a poner cualquier cosa, y esa
+  // cualquier cosa termina en el mapa público con su nombre. Por eso el cuerpo
+  // afirma lo contrario en positivo —"queda guardada tal cual", "se publica
+  // sola"— en vez de negar la palabra "prueba", que plantearla ya la sugiere.
   return (
     <Notice
       tone="info"
@@ -81,12 +122,17 @@ export function AgencyVisibilityNotice({
       icon={<Clock size={18} />}
     >
       <span className="block">
-        Tu plan todavía no está activo. Seguí cargando tus propiedades con
-        tranquilidad:{" "}
         <strong className="text-black">
-          se publican solas apenas lo activemos
+          Ya podés cargar tu primera propiedad
         </strong>
-        , sin que tengas que volver a tocarlas.
+        , así vas conociendo el formulario. Por ahora el límite es de{" "}
+        {FREE_LIMIT_LABEL}, porque tu plan todavía no está activo.
+      </span>
+      <span className="mt-1.5 block">
+        La que cargues queda guardada tal cual y{" "}
+        <strong className="text-black">se publica sola cuando lo activemos</strong>
+        , sin que tengas que volver a tocarla. Ahí vas a poder cargar el resto de
+        tu cartera.
       </span>
       <Link
         href="/dashboard/suscripcion"
