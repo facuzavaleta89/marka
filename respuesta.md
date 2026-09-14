@@ -1,395 +1,184 @@
-# Guarda de `updated_at` ante el contador de visitas — documentación de schema
+# Cierre documental del contador de visitas
 
-> **Modo ejecución, solo documentación de schema.** Se modificó **un solo archivo**:
-> `supabase/migrations/20240101000000_initial_schema.sql`. No se tocó `src/`, `CLAUDE.md` ni
-> `PENDIENTES.md`. No se ejecutó ningún comando de git ni SQL de escritura: el MCP se usó solo para
-> leer (catálogo, datos, advisors y logs).
+> **Modo ejecución, solo documentación.** Se modificaron **únicamente `CLAUDE.md` y
+> `PENDIENTES.md`** (más este informe). No se tocó `src/`, `scripts/`, el archivo de migración ni
+> `DESIGN.md`. No se ejecutó ningún comando de git ni SQL de escritura: la base se leyó con el MCP
+> (catálogo, datos y logs) y la documentación de Postgres con una lectura web.
 >
-> 14 sep 2026.
+> 14 sep 2026. Todo lo documentado sale del código y de la base, no del prompt.
 
 ---
 
-## ⚠ Lo primero, porque cambia cómo leer el resto
+## Lo primero: dos cosas que se pudieron verificar y cambian el tono del cierre
 
-**La guarda nueva todavía no la ejercitó ninguna visita real, y las fechas que motivaron el cambio
-ya quedaron movidas.** Lo muestran los logs del proyecto (punto 1.4):
-
-- Entre **16:17:22 y 16:26:05 UTC** hubo **12 llamadas** a `increment_views` desde el navegador,
-  **todas con la función vieja**, sin guarda. Movieron el `updated_at` de **7 propiedades**, que hoy
-  el mapa del sitio informa como modificadas.
-- La guarda actual se aplicó a las **16:32:19**. Desde ahí **no hubo ninguna llamada** desde un
-  navegador. Su única prueba fue en el SQL Editor a las 16:32:32, dentro de `BEGIN … ROLLBACK`, y el
-  resultado de ese `SELECT` no queda en los logs.
-
-**No pude verificar que la guarda funcione**: probarla exige un UPDATE y el MCP es de solo lectura.
-Cómo probarla con una visita real está en el punto 5.3.
+1. **La guarda de `updated_at` FUNCIONA en el camino real.** Después de aplicarla (16:32 UTC) hubo
+   **5 visitas reales** desde el navegador (logs: POST a `increment_views` a las 16:36:15, 16:36:39,
+   16:38:52, 16:47:48 y 16:49:28). En la base: **"Casa Largo" pasó de 2 a 5 visitas y su
+   `updated_at` sigue en 16:22:25**, y **"Casa demo" pasó de 0 a 2 conservando `2026-09-03`**. En el
+   informe anterior eso estaba sin probar; ahora está probado.
+2. **La trampa de las columnas generadas está confirmada por la documentación oficial de Postgres
+   17**, no solo por inferencia. Citas textuales en el punto 1.8. La columna es
+   `properties.location` (medido: `attgenerated = 's'`, la única de la tabla).
 
 ---
 
-## 1. Lo que leí de la base
+## 1. `CLAUDE.md`: qué agregué, modifiqué y corregí
 
-### 1.1. `update_updated_at()`
+### Agregado
 
-```sql
-SELECT p.proname, p.oid::regprocedure AS signature, p.prosecdef, p.provolatile, p.proconfig,
-       p.proowner::regrole AS owner, p.proacl, pg_get_functiondef(p.oid) AS def
-FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-WHERE n.nspname='public' AND p.prokind='f'
-  AND (p.proname IN ('increment_views','update_updated_at')
-       OR p.prosrc ILIKE '%set_config%' OR p.prosrc ILIKE '%current_setting%' OR p.prosrc ILIKE '%updated_at%');
-```
-
-| | Medido |
-|---|---|
-| Firma | `update_updated_at()` → `trigger` |
-| Lenguaje | `plpgsql` |
-| `SECURITY DEFINER` | **no** |
-| `search_path` | **no fijado** (`proconfig: null`). El advisor lo sigue marcando |
-| Dueño / ACL | `postgres` / `{=X/postgres,postgres=X,anon=X,authenticated=X,service_role=X}` |
-
-`pg_get_functiondef` textual:
-
-```sql
-CREATE OR REPLACE FUNCTION public.update_updated_at()
- RETURNS trigger
- LANGUAGE plpgsql
-AS $function$
-BEGIN
-  -- increment_views() avisa, con una variable de sesión acotada a la
-  -- transacción, que lo único que está cambiando es el contador de visitas.
-  -- En ese caso updated_at NO se toca.
-  -- Motivo: updated_at es el lastModified que el sitemap le informa a los
-  -- buscadores. Sin esta guarda, cada visita le diría a Google que la
-  -- propiedad se modificó, y con el tiempo eso le enseña que nuestras fechas
-  -- no significan nada.
-  IF TG_OP = 'UPDATE'
-     AND coalesce(current_setting('marka.skip_updated_at', true), '') = 'on' THEN
-    NEW.updated_at = OLD.updated_at;
-    RETURN NEW;
-  END IF;
-
-  NEW.updated_at = now();
-  RETURN NEW;
-END;
-$function$
-```
-
-- `current_setting(..., true)`: el segundo argumento `true` es `missing_ok`. Si la variable nunca se
-  definió devuelve `NULL` en vez de lanzar, y el `coalesce` lo lleva a `''`.
-- Solo conserva la fecha si la operación es un `UPDATE` **y** la variable vale exactamente `'on'`.
-  En cualquier otro caso sella `now()`.
-
-### 1.2. `increment_views(property_id uuid)`
-
-| | Medido |
-|---|---|
-| Firma | `increment_views(property_id uuid)` → `void` |
-| Lenguaje | **`plpgsql`**. En la medición anterior de hoy era **`sql`** |
-| `SECURITY DEFINER` | sí |
-| `search_path` | **`public`**. Antes era `null`; el advisor ya no la marca |
-| Dueño / ACL | `postgres` / `{=X/postgres,postgres=X,anon=X,authenticated=X,service_role=X}`. `anon` y `authenticated` siguen con `EXECUTE` |
-
-```sql
-CREATE OR REPLACE FUNCTION public.increment_views(property_id uuid)
- RETURNS void
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-BEGIN
-  -- El tercer parámetro en true acota la variable a esta transacción: no
-  -- puede filtrarse a otra operación de la misma conexión.
-  PERFORM set_config('marka.skip_updated_at', 'on', true);
-  UPDATE properties SET views_count = views_count + 1 WHERE id = property_id;
-  PERFORM set_config('marka.skip_updated_at', 'off', true);
-END;
-$function$
-```
-
-`set_config(nombre, valor, is_local)`: el tercer argumento en `true` hace que el valor dure solo
-hasta el fin de la transacción.
-
-**Ninguna otra función de `public` usa la variable**: la búsqueda por `skip_updated_at` en `prosrc`
-solo devuelve estas dos. Tampoco hay ninguna configuración de rol o de base que la fije:
-
-```sql
-SELECT count(*) FROM pg_db_role_setting WHERE setconfig::text ILIKE '%skip_updated_at%';  -- 0
-```
-
-### 1.3. El trigger, y si es compartido
-
-```sql
-SELECT t.tgname, t.tgrelid::regclass AS tbl, t.tgenabled, p.proname AS func, pg_get_triggerdef(t.oid) AS def
-FROM pg_trigger t JOIN pg_proc p ON p.oid = t.tgfoid
-WHERE NOT t.tgisinternal ORDER BY p.proname, t.tgrelid::regclass::text, t.tgname;
-```
-
-Las filas que usan `update_updated_at`:
-
-```
-trg_properties_updated_at     properties     CREATE TRIGGER trg_properties_updated_at BEFORE UPDATE ON public.properties FOR EACH ROW EXECUTE FUNCTION update_updated_at()
-trg_subscriptions_updated_at  subscriptions  CREATE TRIGGER trg_subscriptions_updated_at BEFORE UPDATE ON public.subscriptions FOR EACH ROW EXECUTE FUNCTION update_updated_at()
-```
-
-**⚠ SÍ, ES COMPARTIDO: la misma función la usa `subscriptions`.** Los dos triggers están habilitados
-(`tgenabled = 'O'`) y son **solo `BEFORE UPDATE`**, así que un `INSERT` nunca pasa por la función:
-`updated_at` toma el `DEFAULT now()` de la columna. (`storage.objects` tiene un trigger parecido,
-pero usa otra función, `storage.update_updated_at_column()`.)
-
-### 1.4. Cronología: logs del proyecto
-
-Búsqueda en todas las fuentes de logs del 14 sep por `increment_views`, `update_updated_at` y
-`skip_updated_at` (UTC):
-
-| Hora | Fuente | Qué |
+| # | Dónde | Qué |
 |---|---|---|
-| 16:17:22 · 16:18:27 · 16:19:35 · 16:19:41 · 16:21:13 · 16:22:21 · 16:22:25 · 16:23:05 · 16:23:22 · 16:23:36 · 16:25:46 · 16:26:05 | edge_logs | **12×** `POST /rest/v1/rpc/increment_views` → **204**, Firefox 154 |
-| 16:27:24 | postgres_logs | `CREATE OR REPLACE FUNCTION update_updated_at()` con **la comparación** `to_jsonb(NEW) - 'views_count' - 'updated_at' IS DISTINCT FROM to_jsonb(OLD) - …` (primer intento) |
-| 16:27:41 · 16:28:21 · 16:29:10 | postgres_logs | Pruebas `BEGIN; … increment_views(...) …; ROLLBACK;` |
-| **16:32:19** | postgres_logs | `CREATE OR REPLACE` de **las dos funciones actuales** (textos idénticos a 1.1 y 1.2) |
-| 16:32:32 | postgres_logs | Prueba `BEGIN; … SELECT increment_views(...); … ROLLBACK;` |
+| 1.1 | **Nueva sección "Visitas y consultas por propiedad"** (en Convenciones de Dominio, después de "Favoritos y visitados") | Cinco subsecciones: **dónde se cuenta** (tabla de los tres lugares con archivo y línea: `ClusterLayer.tsx:137`, `PropertyList.tsx:140`, `PropertyViewTracker.tsx:68` montado en `propiedades/[slug]/page.tsx:196`) y **por qué NO en el modal**; **la deduplicación** (el código de `markVisited`, por qué la señal sale de una lectura síncrona y no del actualizador de estado, por qué el estado se actualiza aparte, persistencia, y **sin `localStorage` cada apertura cuenta**); **la ficha pública** (por qué no al montar ni en el servidor, tabla de los cuatro eventos, por qué no `scroll` ni `mousemove`, captura + `passive`, **`keydown` como el evento más flojo**, y las tres capas de "una sola vez por apertura" más la `key`); **`registerView`** (el parámetro `property_id` literal, no espera, no lanza); **las dos métricas del listado** (la consulta `leads(count)`, por qué service role, que la barrera es el filtro, el `null` → "—" y la trampa del `?? 0`, la diferencia con `/dashboard/leads` para un agente común, y las ventanas distintas de `/dashboard`) |
+| 1.2 | **Base de Datos → nueva subsección "La guarda de `updated_at` ante el contador de visitas — dos funciones ACOPLADAS"** | Qué resuelve (`updated_at` = `lastModified` del mapa del sitio); tabla de las dos funciones con lo que escribe una y lo que lee la otra; **el acople por string y que romperlo se apaga en silencio**, en las dos direcciones; **por qué la variable es local a la transacción** (conexión reutilizada por PostgREST y el pooler); **el trigger compartido con `subscriptions`** y cómo lo afecta; que está **verificada con visitas reales**; y el aviso de no volver a la comparación de filas |
+| 1.3 | **Método de Diagnóstico → nueva subsección "Dos observaciones ciertas que parecen contradecirse: columnas generadas y triggers BEFORE"** | La trampa con las dos citas de la documentación de Postgres 17, la columna nombrada (`properties.location`), el `IF` del primer intento textual, por qué la verificación sobre filas guardadas y el trigger decían cosas distintas siendo las dos ciertas, la regla ("verificar que midan el mismo objeto en el mismo momento"), y el aviso de que el comentario de la migración todavía la llama hipótesis |
+| 1.4 | **Estado** (Resumen del Proyecto) | Un bloque "**El contador de visitas cuenta** (14 sep 2026, tres tandas)" con las tres tandas y el puntero a las secciones |
+| 1.5 | **Visibilidad pública → sub-bullet** | La regla *"si leés propiedades con service role, la regla de cobro es tuya"* es de los caminos **públicos**: el listado del panel también usa service role para contar consultas y **no invoca la regla, correctamente**, porque su barrera es el alcance de la sesión |
+| 1.6 | **Infraestructura de buscadores → sub-bullet del mapa del sitio** | El `lastModified` es `properties.updated_at` (`sitemap.ts:111`), por qué una visita no puede moverlo, puntero a la guarda y las 7 propiedades ya afectadas |
+| 1.7 | **Decisiones de Arquitectura** | Seis filas nuevas: contar donde se marca y no en el modal; señal síncrona; primera interacción en la ficha; número crudo en todos los planes; consultas con service role acotado; guarda por variable local y no por comparación de filas |
+| 1.8 | **Estructura de Carpetas** | Entradas nuevas `PropertyViewTracker.tsx` y `registerView.ts` |
 
-Y **no hay ningún `POST` a `increment_views` después de 16:26:05**.
+Las dos citas de Postgres 17 (`trigger-definition.html`), leídas y transcriptas textuales:
+> *"Stored generated columns are computed after `BEFORE` triggers and before `AFTER` triggers."*
+> *"In `BEFORE` triggers, the `OLD` row contains the old generated value, as one would expect, but the `NEW` row does not yet contain the new generated value and should not be accessed."*
 
-**Las 12 llamadas coinciden una a una con los datos:**
+### Modificado (estaba incompleto)
 
-```sql
-SELECT sum(views_count) FROM properties;   -- 12
-```
+- **Resumen → planes**: agregué que "métricas" en premium **es una promesa de catálogo, no un gate**.
+- **Estructura → `propiedades/`, `ClusterLayer.tsx`, `PropertyList.tsx`, `PropertiesTable.tsx`,
+  `useVisitedProperties.ts`**: cada una dice ahora lo que hace respecto del contador.
+- **Base de Datos → fila `properties`**: `views_count` (solo lo incrementa `increment_views`,
+  acumulado, sin fechas) y que `location` es la única columna generada.
+- **Triggers de `properties`**: el paréntesis *"Hay además dos `trg_*_updated_at`"* apunta ahora a la
+  guarda.
+- **Baseline**: fecha 13 → 14 sep 2026.
 
-| Propiedad | views | `updated_at` (UTC) | POST más cercano |
-|---|---|---|---|
-| Casa Centenario | 1 | 16:18:27.681 | 16:18:27.574 |
-| casa puente | 1 | 16:19:41.114 | 16:19:41.035 |
-| Casa gaio | 2 | 16:22:21.997 | 16:22:21.896 |
-| Casa Largo | 2 | 16:22:25.518 | 16:22:25.427 |
-| casa lugones | 3 | 16:23:36.187 | 16:23:36.097 |
-| Casa Autonomia | 2 | 16:25:46.128 | 16:25:46.039 |
-| Campo | 1 | 16:26:05.416 | 16:26:05.334 |
+### Corregido (era falso)
 
-Cada `updated_at` es la hora de la **última** visita a esa propiedad, unos 100 ms después de su POST.
-Todas son **anteriores a la guarda**.
+Ver punto 3.
 
 ---
 
-## 2. Qué cambié en el archivo
+## 2. `PENDIENTES.md`: qué cerré, abrí y ajusté
 
-Archivo: `supabase/migrations/20240101000000_initial_schema.sql` (1660 → 1783 líneas).
+### Cerrado
 
-### 2.1. Sección reescrita: `:1166-1295`
+- **El ítem de `increment_views`** (estaba en "Deuda técnica") pasó a `[x]` con lo que quedó y una
+  tabla de **lo descartado**:
+  - **contar desde el modal**: el pin marca antes, así que los pines no contarían nunca; moverlo al
+    modal obligaba a sincronizar las instancias del hook o el tono visitado quedaría viejo;
+  - **contar al montar la ficha**: el renderizador de los buscadores ejecuta JS sin `localStorage` y
+    el mapa del sitio lo trae seguido;
+  - **contar en el render del servidor**: además contaría a los robots de vista previa;
+  - **esconder el número crudo detrás del plan**;
+  - **la primera versión de la guarda y por qué falló**, con la cita de Postgres.
+- **Entrada nueva en "Cerrados recientemente"**: "CONTADOR DE VISITAS — CERRADO", con el método que
+  dejó.
 
-- **`:1166`** — el encabezado de sección pasa a *"TRIGGER: updated_at automático + CONTADOR DE
-  VISITAS"*.
-- **`:1167-1229`** — el comentario pedido (2.3).
-- **`:1230-1251`** — `update_updated_at()`, **transcripta de `pg_get_functiondef`**.
-- **`:1253-1259`** — los dos `CREATE TRIGGER`, sin cambios.
-- **`:1261-1275`** — encabezado y comentario de `increment_views()`.
-- **`:1276-1289`** — `increment_views()`, **transcripta de `pg_get_functiondef`**. **No existía en el
-  archivo.**
-- **`:1291-1295`** — `GRANT EXECUTE ON FUNCTION increment_views(uuid) TO anon, authenticated,
-  service_role;`, con el ACL medido en el comentario. Es explícito por el mismo criterio que
-  `auth_agency_id()`: la app **depende** de que `anon` pueda ejecutarla. En Supabase ese permiso lo
-  darían igual los privilegios por defecto del esquema.
+### Abierto: los cuatro pedidos, cada uno verificado antes de escribirlo
 
-### 2.2. Verificación de la transcripción
-
-Comparé con un script los dos bloques del archivo (desde `CREATE OR REPLACE FUNCTION public.<nombre>(`
-hasta el `$function$` de cierre) contra el texto de `pg_get_functiondef`:
-
-```
-update_updated_at IDENTICAL
-increment_views IDENTICAL
-```
-
-Son **idénticos byte a byte**, incluidos el prefijo `public.`, la sangría de un espacio de las
-cláusulas y `SET search_path TO 'public'`. Lo único agregado es el `;` final que exige el archivo.
-Hay **una sola definición** de cada función.
-
-⚠ **El comentario de adentro del cuerpo de `update_updated_at` dice *"una variable de sesión acotada
-a la transacción"*.** La frase se contradice sola ("de sesión" y "acotada a la transacción"). Lo
-correcto es lo segundo: es un parámetro de configuración con `is_local = true`. **Lo dejé tal cual**
-porque es parte del cuerpo medido; en el comentario del archivo, afuera del cuerpo, quedó dicho
-correctamente.
-
-### 2.3. El comentario, punto por punto
-
-| Pedido | Qué dice el archivo |
+| Ítem | Verificación |
 |---|---|
-| **Por qué existe la guarda** | `properties.updated_at` es el `lastModified` que `src/app/sitemap.ts` informa a los buscadores. Cada visita lo movía y le decía a Google que la propiedad cambió, lo que le enseña que las fechas no significan nada |
-| **Que las funciones están acopladas** | El vínculo es un string literal repetido en los dos cuerpos (`'marka.skip_updated_at'`) y el valor `'on'`, y nada lo verifica. Renombrar, cambiar el valor o sacar el `set_config` de un solo lado apaga la guarda **sin error**. Al revés: otra función que ponga `'on'` y modifique algo más haría que esa modificación real **no selle**. *"Quien toque una de las dos, tiene que leer y tocar la otra."* |
-| **Transacción, y por qué importa** | Con `is_local = false` el `'on'` quedaría en la **conexión**, y PostgREST y el pooler (hay `pgbouncer_logs` en el proyecto) la reutilizan entre requests de distintos usuarios. Se filtraría a una edición o un cambio de estado posterior, que **dejaría de sellar sin error**. Local, muere con el COMMIT/ROLLBACK y se revierte si el UPDATE lanza, también dentro de un `EXCEPTION`. El `'off'` posterior cubre el caso de invocarla dentro de una transacción más grande |
-| **Trigger compartido** | Rige también sobre `subscriptions`: un UPDATE ahí con la variable en `'on'` conservaría la fecha. **Hoy no ocurre** (solo `increment_views` la pone en `'on'`, y entre su `'on'` y su `'off'` solo toca `properties`), y **ningún código lee `subscriptions.updated_at`**. Dejé escrito que ese párrafo deja de ser cierto si otra función usa la variable |
+| **Un agente logueado suma visitas sobre sus propias propiedades** | Ninguno de los tres lugares que cuentan mira la sesión (`ClusterLayer.tsx:137`, `PropertyList.tsx:140`, `PropertyViewTracker.tsx:68`). Anotado para cuando haya tráfico real. Aclara que detectar que hay **una** sesión no alcanza —el encabezado ya lo hace—: habría que comparar la agencia del agente contra la de cada propiedad |
+| **`increment_views` sin ninguna barrera** | `SECURITY DEFINER`, `EXECUTE` a `anon` y `authenticated`, cuerpo sin validación; el advisor de Supabase la marca |
+| **La lista no repinta los pines hasta recargar** | El mapa queda montado y oculto con CSS (`(public)/page.tsx:137`, `AgencyMapView.tsx:103`), y el hook lee el almacenamiento una sola vez al montar sin ninguna sincronización. El conteo es correcto; lo viejo es el color |
+| **7 propiedades con `updated_at` falso** | Medido: las 7 con fecha del 14 sep entre 16:18 y 16:26 UTC, cada una coincidiendo con un POST de los logs anteriores a la guarda. Anotado que se resuelve con la limpieza de datos de prueba y que no vale la pena recuperar nada |
 
-Agregué además, marcado explícitamente como **HIPÓTESIS NO VERIFICADA**, por qué pudo fallar el
-primer intento (punto 6), para que nadie vuelva a la comparación de filas "porque es más limpio".
+### Abierto: dos más que aparecieron verificando (no estaban en el prompt)
 
-Y en `increment_views` quedó escrito que **no valida nada**: no mira el estado de la propiedad ni la
-agencia, y es invocable sin límite con la anon key. También, que el nombre `property_id` lo usa la
-app literal.
+- **"Vistas totales" y "Leads este mes" están juntas en `/dashboard` con ventanas distintas** (acumulado
+  sin filtro de estado contra últimos 30 días), medido en `dashboard/page.tsx`.
+- **Dos documentos que esta tanda no podía tocar quedaron desfasados**: el comentario de la migración
+  todavía dice "HIPÓTESIS NO VERIFICADA", y `DESIGN.md` §7 no describe las columnas nuevas.
 
-### 2.4. Encabezado del archivo: `:89-97`
+### Ajustado (cifras re-medidas)
 
-Nueva entrada en la lista *"Estado actual"*, siguiendo la convención del archivo:
-
-```sql
---   * update_updated_at() con GUARDA para el contador de visitas + la función
---     increment_views(), que hasta ahora NO estaba en este archivo aunque
---     existía en la base: YA MIGRADAS (14 sep 2026, aplicadas a mano; transcriptas
---     con pg_get_functiondef). increment_views() pone la variable
---     `marka.skip_updated_at` en 'on', local a la transacción, alrededor de su
---     UPDATE, y el trigger conserva updated_at en ese caso. Motivo: updated_at es
---     el lastModified del mapa del sitio, y cada visita lo movía. Las dos
---     funciones están ACOPLADAS y el trigger es COMPARTIDO con subscriptions:
---     ver la sección "TRIGGER: updated_at automático + CONTADOR DE VISITAS".
-```
-
-`supabase/pending/` sigue sin existir: no hay cambios de schema pendientes de aplicar.
-
----
-
-## 3. Qué describía el archivo que este cambio vuelve falso
-
-**En el archivo de schema (antes de esta tanda):**
-
-1. **`update_updated_at()` estaba con el cuerpo viejo**, en las líneas 1157-1164 de la versión
-   anterior:
-   ```sql
-   CREATE OR REPLACE FUNCTION update_updated_at()
-   RETURNS TRIGGER AS $$
-   BEGIN
-     NEW.updated_at = now();
-     RETURN NEW;
-   END;
-   $$ LANGUAGE plpgsql;
-   ```
-   Sellaba **siempre**, lo cual **es falso desde las 16:32**. Reemplazado.
-2. **`increment_views()` no estaba en el archivo, ni con la versión vieja ni con la nueva.** Así, el
-   encabezado (*"Este archivo es la FUENTE DE VERDAD del schema, y refleja el estado REAL de la base
-   de producción"*) era falso por omisión desde antes de hoy: quien recreara la base desde el
-   archivo no tenía la función. Agregada.
-3. **Comentarios adyacentes:** el título de sección *"TRIGGER: updated_at automático"* no afirmaba
-   nada falso, pero ocultaba el acople (renombrado). Las columnas `properties.views_count` y
-   `properties.updated_at` (`:551`, `:554`) y `subscriptions.updated_at` (`:260`) **no tienen
-   comentarios**, así que no había nada falso ahí. Ninguna otra parte del archivo menciona
-   `updated_at`, `views_count` ni visitas.
-
-**Fuera del schema** (no los toqué; los anoto para el cierre):
-
-| Dónde | Qué dice | Estado |
+| Dónde | Antes | Ahora |
 |---|---|---|
-| `CLAUDE.md` → Base de Datos → Funciones y RPC | *"`increment_views(property_id)` … ⚠ existe pero NO se la llama desde ningún lado, así que `views_count` es 0 en todas las propiedades"* | **Falso**: se la llama desde la tanda anterior, y la suma da 12. Tampoco menciona la guarda ni el cambio a `plpgsql` |
-| `CLAUDE.md` → Triggers de `properties` | *"Hay además dos `trg_*_updated_at` sobre `properties` y `subscriptions`"* | Cierto, pero sin la guarda ni el acople |
-| `PENDIENTES.md:344` | El ítem *"`increment_views` existe en la base pero NO se la llama…"* | Obsoleto |
-| `src/app/sitemap.ts:109-110` | *"`updated_at` es la última vez que la propiedad cambió de verdad"* | Cierto de nuevo **para lo que se escriba desde las 16:32**. **Falso hoy para 7 filas** (ver 5.1) |
+| Encabezado "Última actualización" | 13 sep | 14 sep, con el cierre |
+| Calendario → datos de prueba | 13 consultas | **14 consultas** + **17 visitas en 8 propiedades** |
+| Calendario → consultas desvinculadas | "1 de las 13" | **"1 de las 14"** |
+| Limpieza de datos → propiedades en el mapa del sitio | 17 propiedades / 16 activas / 16 ofrecidas | **18 / 17 / 17** |
+| Limpieza de datos → tabla de títulos de relleno | 5 filas | **4**: `casa prueba22` ya no existe en la base (medido) |
+| Limpieza de datos | — | Nota de las 7 fechas movidas, que la limpieza resuelve |
+| B1 → propiedades sin precio | 6 de 17 | **7 de 18** |
+| Baseline | re-medido el 13 sep | **14 sep** |
+| Vencimiento cargado | 1 de las 9 filas | **1 de las 3** |
+| Multi-agente | 10 agencias con 1 agente | **3 agencias con 1 agente, los tres `admin`; 0 con rol `agent`** |
+| Índice de `leads.agent_id` | 13 consultas | **14**, y que el listado del panel no ejercita esa policy |
+| Matrícula | 1 de 4 sin matrícula, 3 filas en el índice | **1 de 3, 2 filas** |
+| V2 → Dashboard analytics | "plan premium" | Aclara que el número crudo ya se muestra en todos los planes, que `has_metrics` no gatea nada y que `views_count` no guarda fechas |
 
 ---
 
-## 4. Otros caminos que escriben en `properties` y dependen de que la fecha se selle
+## 3. Afirmaciones falsas que encontré
 
-**No encontré ninguno afectado.** La guarda solo actúa si la variable vale `'on'` dentro de la
-transacción, y **ningún camino fuera de `increment_views` la escribe**: está en 0 funciones además de
-las dos, 0 configuraciones de rol o base y 0 archivos de `src/` o `scripts/` (búsqueda por
-`set_config` y `skip_updated_at`).
+### En `CLAUDE.md`
 
-### 4.1. Escrituras a `properties` desde la app
+1. **"Favoritos y visitados"** decía que **los dos hooks** *"se reflejan en vivo en el mapa, el modal
+   y las cards (sync entre instancias vía CustomEvent + storage)"*. **Falso para los visitados**:
+   `useVisitedProperties` lee el almacenamiento una vez al montar y **no escucha nada**; solo
+   `useFavorites` sincroniza. Es la causa del ítem de los pines que no se repintan.
+2. **"Funciones y RPC"** decía *"`increment_views` … ⚠ existe pero NO se la llama desde ningún lado, así
+   que `views_count` es 0 en todas las propiedades"*. Falso desde el 14 sep: se llama desde tres
+   lugares y suma 17. Además estaba descripta sin `plpgsql`, `search_path` fijo ni el acople.
+3. **Resumen → planes**: *"premium (… + métricas)"* se leía como un gate. **`has_metrics` no lo
+   consume ningún componente** y ninguna agencia lo tiene en `true`.
+4. **Visibilidad pública**: *"si leés propiedades con service role, la regla de cobro es tuya"*
+   quedaba desmentido por el listado del panel, que lee `properties` con service role sin
+   invocarla, y está bien que no lo haga. Aclarado su alcance.
+5. **Estructura**: `useVisitedProperties.ts` = *"Pines visitados en localStorage"* y `PropertyList.tsx`
+   = *"Lista mobile"*: incompletos al punto de ocultar que son la deduplicación del contador y uno
+   de los lugares que cuenta.
 
-Todas por PostgREST, cada request en su propia transacción, sin tocar la variable:
+### En `PENDIENTES.md`
 
-| Lugar | Operación | ¿Pasa por el trigger? | ¿Sigue sellando? |
-|---|---|---|---|
-| `propiedades/actions.ts:162` | `update({ status: "paused" })` | sí | **sí** |
-| `propiedades/actions.ts:175` | `update({ status: "active" })` | sí | **sí** |
-| `propiedades/actions.ts:197` | `update({ status: "sold" })` | sí | **sí** |
-| `propiedades/actions.ts:210` | `update({ status: "rented" })` | sí | **sí** |
-| `propiedades/actions.ts:635` | `update({ … })` edición completa | sí | **sí** |
-| `equipo/actions.ts:150` | `update({ agent_id })` reasignación | sí | **sí** |
-| `propiedades/actions.ts:511` | `insert` | **no** (trigger solo UPDATE) | usa `DEFAULT now()` |
-| `propiedades/actions.ts:306` | `delete` | no | — |
+6. El ítem *"`increment_views` … NO se la llama desde ningún lado"* y su comentario sobre el modal.
+7. Las **nueve cifras** de la tabla del punto 2, la más relevante: **`casa prueba22` figuraba como
+   dirección que se indexaría y ya no existe**.
 
-**En la base**, la única función que hace `UPDATE properties` es `increment_views` (búsqueda en
-`prosrc` por `update properties`, `update subscriptions` e `insert into properties|subscriptions`).
+### Fuera de los dos archivos (no tocados, anotados en PENDIENTES)
 
-**El único lector** de `properties.updated_at` en el código es `src/app/sitemap.ts:78` y `:111`. Los
-cambios de estado y las ediciones, que son lo que ese `lastModified` tiene que reflejar, siguen
-sellando.
-
-### 4.2. Escrituras a `subscriptions` (por el trigger compartido)
-
-`admin/actions.ts:92, :728, :814, :870, :1238`, `dashboard/suscripcion/actions.ts:93`,
-`register/plan/actions.ts:73` (UPDATE) y `register/actions.ts:155` (upsert). Todas en transacciones
-propias sin la variable: **siguen sellando**. `ensure_agency_subscription()` hace `INSERT` y no pasa
-por el trigger. **Nadie lee `subscriptions.updated_at`**: en el código solo aparece en el tipo
-`Subscription` (`src/types/index.ts:302`).
-
-### 4.3. Un matiz, que no es una dependencia
-
-Un **agente logueado puede escribir `views_count` directamente** sobre sus propias propiedades (la
-policy `Agent manages own properties` es `ALL` sin `WITH CHECK`, medido en el diagnóstico de hoy). Ese
-UPDATE **no pasa por `increment_views`**, así que **sí sella la fecha**. No es un camino que exista en
-el código; es posible por la API.
+8. **`supabase/migrations/…initial_schema.sql`**: el comentario del primer intento de la guarda dice
+   **"HIPÓTESIS NO VERIFICADA"**. Está confirmada.
+9. **`DESIGN.md` §7** no describe las columnas "Visitas" y "Consultas".
 
 ---
 
-## 5. Consecuencias a tener en cuenta
+## 4. Números medidos
 
-### 5.1. Las 7 fechas ya movidas no se recuperan solas
+Todos el 14 sep 2026, por MCP (solo lectura), salvo donde se indica.
 
-Las 7 propiedades de la tabla 1.4 tienen hoy un `updated_at` del **14 sep entre 16:18 y 16:26** que
-**no corresponde a ninguna modificación**, y el mapa del sitio lo publica. **Los valores anteriores no
-están guardados en ningún lado**: no hay historial, y en la medición de esta mañana el máximo de la
-tabla era `2026-09-12 23:56`, pero eso no dice el valor de cada fila.
-
-⚠ Si alguien quisiera corregirlas a mano, **la guarda lo impide también**: con la variable en `'on'`
-el trigger repone `OLD.updated_at`, y sin ella sella `now()`. Restaurar una fecha anterior requiere
-deshabilitar el trigger mientras dura el UPDATE. No lo propongo; lo anoto porque es contraintuitivo.
-
-### 5.2. La guarda confía en quien pone la variable
-
-Cualquier sesión de SQL puede hacer `SET LOCAL marka.skip_updated_at = 'on'`: los parámetros con
-prefijo propio no requieren privilegios. **Desde la API no se puede**, porque PostgREST no deja
-fijar variables arbitrarias. Solo lo haría quien ya tiene acceso SQL directo.
-
-### 5.3. Cómo verificar la guarda con una visita real
-
-Lo tenés que hacer vos, porque yo no puedo escribir. En el SQL Editor o el MCP, **antes**:
-
-```sql
-SELECT id, title, views_count, updated_at FROM properties WHERE slug = 'casa-demo-s7jw5o';
-```
-
-Después borrá `marka_visited` en el navegador (DevTools → Application → Local Storage), tocá el pin de
-"Casa demo" y repetí la consulta. **`views_count` tiene que subir 1 y `updated_at` no tiene que
-cambiar.** Si `updated_at` cambia, la guarda no funciona en el camino real (PostgREST + pooler),
-aunque la prueba en el SQL Editor haya dado bien.
+| Qué | Valor |
+|---|---|
+| Agencias / agentes / agentes con rol `agent` | **3 / 3 / 0** (1 agente por agencia, los tres `admin`) |
+| Propiedades (activas / pausadas) | **18 (17 / 1)** |
+| Visitas totales / propiedades con visitas | **17 / 8** |
+| Consultas / desvinculadas | **14 / 1** |
+| Imágenes / propiedades con alguna foto | **7 / 7** |
+| Ciudades activas | **1** |
+| En venta y alquiler a la vez | **3** |
+| Con alguna operación sin precio | **7** |
+| Propiedades que ofrece el mapa del sitio (activas + agencia visible) | **17** |
+| Agencias con logo | **1 de 3** |
+| Agencias con `has_metrics = true` | **0** |
+| Agencias sin matrícula / filas en el predicado del índice único | **1 / 2** |
+| Suscripciones con vencimiento cargado | **1 de 3** |
+| Propiedades sin agente | **0** |
+| Objetos del bucket de Storage | **9 / 723.872 bytes** (sin cambios) |
+| Columnas generadas de `properties` | **1: `location`** |
+| Triggers que usan `update_updated_at()` | **2: `trg_properties_updated_at` y `trg_subscriptions_updated_at`** |
+| **Propiedades con `updated_at` movido por visitas antes de la guarda** | **7**: Casa Centenario, casa puente, Casa gaio, Casa Largo, casa lugones, Casa Autonomia y Campo |
+| Visitas anteriores a la guarda (logs) | **12** POST, entre 16:17:22 y 16:26:05 UTC |
+| Visitas posteriores a la guarda (logs) | **5** POST, entre 16:36:15 y 16:49:28 UTC |
+| Guarda aplicada (logs) | **16:32:19 UTC** |
+| Prueba de la guarda en camino real | Casa Largo 2 → 5 visitas, `updated_at` sin cambio · Casa demo 0 → 2, `updated_at` = 2026-09-03 |
+| Placeholders de la tabla de limpieza que siguen en la base | **4 de 5** (falta `casa-prueba2-taf8a3`) |
 
 ---
 
-## 6. Sobre el intento que no funcionó
+## 5. Baseline de calidad
 
-El prompt dice que no se pudo determinar por qué. Los logs muestran **cómo se verificó**, y eso
-sugiere una causa. **La dejo como hipótesis: no la pude comprobar, porque exige un UPDATE.**
-
-- **El intento** (16:27:24): el trigger comparaba `to_jsonb(NEW) - 'views_count' - 'updated_at'`
-  contra lo mismo sobre `OLD`.
-- **La verificación** (16:29:10): se hacía **fuera del trigger**, comparando la fila guardada antes y
-  después de llamar a `increment_views` (`jsonb_each` sobre `row(p.*)` de la tabla contra una copia
-  temporal).
-- **`properties.location` es `GENERATED ALWAYS … STORED`** (medido: `attgenerated = 's'`). Postgres
-  (17.6 en este proyecto) calcula las columnas generadas **después** de los triggers `BEFORE`.
-  Dentro del trigger, `NEW.location` todavía no tiene el valor final y `OLD.location` sí, así que
-  `to_jsonb(NEW)` y `to_jsonb(OLD)` **nunca darían iguales** y la fecha se sellaría siempre.
-- Eso explica las dos observaciones a la vez: el trigger veía una diferencia en `location`, y la
-  comparación sobre **filas ya guardadas** (con `location` recalculada e igual) solo mostraba
-  `views_count` y `updated_at`.
-
-Quedó escrita en el schema, marcada como no verificada, junto a la advertencia de no volver a ese
-enfoque.
-
----
-
-## 7. Baseline de calidad
-
-Corrido al terminar. El archivo `.sql` no participa de ninguno de los tres chequeos:
+Corrido con los `.md` ya editados (ninguno de los tres chequeos lee archivos `.md`):
 
 ```
 ### tsc
@@ -422,15 +211,15 @@ EXIT_LINT=0
 - Environments: .env.local
 
   Creating an optimized production build ...
-✓ Compiled successfully in 9.8s
+✓ Compiled successfully in 7.2s
   Running TypeScript ...
-  Finished TypeScript in 10.6s ...
+  Finished TypeScript in 8.6s ...
   Collecting page data using 3 workers ...
   Generating static pages using 3 workers (0/20) ...
   Generating static pages using 3 workers (5/20) 
   Generating static pages using 3 workers (10/20) 
   Generating static pages using 3 workers (15/20) 
-✓ Generating static pages using 3 workers (20/20) in 1138ms
+✓ Generating static pages using 3 workers (20/20) in 1285ms
   Finalizing page optimization ...
 
 Route (app)
@@ -476,20 +265,28 @@ No hizo falta borrar `.next`.
 
 ---
 
-## 8. ¿Algo del prompt resultó falso?
+## 6. ¿Algo del prompt resultó falso?
 
-**Nada de lo que describe sobre las dos funciones es falso**: la variable, que sea local a la
-transacción, que el trigger conserve la fecha en ese caso y selle en cualquier otro. Todo coincide
-con lo medido. Pero hay cuatro cosas que conviene corregir o completar:
+**Casi todo coincidió con lo medido.** Tres matices, dicho derecho:
 
-1. **"Se cambiaron dos funciones" se queda corto con `increment_views`.** Además de la variable pasó
-   de `LANGUAGE sql` a **`plpgsql`** y ganó **`search_path` fijo**. Lo segundo es una mejora: el
-   advisor ya no la marca.
-2. **"Contar una visita estaba moviendo la fecha"** ya tuvo efecto: **7 propiedades** con fechas
-   movidas por **12 visitas** anteriores a la guarda, sin forma de recuperar los valores (5.1).
-3. **"La comparación de columnas confirmaba que solo diferían esas dos"** es cierto de lo que se
-   midió, pero **no prueba lo que veía el trigger**. Según los logs, esa comparación se hizo sobre
-   filas ya guardadas, no sobre `NEW` dentro del trigger. Es la base de la hipótesis del punto 6.
-4. **"La solución aplicada"** está aplicada, pero **no está probada con una visita real**: no hubo
-   ninguna llamada desde el navegador después de las 16:32, y la prueba del SQL Editor se revirtió
-   sin resultado en los logs (5.3).
+1. **(e) "comparar la fila nueva contra la vieja NUNCA da iguales"**: coincide con la documentación,
+   con una precisión de wording. Postgres no dice qué **valor** tiene la columna generada en `NEW`:
+   dice que *"does not yet contain the new generated value and should not be accessed"*. El efecto
+   es el descripto, porque `OLD.location` sí tiene valor, así que lo documenté con la cita textual
+   en vez de afirmar un valor concreto. *"Costó dos intentos"* es exacto según los logs: uno que
+   falló (16:27) y el actual (16:32).
+2. **(c) "un atajo del navegador o del sistema lo dispara sin que nadie esté mirando la ficha"**: es
+   cierto con una condición que conviene saber. `keydown` solo llega a la pestaña **que tiene el
+   foco**, así que alguien tiene que estar en el teclado. Lo que ocurre es que **la tecla
+   modificadora con la que empieza un atajo** (el Ctrl de Ctrl+Tab, el Alt de Alt+Tab) llega a la
+   página antes de que el navegador o el sistema se la lleven, y cuenta aunque la persona se esté
+   yendo. Lo documenté así. **No lo verifiqué navegador por navegador**: qué atajos reservados llegan
+   a la página varía.
+3. **(f) "cualquier afirmación sobre que las métricas estén detrás de un plan"**: la sospecha era
+   correcta, y **es falso hoy en los dos documentos**. `has_metrics` no gatea nada y ninguna agencia
+   lo tiene activo. Quedó corregido en `CLAUDE.md` y en el ítem de analytics de `PENDIENTES.md`.
+
+Todo lo demás es cierto contra el código y la base: los tres lugares, la señal síncrona, la
+consecuencia sin `localStorage`, los eventos, el trigger compartido (con **`subscriptions`**), el
+mapa que no se desmonta, la función sin barrera, la columna generada (**`location`**) y que la
+limpieza de datos de prueba ya estaba anotada.
