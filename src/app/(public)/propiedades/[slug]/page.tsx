@@ -6,6 +6,7 @@ import { Wordmark } from "@/components/brand/Wordmark";
 import { PropertyGallery } from "@/components/properties/PropertyGallery";
 import { PropertyContact } from "@/components/properties/PropertyContact";
 import { PropertyUnavailable } from "@/components/properties/PropertyUnavailable";
+import { PropertyViewTracker } from "@/components/properties/PropertyViewTracker";
 import { ShareButton } from "@/components/properties/ShareButton";
 import { StaticMap } from "@/components/properties/StaticMap";
 import {
@@ -187,6 +188,13 @@ export default async function PropertyPage({
     // El `sticky top-0` del header sigue funcionando: se ancla al tope de ESTE
     // contenedor, que ahora es el que scrollea.
     <div className="h-dvh overflow-y-auto bg-paper">
+      {/* Conteo de visita. Isla de cliente que renderiza null: el HTML de esta
+          página no cambia, y NADA se cuenta en el servidor —los buscadores
+          renderizan esta página seguido—. Cuenta con la primera interacción
+          real de la persona, no al montar. `key` fuerza una instancia nueva por
+          propiedad. Ver PropertyViewTracker. */}
+      <PropertyViewTracker key={property.id} propertyId={property.id} />
+
       {/* Header mínimo, misma altura y tratamiento que el del mapa público. */}
       <header className="sticky top-0 z-50 flex h-14 items-center justify-between border-b border-stone bg-paper px-4 md:px-6">
         <Link href="/" aria-label="Ir al mapa">

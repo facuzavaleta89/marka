@@ -69,8 +69,12 @@ export type PropertyRow = Pick<
   | "temp_rent_price"
   | "temp_rent_currency"
   | "status"
+  | "views_count"
 > & {
   images: CoverImage[] | null;
+  // Consultas recibidas por ESTA propiedad (todas, de cualquier agente). `null`
+  // = no se pudo contar: se muestra "—", nunca un 0 inventado.
+  lead_count: number | null;
   // Nombre del agente dueño. Solo se usa en la vista de admin de agencia
   // (columna "Agente"); para el agente normal queda undefined/null y la columna
   // ni se muestra.
@@ -221,6 +225,8 @@ export function PropertiesTable({
                 "Operación",
                 "Precio",
                 "Estado",
+                "Visitas",
+                "Consultas",
                 ...(showAgent ? ["Agente"] : []),
                 "",
               ].map((col, i) => (
@@ -288,6 +294,21 @@ export function PropertiesTable({
                   {/* Estado */}
                   <td className="px-4 py-3">
                     <StatusBadge status={p.status} />
+                  </td>
+
+                  {/* Visitas y Consultas — dos columnas, no una combinada: son
+                      dos métricas distintas (cuánta gente miró / cuántos
+                      escribieron) y tienen que leerse por separado. Se muestran
+                      en todos los planes. */}
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <span className="font-sans text-sm text-black tabular-nums">
+                      {p.views_count}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <span className="font-sans text-sm text-black tabular-nums">
+                      {p.lead_count ?? "—"}
+                    </span>
                   </td>
 
                   {/* Agente (solo admin de agencia) */}
@@ -367,6 +388,18 @@ export function PropertiesTable({
                   </span>
                 )}
               </div>
+              {/* Visitas y consultas, separadas: dos métricas distintas. */}
+              <p className="mt-2 font-sans text-xs text-graphite">
+                <span className="font-medium text-black tabular-nums">
+                  {p.views_count}
+                </span>{" "}
+                {p.views_count === 1 ? "visita" : "visitas"}
+                {" · "}
+                <span className="font-medium text-black tabular-nums">
+                  {p.lead_count ?? "—"}
+                </span>{" "}
+                {p.lead_count === 1 ? "consulta" : "consultas"}
+              </p>
             </div>
           );
         })}

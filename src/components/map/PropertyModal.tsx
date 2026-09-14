@@ -692,9 +692,26 @@ export function PropertyModal() {
       if (data) setProperty(data as unknown as Property);
       setLoading(false);
 
-      // Fire-and-forget: incrementar views_count
-      // Nota: requiere una política RLS de UPDATE pública o una función RPC con SECURITY DEFINER.
-      // Pendiente de implementar en el schema.
+      // ⚠ EL CONTADOR DE VISITAS NO SE LLAMA ACÁ, Y ES A PROPÓSITO. Existe y
+      // funciona: `registerView` (@/lib/utils/registerView) invoca
+      // `increment_views(property_id uuid)`. Pero se dispara ANTES de abrir
+      // este modal, en el mismo lugar donde se marca la propiedad como vista:
+      //   · `ClusterLayer` — click en el pin;
+      //   · `PropertyList` — toque en la tarjeta de la lista de celular;
+      // y además en la ficha pública (`PropertyViewTracker`), con la primera
+      // interacción. En los tres, solo si `markVisited` devuelve que la
+      // propiedad era nueva para este visitante.
+      //
+      // POR QUÉ NO ACÁ: el pin marca la propiedad un instante antes de que este
+      // efecto corra, así que desde acá `markVisited` devolvería siempre "ya
+      // estaba" y los pines no contarían nunca. Mover la marca al modal
+      // obligaría a sincronizar las instancias del hook, o el tono "visitado"
+      // de los pines se perdería al recrear los markers. Tocar un pin es la
+      // misma intención que abrir esta ficha.
+      //
+      // ⚠ No agregar una segunda llamada acá "para asegurarse": sumaría dos
+      // visitas por apertura en el caso de la memoria de navegador bloqueada, y
+      // ninguna en el resto.
     })();
 
     return () => {

@@ -1,10 +1,20 @@
 import { requireAgentSession } from "@/lib/utils/resolveAgentSession";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { PlanBadge } from "@/components/dashboard/PlanBadge";
 import { NewPropertyButton } from "@/components/dashboard/NewPropertyButton";
 import { PropertiesTable, type PropertyRow } from "@/components/dashboard/PropertiesTable";
 import { getPlanUsage } from "@/lib/utils/getPlanUsage";
 import { getPublishBlock } from "@/lib/utils/getPublishBlock";
+
+// PostgREST devuelve el conteo embebido como `[{ count: N }]` (una relación
+// to-many materializada como array de un elemento). Ante cualquier otra forma
+// devuelve `null`, no 0: un cero diría "nadie escribió".
+function embeddedCount(value: unknown): number | null {
+  const first = Array.isArray(value) ? value[0] : value;
+  const count = (first as { count?: unknown } | null | undefined)?.count;
+  return typeof count === "number" ? count : null;
+}
 
 export default async function PropiedadesPage() {
   const supabase = await createClient();
@@ -17,9 +27,10 @@ export default async function PropiedadesPage() {
   const isAgencyAdmin = agent.role === "admin";
 
   // Las NUEVE columnas de operación/precio: la tabla muestra todas las
-  // operaciones activas con su precio (o "A convenir" si no tiene).
+  // operaciones activas con su precio (o "A convenir" si no tiene). Más
+  // `views_count`, que vive en la misma fila y no cuesta nada traer.
   const baseSelect =
-    "id, title, property_type, for_sale, sale_price, sale_currency, for_rent, rent_price, rent_currency, for_temp_rent, temp_rent_price, temp_rent_currency, status, images:property_images(url, is_cover, sort_order)";
+    "id, title, property_type, for_sale, sale_price, sale_currency, for_rent, rent_price, rent_currency, for_temp_rent, temp_rent_price, temp_rent_currency, status, views_count, images:property_images(url, is_cover, sort_order)";
   const adminSelect = `${baseSelect}, agent:agents(full_name)`;
 
   const propertiesQuery = isAgencyAdmin
@@ -34,10 +45,52 @@ export default async function PropiedadesPage() {
         .eq("agent_id", userId)
         .order("created_at", { ascending: false });
 
-  const [{ data: properties }, planUsage] = await Promise.all([
-    propertiesQuery,
-    getPlanUsage(supabase, agent.agency_id),
-  ]);
+  // ══════════════════════════════════════════════════════════════
+  // CONTACTOS POR PROPIEDAD: UNA sola consulta, agregada en la base
+  // ══════════════════════════════════════════════════════════════
+  //
+  // `leads(count)` embebido hace el conteo en PostgREST: una fila por
+  // propiedad con su total, no una fila por consulta ni una consulta por fila.
+  //
+  // ⚠ VA CON SERVICE ROLE, y no por comodidad: con el client normal el número
+  // SE TRUNCA EN SILENCIO. Las dos policies de SELECT de `leads` son
+  // `Agent reads own leads` (agent_id = auth.uid()) y `Admin reads agency
+  // leads` (por agencia). Un agente común no vería:
+  //   · las consultas de una propiedad suya que entraron cuando estaba a nombre
+  //     de otro agente (la reasignación no es retroactiva);
+  //   · las consultas desvinculadas (agent_id NULL) de un agente que se fue.
+  // Y el embed no da error: devuelve `count: 0`. Medido con la anon key: 200 y
+  // ceros en propiedades que tienen consultas. El número tiene que ser el de LA
+  // PROPIEDAD, igual que `views_count`, o la relación entre los dos miente.
+  //
+  // ⚠ LA BARRERA LA PONE ESTE FILTRO, NO UNA POLICY: es exactamente el mismo
+  // alcance que el listado de arriba, con los dos valores sacados de la sesión
+  // del servidor (nunca del cliente). Un agente solo recibe los totales de las
+  // propiedades a su nombre; un admin, los de su agencia. Y solo viajan
+  // números, ninguna consulta.
+  const leadCountsQuery = createAdminClient()
+    .from("properties")
+    .select("id, leads(count)")
+    .eq(
+      isAgencyAdmin ? "agency_id" : "agent_id",
+      isAgencyAdmin ? agent.agency_id : userId
+    );
+
+  const [{ data: properties }, planUsage, { data: leadCounts, error: leadCountsError }] =
+    await Promise.all([
+      propertiesQuery,
+      getPlanUsage(supabase, agent.agency_id),
+      leadCountsQuery,
+    ]);
+
+  // Si la consulta de conteo falla, cada propiedad queda con `null` y la tabla
+  // muestra "—". Un 0 diría "nadie escribió", que sería inventar el dato.
+  const leadCountById = new Map<string, number | null>();
+  if (!leadCountsError) {
+    for (const row of leadCounts ?? []) {
+      leadCountById.set(row.id, embeddedCount((row as { leads?: unknown }).leads));
+    }
+  }
 
   // Mismo criterio que los triggers de la base (ver getPublishBlock).
   const publishBlock = getPublishBlock(planUsage, agency.approval_status);
@@ -63,8 +116,19 @@ export default async function PropiedadesPage() {
       temp_rent_price: p.temp_rent_price,
       temp_rent_currency: p.temp_rent_currency,
       status: p.status,
+      views_count: p.views_count,
       images: p.images,
       agent_name: agentName,
+      // Sin error, una propiedad AUSENTE del conteo tiene 0 consultas (p. ej.
+      // se creó entre las dos lecturas). Con error, o si el conteo vino con una
+      // forma inesperada (`null` en el mapa), queda `null` → "—".
+      // ⚠ No usar `leadCountById.get(p.id) ?? 0`: el `??` convertiría ese `null`
+      // en un 0 inventado. Por eso se pregunta `has()` primero.
+      lead_count: leadCountsError
+        ? null
+        : leadCountById.has(p.id)
+          ? (leadCountById.get(p.id) ?? null)
+          : 0,
     } as PropertyRow;
   });
 
