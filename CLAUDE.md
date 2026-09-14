@@ -20,9 +20,9 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 
 **Distribución:** web responsive + PWA instalable. No hay app nativa ni stores.
 
-**Estado:** Deployado en Vercel, **sin datos reales todavía** (lo cargado es de prueba; el lanzamiento con inmobiliarias fundadoras se apunta a octubre). MVP + multi-agente completos. **Fase White-label cerrada** en lo esencial: Sub-pieza A (ruta `/[slug]` + mapa filtrado + gate de plan), B1 (subir logo) y B2a (mostrar logo + nombre + "powered by Marka." en el header) hechas y probadas. **B2b (variante admin en `disabled`) y C (slug editable) quedan EN PAUSA**. **Fase de modelo de agencias CERRADA** (ago 2026): solo-agencias, matrícula + aprobación manual, bloqueo de publicación en la base, sesión unificada. Ver "Aprobación de agencias" abajo. **Fase de cobrabilidad CERRADA** (31 ago – 1 sep 2026): la visibilidad pública ahora depende de que la agencia esté al día (ver "Visibilidad pública de las propiedades") y el panel `/admin` dejó de ser de una sola vía —cancelar solicitud, vencimiento, baja/reactivación, eliminación y cambio de plan (ver "Panel de plataforma")—. **Ese era el bloqueante para poder cobrar y ya no lo es.** **Fase de modelo de la propiedad CERRADA** (3 sep 2026): una propiedad puede ofrecerse en **varias operaciones a la vez** con precio y moneda propios por operación, el **precio es opcional** ("a convenir") y las propiedades en alquiler llevan **requisitos para el inquilino**. Ver "Operaciones, precios y requisitos de la propiedad". **Grupo de archivos de Storage CERRADO** (5–6 sep 2026), en tres tandas: policies finas por agencia, borrado de archivos en los caminos que no lo hacían, y una herramienta de línea de comandos que audita y limpia huérfanos. El bucket quedó en **9 objetos y 707 kB, sin un solo huérfano**; venía de 24 objetos y 6,4 MB con el 89 % del peso en basura. Ver "Imágenes y Storage". **Grupo de blindaje CERRADO** (7 sep 2026, última de sus cinco tandas): una agencia **ya no puede existir sin fila de suscripción** —lo garantiza un trigger en la base— y el choque de matrícula duplicada al aprobar **se explica**, con la matrícula en conflicto y la regla, en vez de un "no se pudo" genérico. Ver "Suscripciones y límites" y "Aprobación de agencias". **La consulta sobrevive al agente** (7 sep 2026): borrar un agente con consultas a su nombre **antes fallaba siempre** contra una clave foránea; ahora la consulta se **desvincula** y conserva el nombre de quien la atendió en una **copia congelada que escribe la base**, no el cliente. En la misma tanda: el registro de una consulta **ya no falla en silencio** en el mapa público, y el aviso previo al borrado de un agente **dice también qué pasa con sus consultas**. Ver "La consulta sobrevive al agente". **Cada propiedad tiene su página pública propia** (7–8 sep 2026): `/propiedades/[slug]`, renderizada en el servidor e indexable, con vista previa enriquecida al compartir el enlace, botón de compartir, mapa del sitio y archivo de instrucciones para buscadores. Y **el modal dice quién publica**: logo y nombre de la inmobiliaria más el nombre del agente que atiende. Ver "Página pública de la propiedad" y "Quién publica". **Grupo de captación y difusión CERRADO** (10 sep 2026, con su tercera y última pieza): el enlace del encabezado público que decía **"Ingresar"** —sin decir para quién era— es ahora una **puerta de captación**: un llamado a sumar la inmobiliaria que lleva al registro, más el ingreso como enlace secundario. La pieza además **desduplicó** ese enlace, que estaba escrito en dos archivos y cuyas copias ya habían empezado a divergir, y le puso al encabezado de la home las **guardas de ancho** que tenía el del sitio de marca y a él le faltaban enteras. Ver "El encabezado público". **Grupo de coherencia del panel CERRADO** (10–11 sep 2026, cinco tandas): era un grupo chico —un cartel, un banner y una ruta— y **destapó el bug más caro medido hasta ahora**: pedir un plan mayor **sacaba a la agencia del mapa** hasta que el dueño se lo activara a mano, porque el pedido escribía `status: 'pending'` y la regla de visibilidad exige `'active'`. **Una agencia que quería pagar más se apagaba sola.** De ahí salió la regla que gobierna el modelo de planes: **un pedido abierto se detecta por `pending_plan`, NUNCA por el estado** (ver "Un pedido de plan abierto"). En la misma tanda: el panel ahora **dice cuándo una agencia no se está viendo** (cartel de tres motivos, nunca dos a la vez, con un helper nuevo espejo de la regla de visibilidad), el **banner de error** se extrajo de las cuatro copias que ya habían divergido, `/register/plan` entró a la lista de rutas protegidas, y **dos mensajes dejaron de prometer lo que el cupo del aterrizaje no permite**. Ver "El cartel de visibilidad del panel" y "El estado de aterrizaje y su cupo".
+**Estado:** Deployado en Vercel, **sin datos reales todavía** (lo cargado es de prueba; el lanzamiento con inmobiliarias fundadoras se apunta a octubre). MVP + multi-agente completos. **Fase White-label cerrada** en lo esencial: Sub-pieza A (ruta `/[slug]` + mapa filtrado + gate de plan), B1 (subir logo) y B2a (mostrar logo + nombre + "powered by Marka." en el header) hechas y probadas. **B2b (variante admin en `disabled`) y C (slug editable) estuvieron EN PAUSA meses y se cerraron el 12–13 sep 2026** — ver el grupo del sitio de marca, al final de este párrafo. **Fase de modelo de agencias CERRADA** (ago 2026): solo-agencias, matrícula + aprobación manual, bloqueo de publicación en la base, sesión unificada. Ver "Aprobación de agencias" abajo. **Fase de cobrabilidad CERRADA** (31 ago – 1 sep 2026): la visibilidad pública ahora depende de que la agencia esté al día (ver "Visibilidad pública de las propiedades") y el panel `/admin` dejó de ser de una sola vía —cancelar solicitud, vencimiento, baja/reactivación, eliminación y cambio de plan (ver "Panel de plataforma")—. **Ese era el bloqueante para poder cobrar y ya no lo es.** **Fase de modelo de la propiedad CERRADA** (3 sep 2026): una propiedad puede ofrecerse en **varias operaciones a la vez** con precio y moneda propios por operación, el **precio es opcional** ("a convenir") y las propiedades en alquiler llevan **requisitos para el inquilino**. Ver "Operaciones, precios y requisitos de la propiedad". **Grupo de archivos de Storage CERRADO** (5–6 sep 2026), en tres tandas: policies finas por agencia, borrado de archivos en los caminos que no lo hacían, y una herramienta de línea de comandos que audita y limpia huérfanos. El bucket quedó en **9 objetos y 707 kB, sin un solo huérfano**; venía de 24 objetos y 6,4 MB con el 89 % del peso en basura. Ver "Imágenes y Storage". **Grupo de blindaje CERRADO** (7 sep 2026, última de sus cinco tandas): una agencia **ya no puede existir sin fila de suscripción** —lo garantiza un trigger en la base— y el choque de matrícula duplicada al aprobar **se explica**, con la matrícula en conflicto y la regla, en vez de un "no se pudo" genérico. Ver "Suscripciones y límites" y "Aprobación de agencias". **La consulta sobrevive al agente** (7 sep 2026): borrar un agente con consultas a su nombre **antes fallaba siempre** contra una clave foránea; ahora la consulta se **desvincula** y conserva el nombre de quien la atendió en una **copia congelada que escribe la base**, no el cliente. En la misma tanda: el registro de una consulta **ya no falla en silencio** en el mapa público, y el aviso previo al borrado de un agente **dice también qué pasa con sus consultas**. Ver "La consulta sobrevive al agente". **Cada propiedad tiene su página pública propia** (7–8 sep 2026): `/propiedades/[slug]`, renderizada en el servidor e indexable, con vista previa enriquecida al compartir el enlace, botón de compartir, mapa del sitio y archivo de instrucciones para buscadores. Y **el modal dice quién publica**: logo y nombre de la inmobiliaria más el nombre del agente que atiende. Ver "Página pública de la propiedad" y "Quién publica". **Grupo de captación y difusión CERRADO** (10 sep 2026, con su tercera y última pieza): el enlace del encabezado público que decía **"Ingresar"** —sin decir para quién era— es ahora una **puerta de captación**: un llamado a sumar la inmobiliaria que lleva al registro, más el ingreso como enlace secundario. La pieza además **desduplicó** ese enlace, que estaba escrito en dos archivos y cuyas copias ya habían empezado a divergir, y le puso al encabezado de la home las **guardas de ancho** que tenía el del sitio de marca y a él le faltaban enteras. Ver "El encabezado público". **Grupo de coherencia del panel CERRADO** (10–11 sep 2026, cinco tandas): era un grupo chico —un cartel, un banner y una ruta— y **destapó el bug más caro medido hasta ahora**: pedir un plan mayor **sacaba a la agencia del mapa** hasta que el dueño se lo activara a mano, porque el pedido escribía `status: 'pending'` y la regla de visibilidad exige `'active'`. **Una agencia que quería pagar más se apagaba sola.** De ahí salió la regla que gobierna el modelo de planes: **un pedido abierto se detecta por `pending_plan`, NUNCA por el estado** (ver "Un pedido de plan abierto"). En la misma tanda: el panel ahora **dice cuándo una agencia no se está viendo** (cartel de tres motivos, nunca dos a la vez, con un helper nuevo espejo de la regla de visibilidad), el **banner de error** se extrajo de las cuatro copias que ya habían divergido, `/register/plan` entró a la lista de rutas protegidas, y **dos mensajes dejaron de prometer lo que el cupo del aterrizaje no permite**. Ver "El cartel de visibilidad del panel" y "El estado de aterrizaje y su cupo". **Grupo del sitio de marca CERRADO** (12–13 sep 2026, cuatro tandas), y con él las dos sub-piezas que llevaban meses en pausa. **(1)** La dirección del sitio **ya se puede editar** —antes se generaba del nombre y no se cambiaba desde ningún lado—, y antes hubo que cerrar un agujero que ya existía: **no había NINGUNA lista de direcciones reservadas**, así que una agencia podía quedarse con `admin` o `precios` y dejar su propio sitio inalcanzable en silencio. **(2)** El sitio apagado **le habla a su administrador**: seis motivos distintos, con botón solo en los tres que él puede resolver, y un descarte por cookie para que el visitante anónimo no pague nada. **(3)** El cambio de nombre quedó completo: dos columnas de rastro, la distinción en el panel y **dos formas de rechazo**, porque rechazar un nombre no es lo mismo que rechazar una agencia que venía funcionando y pagando. **(4) Y recién en la cuarta tanda se descubrió que las tres anteriores se habían construido sin que existiera el campo para pedir el cambio**: una capacidad entera en el servidor sin punta en la interfaz. De ahí salió la regla de método más cara del grupo (ver "Método de Diagnóstico" → recorrer de punta a punta). Ver "La dirección del sitio de marca", "El sitio apagado le habla a su dueño" y "El cambio de nombre de la agencia".
 
-**Baseline de calidad medido (no documentado de memoria; última medición: 12 sep 2026):** `npx tsc --noEmit` 0 errores (exit 0), `npm run lint` **0 errores y 1 warning** (`PropertyForm.tsx:808`, exit 0), `npx next build` verde (exit 0) con **22 rutas**. Cualquier error nuevo, un warning distinto del único conocido, o una ruta que aparezca sin motivo, es una regresión.
+**Baseline de calidad medido (no documentado de memoria; última medición: 13 sep 2026):** `npx tsc --noEmit` 0 errores (exit 0), `npm run lint` **0 errores y 1 warning** (`PropertyForm.tsx:808`, exit 0), `npx next build` verde (exit 0) con **22 rutas**. Cualquier error nuevo, un warning distinto del único conocido, o una ruta que aparezca sin motivo, es una regresión.
 
 > ⚠ **Las rutas pasaron de 19 a 22, y es la ÚNICA vez que el número se movió.** Las tres nuevas son de la página pública de la propiedad: **`/propiedades/[slug]`** (la página, dinámica), **`/sitemap.xml`** (dinámica: ver "Infraestructura de buscadores") y **`/robots.txt`** (estática). Las dos últimas no son código de aplicación sino **archivos de convención de Next**, que cuentan como ruta en ese listado igual que `/apple-icon.png`, que ya estaba. Las 19 anteriores siguen las 19, con el mismo nombre y el mismo tipo (`○`/`ƒ`).
 >
@@ -104,7 +104,10 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
   La extracción del `details` es **una mejora, no una dependencia**: ante cualquier forma inesperada devuelve `null` y el mensaje sale sin el número. El formato del `details` es texto de Postgres, no un contrato.
 - **⚠ EL MENSAJE ESTÁ GATEADO A LA APROBACIÓN, aunque el error no pueda ocurrir en los otros dos caminos.** `writeApproval` es compartida por aprobar, rechazar y reabrir. Rechazar y reabrir **sacan la fila del predicado** del índice (`WHERE approval_status = 'approved'`), así que no pueden chocar — pero eso depende de una propiedad del índice que podría cambiar. El gate por `status` vuelve la imposibilidad **estructural en el código**: decirle *"esa matrícula ya está en uso"* a alguien que está rechazando una agencia sería inventar un conflicto que no existe.
 - **⚠ RECHAZAR O REABRIR UNA AGENCIA APROBADA LIBERA SU MATRÍCULA.** Es consecuencia directa de que el índice sea parcial: al salir de `approval_status = 'approved'`, la fila sale del predicado y su par `(city_id, license_number)` queda libre. **Si en el medio se aprueba otra con la misma matrícula, volver a aprobar la original va a fallar** — con el mensaje correcto, pero el conflicto va a parecer nuevo. Es inherente al índice parcial, no un defecto del código.
-- **Nombre y matrícula son editables SOLO mientras está `pending` o `rejected`; se bloquean al aprobar.** El nombre está semi-regulado por el colegio, así que cambiarlo después de la aprobación tendría que ser otro flujo de aprobación que hoy no existe. ⚠ **`agencies` NO tiene policy de UPDATE**, así que la escritura va con service role y **deshabilitar los inputs es cosmético**: la regla la aplica `updateAgencyIdentityAction`, que relee `approval_status` de la fila real (no del que trae la sesión ni del cliente). Guardar con la agencia rechazada además la devuelve a `'pending'` (es el reenvío de la solicitud). El `slug` NO se toca nunca desde ahí.
+- **El NOMBRE se edita siempre; la MATRÍCULA se congela al aprobar.** ⚠ **Acá decía que los DOS eran "editables SOLO mientras está `pending` o `rejected`"**, con el motivo de que cambiar el nombre después de la aprobación *"tendría que ser otro flujo de aprobación que hoy no existe"*. **Ese flujo ya existe** —se construyó entero (ver "El cambio de nombre de la agencia")— y el congelamiento del nombre era lo único que faltaba sacar. Mientras estuvo, **toda esa maquinaria fue inalcanzable**. Hoy:
+  - **`name`**: editable en cualquier estado. Cambiarlo devuelve la cuenta a `'pending'`, porque el colegio de corredores regula los nombres comerciales.
+  - **`license_number`**: solo lectura con la agencia aprobada. Es el dato que se verificó contra el padrón para dar el alta; cambiarlo no es "revisar un nombre", es otra inmobiliaria. ⚠ Y la action **no rechaza** una matrícula distinta entrante: **la ignora** y escribe la de la fila real (`effectiveLicenseNumber`). Rechazar castigaría a quien no hizo nada —en el camino normal el campo ni se puede tocar— y lo que la persona quiso cambiar es el nombre.
+  - ⚠ **`agencies` NO tiene policy de UPDATE**, así que la escritura va con service role y **deshabilitar los inputs es cosmético**: la regla la aplica `updateAgencyIdentityAction`, que relee `approval_status` de la fila real (no del que trae la sesión ni del cliente). Guardar con la agencia rechazada además la devuelve a `'pending'` (es el reenvío de la solicitud). El `slug` NO se toca nunca desde ahí — se edita aparte, con su propio aviso (ver "La dirección del sitio de marca").
 
 ### Visibilidad pública de las propiedades — LA REGLA DE COBRO
 
@@ -357,7 +360,7 @@ prometer lo que la base va a rechazar si alguna vez alguien borra una fila a man
 │   │   │       ├── equipo/              ← Gestión de agentes (solo admin de agencia): page (Server, gatea role, cuenta props Y consultas por agente) + actions (createAgentAction + deleteAgentAction, service role). Borrar REASIGNA las props al admin (Modelo B) y DESVINCULA las consultas (SET NULL); el aviso previo dice las dos cosas
 │   │   │       ├── leads/               ← Consultas (ambos roles; RLS recorta: agente ve los suyos, admin los de la agencia). page (Server; el embed del agente NO puede llevar !inner) + LeadsContent (client)
 │   │   │       ├── perfil/
-│   │   │       ├── preferencias/         ← Preferencias personales (localStorage) + datos de la agencia (solo admin): identidad (AgencyIdentityForm + updateAgencyIdentityAction: nombre + matrícula, editables solo si NO está aprobada; guardar con la agencia rechazada la devuelve a 'pending'), teléfono (AgencyPhoneForm) y logo (AgencyLogoForm). Todos service role. page Server, muestra además el AgencyApprovalNotice
+│   │   │       ├── preferencias/         ← Preferencias personales (localStorage) + datos de la agencia (solo admin), en CUATRO formularios separados con CUATRO actions: identidad (nombre siempre editable + matrícula congelada al aprobar), DIRECCIÓN del sitio (AgencySlugForm), teléfono y logo. Todos service role. page Server, muestra además el AgencyApprovalNotice y el motivo de un nombre rechazado
 │   │   │       └── suscripcion/
 │   │   │   └── admin/                   ← Panel de plataforma. OJO: vive DENTRO del route group (agent), o sea `src/app/(agent)/admin/`, aunque la URL sea /admin. Solo dueño, gateado por ADMIN_USER_ID en su layout.tsx: 6 métricas de negocio (StatsCard) + tabla de TODAS las agencias + filtros de dos ejes + NUEVE acciones (aprobar/rechazar/reabrir · activar plan con vencimiento/cancelar solicitud/cambiar de plan/dar de baja/reactivar/eliminar). layout (Server, gating + sidebar) + page (Server) + AgenciesTable (client) + actions. USA el sidebar del dashboard ("Panel admin" activo)
 │   │   └── api/
@@ -390,7 +393,11 @@ prometer lo que la base va a rechazar si alguna vez alguien borra una fila a man
 │   │   │                                  refresca el PRECIO de los pines al cambiar el filtro de
 │   │   │                                  operación: el diff por id no lo detecta (ver la trampa abajo)
 │   │   ├── agency/
-│   │   │   └── AgencyUnavailable.tsx    ← Página "sitio no disponible" (estado disabled: sin has_white_label o agencia no aprobada). Sub-pieza A
+│   │   │   ├── AgencyUnavailable.tsx    ← Cartel del VISITANTE: "sitio no disponible", sin decir el
+│   │   │   │                              motivo (no es asunto suyo). Los seis se colapsan acá
+│   │   │   └── AgencyUnavailableForAdmin.tsx ← El mismo estado, visto por el ADMIN DE ESA AGENCIA:
+│   │   │                                  un mensaje por motivo, con botón solo donde ella puede
+│   │   │                                  resolver. Record exhaustivo: un motivo sin texto no compila
 │   │   ├── feedback/
 │   │   │   ├── Notice.tsx               ← Aviso PERSISTENTE reutilizable (Server Component, tonos
 │   │   │   │                              info/warning/error). Describe un estado que dura
@@ -426,7 +433,13 @@ prometer lo que la base va a rechazar si alguna vez alguien borra una fila a man
 │   │   │   ├── ProfileForm.tsx           ← Perfil del agente: avatar (upload client-side, upsert) + nombre + teléfono
 │   │   │   ├── AgencyPhoneForm.tsx       ← Teléfono de la agencia (solo admin). Sub-pieza B1
 │   │   │   ├── AgencyLogoForm.tsx        ← Logo de la agencia (solo admin): upload client-side + updateAgencyLogoAction. Valida tipo/tamaño, cache-buster en preview. Sub-pieza B1
-│   │   │   ├── AgencyIdentityForm.tsx   ← Nombre + matrícula (solo admin). Editable si pending/rejected; solo lectura con candado si approved. La regla REAL la aplica la action
+│   │   │   ├── AgencyIdentityForm.tsx   ← Nombre + matrícula (solo admin). ⚠ El NOMBRE se edita
+│   │   │   │                              siempre; la MATRÍCULA se congela al aprobar. El aviso de
+│   │   │   │                              "vuelve a revisión" aparece al tipear un nombre distinto
+│   │   │   │                              (Controller, no watch). La regla REAL la aplica la action
+│   │   │   ├── AgencySlugForm.tsx       ← Dirección del sitio (solo admin). Dos pasos: editar y
+│   │   │   │                              confirmar en un panel inline que muestra las DOS
+│   │   │   │                              direcciones completas y advierte que los enlaces mueren
 │   │   │   ├── AgencyApprovalNotice.tsx ← Aviso de dominio: pendiente / rechazada (con el motivo).
 │   │   │   │                              Presentacional puro, null si está aprobada. Es UNA de las dos
 │   │   │   │                              ramas del cartel de visibilidad de /dashboard
@@ -466,7 +479,16 @@ prometer lo que la base va a rechazar si alguna vez alguien borra una fila a man
 │   │       │                              qué precio se muestra cuando entra uno solo. Fuente única:
 │   │       │                              el pin y la card tienen que elegir el mismo
 │   │       ├── generateSlug.ts          ← slugifyBase (limpieza pura) + generateSlug (propiedades, sufijo aleatorio)
-│   │       ├── agencySlug.ts            ← generateUniqueAgencySlug: slug LIMPIO de agencia (sufijo numérico -2/-3 ante colisión). Lo usa el registro; el UNIQUE de agencies.slug es la garantía final
+│   │       ├── agencySlug.ts            ← TODO lo de la dirección de agencia: forma, normalización,
+│   │       │                              validación, unicidad y la generación del registro (sufijo
+│   │       │                              -2/-3 ante colisión, que ahora TAMBIÉN salta las
+│   │       │                              reservadas). El UNIQUE de agencies.slug es la garantía
+│   │       ├── reservedSlugs.ts         ← ⚠ Las 135 direcciones reservadas, en tres grupos. Agregar
+│   │       │                              una ruta de primer nivel al proyecto OBLIGA a agregarla
+│   │       │                              acá, o esa ruta queda inalcanzable. Ver la sección
+│   │       ├── agencyName.ts            ← Forma del NOMBRE de la agencia (2-80 + colapso de
+│   │       │                              espacios), compartida por el form y la action. NO valida
+│   │       │                              unicidad: la base no la exige y hay dos nombres repetidos
 │   │       ├── waMessage.ts             ← generateWaUrl(): string | null
 │   │       ├── getPlanUsage.ts          ← Helper server: cuenta por agency_id
 │   │       ├── resolveAgentSession.ts   ← ÚNICO lugar donde vive "traer el agente logueado + su agencia". Unión de 3 estados, cacheado por request. requireAgentSession() corta; resolveAgentSession() devuelve
@@ -802,7 +824,402 @@ pantalla que nadie relacionaría con las suscripciones. Si se toca una, se toca 
 - **Filtrado:** el `agencyId` opcional de `useProperties` agrega `.eq("agency_id", agencyId)` ADICIONAL a `city_id` + `status = 'active'`. Threadeado desde `AgencyMapView` → `MapView`/`PropertyList`. Sin el parámetro (la home), nada cambia.
 - **Sub-pieza B1 — Subir el logo en Preferencias (HECHA):** `AgencyLogoForm` (solo admin) sube el logo **client-side** (browser client, como el avatar de `ProfileForm`) al bucket `property-images`, path `logos/{agency_id}/logo.{ext}`, `upsert: true`. La **URL** se persiste con `updateAgencyLogoAction` (server action que clona `updateAgencyPhoneAction`: gate `role === "admin"` + service role + `.eq("id", caller.agency_id)`). Decisión de diseño: lo sensible es la escritura en `agencies` (gateada a admin), no el archivo en Storage (bucket público, archivo huérfano inocuo) → no hace falta upload por server action/FormData. **Validación REAL** (más estricta que el avatar, porque el logo es público): solo PNG/JPG/WEBP (NO SVG, riesgo XSS), máx 2 MB, chequeado en JS antes de subir. ⚠ **Desde el 5 sep 2026 el bucket TAMBIÉN valida** (`allowed_mime_types` PNG/JPG/WEBP + `file_size_limit` 5 MB): el chequeo de JS dejó de ser la única barrera —nunca lo fue para quien no pasa por el formulario— y los 2 MB del logo siguen siendo la regla propia de este form, más estricta que el techo del bucket. Ver "Imágenes y Storage". La extensión sale del MIME validado (`ACCEPTED_TYPES[file.type]`), no de `file.name` sin sanear. **Cache-buster** (`?t={Date.now()}`) solo en la preview tras guardar (la URL en la DB queda limpia) — necesario porque el path es fijo con `upsert`, sin el buster el navegador mostraría el logo cacheado. El logo **NO se muestra en el white-label todavía** (eso es B2): en B1 solo se ve de vuelta en el form para verificar.
 - **Sub-pieza B2a — Logo + nombre en el header (HECHA):** `AgencyMapView` recibe `agencyName` + `agencyLogoUrl` (la ruta los pasa; `resolveAgencyBySlug` ya trae `logo_url` en estado `active`). Header: **logo de la agencia a la izquierda** (donde en la home va el Wordmark de Marka) con `h-9 w-auto max-w-[160px] object-contain` (altura fija, ancho según relación de aspecto, tolera cualquier proporción sin romper el header); **nombre de la agencia en el centro** (`text-base sm:text-lg`, visible también en mobile). Si NO hay logo: el nombre va a la izquierda y el centro queda vacío (nunca el Wordmark de Marka). La marca de la agencia NO es link (llevaría al marketplace general, contradiciendo el white-label). **"Powered by Marka."** discreto centrado al pie (`fixed`, `pointer-events-none`, respeta safe-area y no tapa FABs/zoom), usando un `size="xs"` nuevo del `Wordmark` (aditivo). Validación de PROPORCIONES del logo al subir (rechazar verticales extremos) quedó como ajuste futuro a B1 — el `object-contain` ya protege el layout.
-- **EN PAUSA (Sub-piezas B2b y C):** B2b = variante "admin logueado de la agencia ve invitación a reactivar" en estado `disabled` (requiere meterle sesión a la ruta `/[slug]`, hoy anónima, + ensanchar `resolveAgencyBySlug` para que `disabled` devuelva id/name). C = slug editable. **No se tocan hasta resolver los cambios profundos de modelo** (eliminar particulares, matrícula + alta manual): esas piezas están entrelazadas con agencias/roles/slugs y diseñarlas ahora sería trabajar sobre un modelo que va a cambiar. Ver PENDIENTES.md → "Nueva fase".
+- **Sub-piezas B2b y C — HECHAS (12–13 sep 2026), después de estar en pausa.** ⚠ **Acá decía que estaban "EN PAUSA … hasta resolver los cambios profundos de modelo"**: ese modelo se estabilizó y las dos se cerraron.
+  - **B2b** = el sitio apagado le habla a su administrador. Ver "El sitio apagado le habla a su dueño". Lo que el ítem preveía se cumplió tal cual: hubo que **ensanchar `disabled`** para que devuelva `id` y `name` (era `{ status: "disabled" }` pelado) y **meterle resolución de sesión a la ruta**, que era 100 % anónima.
+  - **C** = la dirección del sitio es editable. Ver "La dirección del sitio de marca". Antes hubo que cerrar un agujero que ya existía: **no había ninguna lista de direcciones reservadas**.
+
+### La dirección del sitio de marca — reservadas y edición
+
+> Hasta el 12 sep 2026 la dirección (`agencies.slug`) se generaba sola del nombre al registrarse y
+> **no se podía cambiar desde ningún lado**: una agencia quedaba con una dirección que no eligió, y
+> corregirla exigía tocar la base a mano. Peor: **la app nunca se la mostraba** —no aparecía en
+> Preferencias, ni en Suscripción, ni en `/admin`—, así que una inmobiliaria con plan profesional
+> tenía un sitio cuya dirección no podía leer en ninguna pantalla.
+
+#### ⚠ La lista de direcciones reservadas — `src/lib/utils/reservedSlugs.ts`
+
+**Hubo que escribirla ANTES de permitir la edición, y cierra un agujero que ya existía.** `/[slug]`
+es una ruta **dinámica de primer nivel**, así que compite por el mismo espacio de nombres que las
+rutas reales, los archivos que el framework sirve en la raíz y toda ruta futura. Hasta esta pieza
+**no había ninguna lista**: no pasaba nada por dos casualidades —las direcciones se derivaban del
+nombre, y ninguna agencia se llamaba de una forma que colisionara—. Con el campo editable, la
+casualidad desaparece.
+
+**⚠ QUÉ PASA SI UNA AGENCIA TOMA UNA RESERVADA — no es un agujero de seguridad, es peor de
+explicar.** Una ruta estática **siempre** le gana a la dinámica, así que la agencia no se apropia
+de nada: **su propio sitio queda inalcanzable y en silencio**. Verificado por HTTP contra el build:
+
+```
+/inmobiliaria-demo  -> 200   (la dinámica resuelve)
+/admin              -> 307   (gana la ruta real: redirect al login)
+/propiedades        -> 404   (gana el segmento estático, que no tiene page)
+```
+
+O sea que una agencia con el slug `admin` pagaría su plan por una dirección que devuelve el login
+del dueño de la plataforma, sin un solo error y sin ninguna pantalla donde enterarse.
+
+**Los tres grupos, medidos: 135 entradas** (`RESERVED_SLUGS_COUNT`).
+
+| Grupo | Cuántas | Qué hay |
+|---|---|---|
+| **1 · Rutas de primer nivel de HOY** | **7** | `admin` · `api` · `dashboard` · `login` · `logout` · `propiedades` · `register`. ⚠ `propiedades` y `api` entran **aunque no tengan página propia** (los dos dan 404): el segmento estático existe y le gana igual |
+| **2 · Archivos servidos en la raíz** | **21** | Convención de Next (`robots.txt`, `sitemap.xml`, `favicon.ico`, `apple-icon.png`) + `public/` (`manifest.json`, `icon-192.png`, `markers`, los cinco SVG del andamio) + `_next`/`_vercel`. ⚠ Se guardan **con extensión y sin ella** a propósito: hoy la forma no admite puntos, así que `robots.txt` no es alcanzable, pero **la lista no puede depender de una regla que vive en otro archivo** |
+| **3 · Reservadas para el futuro** | **107** | Seis bloques, cada uno con su motivo en el archivo: **(a) la marca propia y la suplantación** —`marka`, `oficial`, `soporte`, `seguridad`, `administrador`…— que es el bloque más importante porque puede hacer daño **aunque la ruta nunca exista**; (b) institucionales y de venta (`precios`, `contacto`, `terminos`…); (c) vocabulario del dominio (`ciudad`, `agencia`, `mapa`, `venta`…); (d) cuenta y sesión; (e) cobro; (f) infraestructura web (`www`, `static`, `cdn`…); (g) valores que se filtran de un bug (`null`, `undefined`…) |
+
+**Dos decisiones de la lista que conviene no deshacer:**
+
+- **La comparación es EXACTA contra el slug normalizado, no por prefijo.** Reservar `admin` no
+  bloquea `administracion-lopez`, que es un nombre de inmobiliaria legítimo (verificado).
+- **⚠ `ciudad` y `ciudades` son load-bearing**: `PENDIENTES.md` decide que la URL de ciudad, si
+  alguna vez se hace, va como `/ciudad/[slug]`. Ese primer nivel **ya está comprometido** por una
+  decisión escrita.
+
+#### ⚠⚠ LA REGLA DE MANTENIMIENTO: AGREGAR UNA RUTA DE PRIMER NIVEL OBLIGA A AGREGARLA ACÁ
+
+**Y hay que hacerlo ANTES de publicar la ruta.** El orden importa: si una agencia ya tomó esa
+dirección, la ruta nueva nace ganándole y **le apaga el sitio a un cliente que paga**, sin aviso y
+sin forma de detectarlo salvo que él lo reporte.
+
+**Es la clase de acoplamiento que nadie recuerda**, porque el archivo que se toca (`src/app/...`) y
+el que hay que actualizar (`lib/utils/reservedSlugs.ts`) no se parecen en nada y nada los conecta
+en tiempo de compilación. La advertencia está escrita en el propio archivo, arriba de todo.
+
+**La asimetría que decide el criterio de la lista: bloquear de más es gratis** (la agencia elige
+otra dirección en el momento) **y bloquear de menos es irreversible en la práctica** (para cuando
+se descubre, ya repartió su dirección). Por eso el grupo 3 es generoso.
+
+#### La edición — `AgencySlugForm` + `updateAgencySlugAction`
+
+- **Quién:** solo el **admin de la agencia**. La pantalla lo gatea y la action lo revalida
+  (`caller.role !== "admin"`), con el `agency_id` del server.
+- **Sin límite de cuántas veces.** Poner un número sería adivinar, y son clientes que pagan.
+- **Dónde:** Preferencias, junto a los otros datos de identidad. La tarjeta **muestra la dirección
+  actual completa y clickeable** — que es, de hecho, la primera vez que el producto se la enseña.
+
+**Lo que se valida, en orden** (`lib/utils/agencySlug.ts`, mismas funciones en el formulario y en
+la action):
+
+| # | Validación | Valor |
+|---|---|---|
+| 1 | Normalización previa | `slugifyBase` + truncado + limpieza de bordes |
+| 2 | Largo | **3 a 40** |
+| 3 | Forma | `/^[a-z0-9]+(?:-[a-z0-9]+)*$/` — la misma que produce `slugifyBase`, escrita como patrón |
+| 4 | **Lista negra** | las 135 |
+| 5 | Unicidad (pre-chequeo) | global, excluyéndose a sí misma (`.neq("id", agencyId)`) |
+| 6 | Unicidad (garantía) | el `UNIQUE` de la base, traducido |
+| 7 | Filas afectadas | `count === 0` → error de configuración |
+
+⚠ **La unicidad del slug es GLOBAL, no por ciudad** (`agencies_slug_key UNIQUE (slug)`, medido), y
+tiene que serlo: la dirección es una sola en todo el dominio. Es distinto de la matrícula, cuyo
+índice sí lleva `city_id` porque los colegios son provinciales.
+
+⚠ **El choque de unicidad se detecta con CÓDIGO + NOMBRE DEL ÍNDICE** (`23505` +
+`agencies_slug_key`), nunca con el código solo: sobre `agencies` hay **tres** índices únicos y los
+tres levantan `23505`. Es la misma trampa que ya documenta `translateApprovalWriteError`, mirada
+desde el otro lado. El mensaje dice *"Otra inmobiliaria tomó esa dirección **hace un momento**"* —
+lo de "hace un momento" no es adorno: describe algo que pasó **mientras la persona miraba la
+pantalla**, y sin eso el rechazo se lee como un bug.
+
+#### ⚠ LOS ENLACES VIEJOS NO SE REDIRIGEN, Y ESA ES LA DECISIÓN
+
+**No se guarda historial de direcciones y la vieja pasa a dar 404.** El motivo: mantenerlas
+andando implicaría **una tabla de direcciones pasadas y una consulta más en CADA visita al sitio de
+marca** — infraestructura permanente para un caso raro.
+
+**Por eso el aviso previo no es letra chica: es la pieza.** Es un **panel inline de dos pasos** (no
+un `AlertDialog`: ese cierra al confirmar y el error de la action no tendría dónde mostrarse), que
+muestra **las dos direcciones completas** —no el fragmento— y dice:
+
+> **Los enlaces que ya compartiste van a dejar de funcionar**
+>
+> Tu sitio pasa a estar en **{nueva}**. La dirección anterior, **{vieja}**, deja de funcionar apenas
+> confirmes: quien la abra va a ver una página inexistente.
+>
+> Eso alcanza a todos los enlaces que hayas repartido: los que mandaste por WhatsApp, los de tus
+> redes, tu firma de mail, carteles y folletos impresos. No se redirigen solos a la dirección nueva.
+>
+> Tus propiedades, tus fotos y tus consultas no se tocan: lo único que cambia es la dirección.
+
+⚠ **El tercer párrafo no es relleno**: frente a un cartel de advertencia, el miedo real de un
+corredor es haber perdido el trabajo de cargar su cartera. Mismo criterio que el aviso de
+visibilidad del panel.
+
+⚠ **Y el daño del cambio es 100 % EXTERNO**, que es lo que vuelve al aviso la pieza entera:
+`agencies.slug` lo consume **un solo lugar funcional** (la ruta `/[slug]`) más un `select` del panel
+`/admin` que ni lo renderiza. **No está en el mapa del sitio, no hay ningún `agencyUrl()` en una
+metadata, y no hay un solo `<Link>` a un sitio de marca en la app.** Adentro no se rompe nada.
+
+### El sitio apagado le habla a su dueño
+
+> El cartel genérico de "sitio no disponible" está bien para un visitante: la situación comercial de
+> una inmobiliaria no es asunto suyo. Pero al **administrador de esa misma agencia** no le sirve —no
+> le dice por qué está apagado ni qué hacer—, y es probable que entre: es su propia dirección y la
+> va a tener en un marcador.
+
+**`resolveAgencyBySlug` devuelve ahora el MOTIVO junto al estado `disabled`**, más el `id` y el
+`name` de la agencia (antes era `{ status: "disabled" }` pelado). Los seis motivos de
+`AgencyDisabledReason`, y la división que gobierna los textos —**qué puede resolver ella sola y qué
+depende del dueño**—:
+
+| Motivo | Qué pasa | ¿Puede sola? | Qué ofrece la pantalla |
+|---|---|---|---|
+| `rejected` | La solicitud fue rechazada | **Sí** | botón **"Corregir los datos"** → Preferencias |
+| `subscription_inactive` | `canceled` / `past_due` | **Sí** | botón **"Ver mi suscripción"** |
+| `no_white_label` | Al día, pero su plan no incluye sitio | **Sí** | botón **"Ver los planes"** |
+| `not_approved` | Todavía en revisión (`pending`) | No — el dueño | **sin botón de acción** |
+| `plan_not_active` | Plan `free`, o `status = 'pending'` | No — el dueño | **sin botón de acción** |
+| `unavailable` | Cajón: sin fila de suscripción, sin ciudad, o el RPC falló | No | ofrece escribirnos |
+
+⚠ **A los dos que dependen del dueño NO se les da botón**, a propósito: uno que no destraba nada
+manda a la persona a dar una vuelta para volver al mismo lugar. Solo tienen *"Ir a mi panel"* como
+enlace secundario.
+
+⚠ **`no_white_label` es el ÚNICO de los seis que invita a pagar más, y ahí sí corresponde** — la
+regla del proyecto es *"antes de invitar a pagar más, verificar que pagar sea lo que destraba"*.
+
+⚠ **`classifyDisabled` CLASIFICA, NO DECIDE.** Se llama solo cuando los gates ya resolvieron que el
+sitio está apagado: no agrega ni saca un caso. **La regla de cobro sigue viviendo en la base** (el
+RPC decide si se muestra) y acá no se reescribe: se redacta. Los campos `status` y `plan` se
+sumaron al `select` **solo para eso**.
+
+⚠⚠ **Y SU ORDEN NO ES EL DE LOS GATES, QUE ES LA TRAMPA DE TODO ESTO.** Una agencia en el plan de
+aterrizaje tiene `has_white_label = false` **y** `plan = 'free'` a la vez, y el gate la corta por el
+flag (que es gratis) antes de llegar al RPC. **Si el motivo se leyera del gate que cortó, se le
+diría *"tu plan no incluye sitio de marca"* —que suena a "comprate otro plan"— a una agencia que ya
+pagó el premium y espera la activación manual**: el estado de toda alta nueva. Por eso
+`no_white_label` se evalúa **último**.
+
+#### ⚠ Cómo se reconoce al admin sin cobrarle el trabajo al visitante anónimo
+
+**El mecanismo exacto: `resolveAgentSessionIfPresent()`** (en `resolveAgentSession.ts`), que **corta
+antes de tocar nada** si no hay cookie de sesión:
+
+```ts
+async function hasAuthCookie(): Promise<boolean> {
+  const store = await cookies();
+  return store.getAll().some(
+    (cookie) => cookie.name.startsWith("sb-") && cookie.name.includes("auth-token")
+  );
+}
+```
+
+`@supabase/ssr` guarda la sesión en cookies `sb-<project-ref>-auth-token` (más los sufijos `.0`,
+`.1`… cuando el token se parte). Si no hay ninguna, **no puede haber sesión**, y eso se sabe leyendo
+cookies que ya están en memoria.
+
+| Quién | Costo agregado |
+|---|---|
+| Anónimo, **sitio activo** | **CERO. Ni se lee la cookie**: la llamada vive dentro del `if (disabled)`, así que la pantalla que ven los clientes que pagan no se tocó |
+| Anónimo, sitio apagado | recorrer las cookies del request. **Cero red, cero consultas** |
+| Logueado | lo de siempre, y suele estar ya pago (`resolveAgentSession` está en `cache()`) |
+
+⚠ **ES UN DESCARTE, NO UNA AUTORIZACIÓN.** Una cookie presente no prueba nada —puede estar vencida
+o ser de otro proyecto—, así que el camino positivo **no confía en ella** y sigue a
+`resolveAgentSession()`, que valida contra Supabase. **Solo puede decir que NO hay sesión, nunca que
+sí.** Verificado: una cookie falsa (`sb-fake-auth-token=inventado`) no cuela nada.
+
+Y la comparación exige **tres condiciones**, todas del servidor: sesión válida, `role === "admin"`
+y que la agencia de la sesión sea **ésta**. Un agente común de la misma agencia ve el cartel
+genérico: no gestiona la suscripción.
+
+⚠ **La pantalla dice "Solo vos ves este mensaje"**, y no es decoración: sin esa línea, un corredor
+que abre su propia dirección y lee *"tu suscripción no está al día"* asume que **sus clientes están
+leyendo lo mismo**. Es lo que convierte una pantalla alarmante en una útil.
+
+⚠ **El caso `not_found` NO reconoce a nadie, incluida la dirección vieja liberada.** Una agencia que
+cambió su dirección deja la anterior libre y su admin puede tenerla en un marcador — y aun así
+recibe un 404. **No se puede saber que esa dirección fue suya** (no hay historial, por la decisión de
+arriba), así que cualquier mensaje sería una conjetura; el admin **ya fue advertido** al cambiarla,
+con las dos direcciones a la vista; y hacer que el código de estado dependa de quién mire es lo que
+`resolvePropertyBySlug` documenta como el problema a evitar.
+
+### El cambio de nombre de la agencia
+
+> Cambiar el nombre devuelve la cuenta a revisión porque el **colegio de corredores regula los
+> nombres comerciales**. El flujo completo se construyó en tres tandas… **sin que existiera el campo
+> para pedirlo** (ver "Método de Diagnóstico" → recorrer de punta a punta).
+
+#### Las dos columnas del rastro
+
+`agencies.previous_name` y `agencies.name_change_requested_at`, las dos **nullable, sin default y
+sin CHECK**. Sus comentarios en la base, transcritos:
+
+> **`previous_name`** — *"Nombre que tenía la agencia antes del cambio pendiente de aprobación. Se
+> escribe al pedir el cambio y se limpia al resolverlo (aprobar o rechazar). NULL = no hay cambio de
+> nombre pendiente."*
+
+> **`name_change_requested_at`** — *"Momento en que se pidió el cambio de nombre. Su presencia es lo
+> que distingue, en approval_status=pending, un alta nueva de una agencia que ya venía funcionando y
+> cambió su nombre. Se limpia junto con previous_name."*
+
+⚠ **VAN SIEMPRE JUNTAS**: se escriben juntas al pedir el cambio —**en la misma escritura** que
+devuelve la agencia a la cola, sin un UPDATE de más— y se limpian juntas al resolverlo. Una sola
+cargada es un estado que no significa nada y que ninguna pantalla sabe leer. **Nada en la base lo
+impone** (no hay CHECK): la regla la sostiene el código, en los cuatro lugares que las tocan.
+
+⚠ **`previous_name` NO SE PISA si ya había un cambio pendiente.** Si la agencia se llamaba A, pidió
+pasar a B y antes de que se resuelva pide pasar a C, el nombre anterior que el dueño necesita ver
+sigue siendo **A** —el último que rigió de verdad—, no B, que nunca estuvo aprobado. Lo que sí se
+actualiza es la fecha. **Y el caso de ida y vuelta** (A → B → A) **limpia las dos**: no queda ningún
+cambio pendiente, y sin esa rama el panel diría "A → A".
+
+#### Dónde se pide, y qué se le advierte
+
+**Preferencias → Identidad de la inmobiliaria**, primer campo del formulario: el nombre es el dato
+de identidad principal. Solo el admin.
+
+**Validación** (`lib/utils/agencyName.ts`, compartida por el formulario y la action): no vacío,
+**2 a 80 caracteres**, y normalización que **recorta bordes y colapsa espacios internos**.
+
+⚠ **El colapso de espacios NO es cosmético**: `"Inmobiliaria  López"` y `"Inmobiliaria López"` son
+el mismo nombre para una persona y dos strings distintos para una comparación — **y de esa
+comparación depende que se detecte si el nombre cambió**. Sin normalizar, un espacio de más mandaría
+la cuenta entera a revisión sin que nada haya cambiado.
+
+⚠⚠ **NO HAY VALIDACIÓN DE UNICIDAD DEL NOMBRE, Y NO HAY QUE INVENTARLA.** Medido: sobre `agencies`
+el único `UNIQUE` es el del `slug`; el nombre solo tiene `NOT NULL`, sin largo máximo y sin CHECK.
+**Dos inmobiliarias pueden llamarse igual, y de hecho hay dos hoy** (dos filas con el nombre
+"Inmobiliaria Gaio 2", medido). Inventar la restricción en el código rechazaría altas legítimas —dos
+"López" de ciudades distintas— con un error que ninguna regla respalda, y encima no sería una
+garantía: sin índice único, dos pedidos simultáneos entrarían igual.
+
+**El aviso previo**, un `Notice` en tono `info` que aparece **al tipear un nombre distinto**:
+
+> **Al guardar, tu cuenta vuelve a revisión**
+>
+> Vamos a verificar el nombre nuevo en el colegio de corredores. **Mientras tu cuenta está en
+> revisión no se ve nada tuyo en público**: tus propiedades no aparecen en el mapa, sus fotos no se
+> muestran, nadie puede mandarte una consulta desde ahí y tu sitio propio queda apagado. Tampoco vas
+> a poder publicar propiedades nuevas.
+>
+> **No perdés nada** de lo que tengas cargado: tus propiedades, tus fotos y tus consultas quedan
+> donde están, y todo vuelve a verse solo en cuanto te aprobemos.
+
+⚠ **CUÁNDO APARECE es parte del diseño:** con la agencia **aprobada**, solo si el nombre difiere del
+que rige —está funcionando y abrir Preferencias no le cambia nada, así que el aviso aparece en el
+momento exacto en que empieza a ser cierto—; con la agencia **no aprobada**, siempre, porque ya está
+en revisión. Mostrarlo siempre sería alarmar a alguien que todavía no pidió nada.
+
+⚠ **Las CUATRO consecuencias no son una exageración**: `agency_is_publicly_visible()` exige
+`approval_status = 'approved'`, y la invocan **las tres policies públicas** (`properties`,
+`property_images`, `leads`) **más `resolveAgencyBySlug`**. Pedir un cambio de nombre **apaga las
+cuatro cosas a la vez**, sin vencimiento y sin reversión automática. Una agencia podría pedirlo un
+viernes creyendo que no pasa nada y quedar invisible todo el fin de semana.
+
+#### Qué ve el dueño de la plataforma
+
+En `/admin`, sobre una agencia `pending`, **dos señales en dos lugares distintos** —porque responden
+dos preguntas distintas—:
+
+- **`NameChangeBadge`**, junto al estado: **"CAMBIO DE NOMBRE"** en terracota sólido, con la fecha
+  del pedido en el `title`. Es lo primero que necesita saber: *esto no es un alta*.
+- **`PreviousNameLine`**, en la celda del **nombre**: *"Antes: ~~Inmobiliaria Gaio~~"*, tachado y en
+  `graphite`. Va ahí y no en un tooltip porque **el dueño compara dos textos para decidir**.
+
+Montado en las **dos vistas**, escritorio y celular. El badge de cambio de nombre **gana** sobre el
+de reenvío (`ResubmissionBadge`): los dos dicen *"esta pendiente ya venía de antes"*, pero éste dice
+además **qué cambió**.
+
+#### ⚠ LAS TRES FORMAS DE RESOLVERLO, Y POR QUÉ EL RECHAZO SON DOS
+
+| Acción | Qué escribe | Cuándo se ofrece |
+|---|---|---|
+| **Aprobar el nombre** | `approved`, limpia las dos columnas | hay cambio pendiente |
+| **Rechazar el nombre** | `name` ← `previous_name`, `approved`, limpia las dos columnas | hay cambio pendiente **y** `ever_approved` |
+| **Rechazar la inmobiliaria** | `rejected`, limpia las dos columnas | siempre que esté `pending` |
+
+**Rechazar tenía un solo significado, y era el equivocado para este caso.** `rejectAgencyAction`
+está diseñada para un alta que no corresponde: deja la agencia fuera, su sitio se apaga y sus
+propiedades desaparecen del mapa. **Aplicado a una inmobiliaria que ya venía funcionando y pagando,
+y cuyo único problema es el nombre que pidió, es desproporcionado.**
+
+**Las dos son necesarias:** con solo la primera se pierde la capacidad de sacar a una agencia que se
+cambió el nombre a algo que no corresponde de ninguna manera.
+
+**El reparto en la interfaz sigue el criterio que el panel ya tiene** (DESIGN §12 — en la fila lo
+que hace avanzar el flujo, en el menú `⋯` lo excepcional y destructivo):
+
+```
+fila  → "Aprobar el nombre" · "Rechazar el nombre"   (el caso normal)
+menú  → "Rechazar la inmobiliaria"                   (el caso duro, en rojo)
+```
+
+⚠ **Para un alta nueva NO CAMBIA NADA**: `rejectName` es false y "Rechazar" sigue en la fila con su
+texto y su rojo de siempre. Y `hasMenu` tuvo que aprender a contar el rechazo duro, o la acción
+habría quedado **inalcanzable sin dar ninguna señal**.
+
+⚠ **AL RECHAZAR EL NOMBRE NO SE REVIERTE… Y AL RECHAZAR LA AGENCIA TAMPOCO.** Son dos cosas
+distintas y conviene no confundirlas:
+- **Rechazar el nombre** SÍ revierte `name` ← `previous_name`: ése es su trabajo.
+- **Rechazar la inmobiliaria** **conserva el nombre nuevo**. Mientras está `rejected` no se muestra
+  en ningún lado (la primera condición de `agency_is_publicly_visible()`), así que el nombre sin
+  aprobar no llega al público; y revertirlo en silencio le borraría lo que pidió, dejándola leer un
+  motivo de rechazo sobre un nombre que ya no ve en ninguna pantalla.
+
+⚠ **QUÉ REVIERTE Y QUÉ NO `rejectNameChangeAction`:** los cuatro campos del pedido de nombre
+(`name`, las dos columnas, `approval_status`). **La MATRÍCULA no se toca**: no hay
+`previous_license_number` del cual restaurarla, y sobre todo **esto rechaza el nombre, no la
+matrícula** — si la agencia corrigió un tipeo en el mismo formulario, esa corrección es válida.
+
+⚠ **El motivo se guarda en `agency_reviews` como `'rejected'`, con un PREFIJO FIJO.** Medido: el
+CHECK de `decision` admite seis valores y **ninguno es específico de un rechazo de nombre**; agregar
+uno es un cambio de base. El prefijo (`NAME_REJECTION_PREFIX`) es lo único que los separa, y la nota
+lleva además **los dos nombres** — porque `previous_name` se limpia en ese mismo UPDATE y si no
+quedaran ahí, qué nombre se rechazó no se podría reconstruir desde ninguna parte. La agencia lo lee
+en Preferencias vía `getLatestNameRejectionNote`, **cuya vigencia se decide mirando la ÚLTIMA
+decisión**, no buscando el último rechazo de nombre: si después hubo una aprobación, ese rechazo ya
+se superó.
+
+⚠ **Y el UPDATE del rechazo de nombre se traduce con `status: "approved"`**: mete la fila **dentro**
+del predicado del índice parcial de matrícula, así que puede chocar con otra agencia aprobada de la
+misma ciudad — exactamente como al aprobar.
+
+### ⚠ Las guardas del cambio de nombre, y el alcance de cada una
+
+**Son cuatro, y cada una existe por un motivo distinto. El alcance importa tanto como la regla.**
+
+| # | Guarda | Dónde | Motivo |
+|---|---|---|---|
+| 1 | **La matrícula se congela al aprobar** | `updateAgencyIdentityAction` | Es el dato verificado contra el padrón. Cambiarlo no es revisar un nombre: es otra inmobiliaria |
+| 2 | **Sin estar al día no se cambia el NOMBRE** | ídem, dentro de `if (nameChanged)` | Ver abajo |
+| 3 | **Estando `pending`, el estado no se mueve** | ídem (`backToReview`) | Ya está en la cola: no hay nada que reenviar |
+| 4 | **No se revierte un nombre sin cambio pendiente** | `rejectNameChangeAction` | Sin pedido abierto no hay nombre al que volver |
+
+#### ⚠ La guarda de suscripción NO alcanza al logo ni a la dirección, y eso es deliberado
+
+**El motivo no es disciplinario**, y por eso el alcance es el que es: lo que no corresponde hacer por
+una cuenta dada de baja es **el trabajo de aprobación que un cambio de nombre le genera al dueño**.
+El logo, la dirección del sitio y el teléfono **la agencia los resuelve sola, no le generan trabajo a
+nadie**, y no hay ningún motivo para bloquearlos — están en **otras tres actions**, que nunca
+tuvieron esta guarda (medido: cero menciones a `canceled`/`past_due` en las tres).
+
+⚠ **Antes la guarda cubría la action entera**, con el argumento de que *"las dos viajan en el mismo
+submit y las dos disparan el mismo reenvío"*. Dejó de ser cierto al congelarse la matrícula: con la
+agencia aprobada, **lo único que puede disparar un reenvío desde ese formulario es el nombre**.
+
+⚠ **Es LISTA NEGRA (`canceled`/`past_due`), nunca "distinto de `active`"**: `'pending'` significa
+*"todavía no tenés nada activo"* y esa agencia está al día. **Y sin fila de suscripción tampoco
+bloquea**: no le falta pagar, le falta una fila.
+
+⚠ **Consecuencia asumida y escrita en el código:** una agencia **dada de baja Y sin aprobar** puede
+corregir su matrícula, y eso la reenvía a la cola. Hueco chico y deliberado —el criterio es que la
+guarda dispare cuando cambia el **nombre**— y el caso exige las dos condiciones juntas.
+
+#### ⚠⚠ LA COMPARACIÓN QUE DECIDE SI EL NOMBRE CAMBIÓ VA CONTRA LA BASE, NUNCA CONTRA EL NAVEGADOR
+
+```ts
+const nameChanged = name !== agency.name;   // `agency` viene del SELECT, no del input
+```
+
+`agency.name` sale de la fila real, releída con service role en esa misma action. **Quien lo
+"simplifique" —comparando contra un `initialName` que mande el formulario, o confiando en un flag
+del cliente— abre un agujero**, y uno que no da síntoma: un cliente manipulado podría declarar que
+el nombre no cambió y **saltearse la guarda de suscripción, la vuelta a revisión y el rastro de
+`previous_name` a la vez**, quedándose con un nombre nuevo vigente que nadie revisó. Las tres cosas
+cuelgan de esa única comparación.
+
+Por el mismo motivo el `select` de esa action **nombra `name` y `previous_name` explícitamente**: es
+una lista de columnas, y lo que no se nombra no llega.
 
 ### Página pública de la propiedad — `/propiedades/[slug]`
 
@@ -1556,7 +1973,7 @@ Schema en `supabase/migrations/20240101000000_initial_schema.sql`.
 | Tabla | Descripción |
 |---|---|
 | `cities` | Mercados. Centro del mapa y zoom por ciudad. **No tiene límites geográficos** (solo `center_lat`/`center_lng`/`default_zoom`): por eso el buscador de direcciones usa un umbral de distancia en vez del ejido real |
-| `agencies` | Inmobiliarias. `city_id` NOT NULL. `tenant_type` (`agency`/`individual`) **legacy**: el registro escribe siempre `'agency'`; nada de la base la lee (verificado: 0 funciones y 0 policies la mencionan). `phone_wa` NOT NULL. `license_number` (matrícula, TEXT nullable) + `approval_status` (`pending`/`approved`/`rejected`, DEFAULT `pending`). `brand_color` para white-label futuro |
+| `agencies` | Inmobiliarias. `city_id` NOT NULL. `tenant_type` (`agency`/`individual`) **legacy**: el registro escribe siempre `'agency'`; nada de la base la lee (verificado: 0 funciones y 0 policies la mencionan). `phone_wa` NOT NULL. `license_number` (matrícula, TEXT nullable) + `approval_status` (`pending`/`approved`/`rejected`, DEFAULT `pending`). **`previous_name` + `name_change_requested_at`** (las dos nullable, sin default y sin CHECK): el rastro de un cambio de nombre esperando decisión — se escriben juntas al pedirlo y se limpian juntas al resolverlo; ver "El cambio de nombre de la agencia". `brand_color` para white-label futuro. ⚠ **`name` solo tiene `NOT NULL`**: sin unicidad, sin largo máximo y sin CHECK — el único `UNIQUE` de la tabla es el de `slug` |
 | `subscriptions` | `plan` (el que RIGE) + `pending_plan` (pedido, esperando activación) + `status` (`active`/`pending`/`past_due`/`canceled`), `property_limit`, entitlements `has_*`, `activated_at` (desde cuándo rige el pago) y `current_period_end` (vencimiento; **lo escribe el panel, no lo vigila nadie**). Por agencia. ⚠ **`status = 'pending'` significa UNA sola cosa: "todavía no tiene nada activo"** (agencia recién registrada que eligió plan y espera). **NO significa "pidió un upgrade"**: para eso está `pending_plan`, que es **la única señal de que hay un pedido abierto**. Ver "Un pedido de plan abierto". ⚠ **`past_due` NO lo escribe ningún camino del código** (medido): está en el CHECK y lo leen tres lugares, pero es inalcanzable — hoy la columna tiene **tres** valores producibles, no cuatro |
 | `agents` | `id` = `auth.users.id`. `agency_id` NOT NULL. `role` (`admin`/`agent`) gatea la sección Equipo. `email` denormalizado de auth.users (copia de lectura) |
 | `properties` | `agency_id` y `city_id` NOT NULL; `location` GEOGRAPHY generada. **Tres pares de operación** (`for_sale`/`sale_price`/`sale_currency` y sus equivalentes de `rent` y `temp_rent`): al menos una activa, precio y moneda siempre juntos o los dos NULL (= "a convenir"). **Requisitos de alquiler** en dos JSONB: `rent_requirements` (lista cerrada) y `rent_requirements_other` (hasta 5 strings de hasta 300). `location_source` (TEXT nullable, CHECK `manual`/`suggested`): de dónde salió la coordenada. **Dato de medición: no gatea nada** |
@@ -1770,6 +2187,42 @@ son tres verificaciones: pueden ser una sola afirmación copiada.**
 ⚠ **Y la tercera copia vivía en este archivo.** Es el motivo por el que una afirmación falsa en
 `CLAUDE.md` se corrige **en la misma tanda que el código** y no se deja para el cierre: mientras
 esté escrita acá, es la fuente que alguien va a citar para no volver a mirar.
+
+### ⚠⚠ RECORRER EL CAMINO DE PUNTA A PUNTA, NO DESDE EL MEDIO (13 sep 2026)
+
+> **Es la regla más cara del grupo del sitio de marca, y es de otra familia que las seis
+> anteriores.** Aquellas son sobre creerle a un comentario; ésta es sobre **construir lo que
+> procesa un pedido sin verificar que el pedido se pueda hacer**.
+
+**Qué pasó.** Se construyeron **tres tandas completas** del flujo de aprobación de un cambio de
+nombre —la server action que lo pide, las dos columnas de la base que guardan el nombre anterior,
+la distinción en el panel `/admin`, **las dos formas de rechazo**, los avisos a la agencia y el
+lector del motivo— y recién en la cuarta se descubrió que **no existía el campo para pedirlo**.
+Todo eso estuvo escrito, compilando y sin usarse: una capacidad entera en el servidor **sin punta
+en la interfaz**.
+
+**⚠ EL ORIGEN DEL ERROR ES ESPECÍFICO Y CONVIENE RECONOCERLO:** se vio que
+`updateAgencyIdentityAction` **aceptaba** `name` en su firma y en su esquema, y de ahí se asumió
+que el formulario lo editaba. El formulario **sí llamaba a esa action** —así que la conexión
+existía y se veía en cualquier búsqueda— pero el nombre viajaba dentro de una rama que **no se
+renderizaba** para una agencia aprobada, que es el estado del 100 % de las agencias reales.
+
+**LA REGLA: que una acción acepte un campo NO significa que alguien se lo mande.** Antes de
+construir lo que procesa un pedido, verificar que el pedido **se pueda hacer**, y verificarlo
+**desde la punta**: abrir la pantalla, encontrar el control, seguir el dato hasta la escritura. No
+alcanza con que el grep encuentre el llamador: hay que ver que el campo **efectivamente llegue**.
+
+**Cómo se ve hecho mal y hecho bien, en una línea:**
+
+| | |
+|---|---|
+| ❌ Desde el medio | "la action acepta `name` y el formulario la llama" → se asume la punta |
+| ✅ De punta a punta | "abro Preferencias como el admin de una agencia **aprobada**, ¿veo un campo de nombre?" |
+
+⚠ **Y el síntoma que lo delata sin necesidad de abrir el navegador: una columna que nunca se
+escribe.** `previous_name` existía, el panel la leía y la mostraba, y **ninguna fila la tenía
+cargada** — porque ningún camino podía escribirla. Una consulta de una línea sobre los datos
+reales lo habría mostrado tres tandas antes.
 
 ## Diseño
 
