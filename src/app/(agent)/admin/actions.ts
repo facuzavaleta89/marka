@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPlanUsage } from "@/lib/utils/getPlanUsage";
+import { NAME_REJECTION_PREFIX } from "@/lib/utils/getLatestRejectionNote";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import {
@@ -224,9 +225,41 @@ async function writeApproval(
     return { error: "No se encontró esa agencia" };
   }
 
+  // ══════════════════════════════════════════════════════════════
+  // ⚠ RESOLVER LA REVISIÓN LIMPIA EL RASTRO DEL CAMBIO DE NOMBRE
+  // ══════════════════════════════════════════════════════════════
+  //
+  // `previous_name` y `name_change_requested_at` marcan un cambio de nombre
+  // ESPERANDO decisión. Al aprobar o al rechazar, esa espera terminó: si
+  // quedaran cargadas, el panel seguiría anunciando un cambio pendiente que ya se
+  // resolvió, y el dueño volvería a mirar lo mismo una y otra vez.
+  //
+  // ⚠ LAS DOS, SIEMPRE JUNTAS. Son un solo hecho partido en dos columnas: una
+  // sola cargada es un estado que no significa nada (un nombre anterior sin
+  // pedido, o un pedido sin nombre anterior) y que ninguna pantalla sabría leer.
+  //
+  // ⚠ NO SE REVIERTE EL NOMBRE AL RECHAZAR — la agencia se queda con el nombre
+  // nuevo y en `rejected`. El razonamiento completo está en el informe; en
+  // corto: mientras está rechazada NO se muestra en ningún lado (la primera
+  // condición de `agency_is_publicly_visible()` es estar aprobada), así que el
+  // nombre sin aprobar no llega al público; y revertirlo en silencio le borraría
+  // a la agencia lo que pidió, dejándola leer un motivo de rechazo sobre un
+  // nombre que ya no ve en ninguna pantalla.
+  //
+  // ⚠ REABRIR NO LIMPIA, y no hace falta: `reopenAgencyAction` pasa
+  // `decision: null` y solo se ofrece sobre una agencia `rejected`, que ya pasó
+  // por acá y tiene las dos columnas en NULL. No hay ningún camino por el que
+  // reabrir encuentre un cambio pendiente cargado.
+  const resolvesReview = decision !== null;
+
   const { error: updateError } = await admin
     .from("agencies")
-    .update({ approval_status: status })
+    .update({
+      approval_status: status,
+      ...(resolvesReview
+        ? { previous_name: null, name_change_requested_at: null }
+        : {}),
+    })
     .eq("id", agencyId);
 
   if (updateError) {
@@ -453,6 +486,165 @@ export async function reopenAgencyAction(input: {
   if ("error" in auth) return { error: auth.error };
 
   return writeApproval(input.agencyId, "pending", null, null, auth.ownerId);
+}
+
+// ══════════════════════════════════════════════════════════════
+// RECHAZAR EL NOMBRE — sin rechazar la inmobiliaria
+// ══════════════════════════════════════════════════════════════
+//
+// Cuando lo que está pendiente es un CAMBIO DE NOMBRE, rechazar tenía un solo
+// significado y era el equivocado: `rejectAgencyAction` está diseñada para un
+// alta que no corresponde, así que deja la agencia fuera —su sitio se apaga y
+// sus propiedades desaparecen del mapa—. Aplicado a una inmobiliaria que ya
+// venía funcionando y pagando, y cuyo único problema es el nombre que pidió, es
+// desproporcionado.
+//
+// Esta acción es la otra mitad: revierte el nombre y deja la agencia
+// **exactamente como estaba antes de pedir el cambio**. `rejectAgencyAction`
+// sigue existiendo sin tocarse para el caso duro (ver el comentario de
+// `availableActions` en AgenciesTable).
+//
+// ⚠ QUÉ REVIERTE, Y QUÉ NO. El pedido (updateAgencyIdentityAction) escribe hasta
+// CINCO campos: `name`, `license_number`, `approval_status` (si venía
+// rechazada), `previous_name` y `name_change_requested_at`. Esta acción revierte
+// los cuatro que son del pedido de NOMBRE y **deja la matrícula como está**:
+//
+//   · `name` ← `previous_name`  — la reversión en sí
+//   · `previous_name` → NULL     ┐ el rastro del pedido, que ya se resolvió
+//   · `name_change_requested_at` → NULL ┘  (las dos SIEMPRE juntas)
+//   · `approval_status` → 'approved' — la agencia vuelve a funcionar
+//
+//   · `license_number` NO SE TOCA, y es deliberado: no hay ningún
+//     `previous_license_number` del cual restaurarla —no existe esa columna—, y
+//     sobre todo **esto rechaza el NOMBRE, no la matrícula**. Si la agencia
+//     aprovechó el mismo formulario para corregir un tipeo en su matrícula, esa
+//     corrección es válida y revertirla sería deshacer algo que nadie rechazó.
+export async function rejectNameChangeAction(input: {
+  agencyId: string;
+  note: string;
+}): Promise<{ error: string } | undefined> {
+  if (!parseAgencyId(input?.agencyId)) {
+    return { error: "Agencia inválida" };
+  }
+
+  const auth = await requireAppAdmin();
+  if ("error" in auth) return { error: auth.error };
+
+  // El motivo es OBLIGATORIO, igual que en el rechazo de la agencia: es lo que
+  // la inmobiliaria va a leer para saber qué nombre proponer en su lugar.
+  const parsed = parseNote(input.note, true);
+  if ("error" in parsed) return { error: parsed.error };
+
+  const admin = createAdminClient();
+
+  const { data: agency, error: readError } = await admin
+    .from("agencies")
+    .select("id, name, previous_name")
+    .eq("id", input.agencyId)
+    .maybeSingle();
+
+  if (readError || !agency) {
+    return { error: "No se encontró esa agencia" };
+  }
+
+  // ── GUARDA 1: tiene que haber un cambio de nombre pendiente ──
+  //
+  // Sin pedido abierto esta acción no significa nada: no hay nombre al que
+  // volver. La interfaz ya no la ofrece en ese caso, pero una server action se
+  // invoca sin pasar por el render, así que la barrera que cuenta es ésta.
+  if (!agency.previous_name) {
+    return {
+      error:
+        "Esta inmobiliaria no tiene un cambio de nombre pendiente, así que no hay nada que revertir.",
+    };
+  }
+
+  // ── GUARDA 2: tiene que HABER ESTADO aprobada ────────────────
+  //
+  // ⚠⚠ SIN ESTO, UN BOTÓN QUE DICE "RECHAZAR" APRUEBA UNA INMOBILIARIA.
+  //
+  // Esta acción escribe `approval_status = 'approved'` porque su trabajo es
+  // RESTAURAR el estado anterior. Pero una agencia que NUNCA estuvo aprobada no
+  // tiene estado anterior que restaurar: dejarla aprobada no sería revertir,
+  // sería otorgarle una aprobación que nadie le dio —salteando la verificación
+  // de matrícula— y encima por la vía de un botón cuyo verbo es el contrario.
+  //
+  // Hoy ese caso es el ÚNICO alcanzable, porque una agencia aprobada todavía no
+  // puede cambiar su nombre (`updateAgencyIdentityAction` la bloquea). O sea que
+  // sin esta guarda, la acción sería un escalado de privilegio disfrazado de
+  // rechazo desde el primer día. Ver el informe.
+  //
+  // FALLA CERRADA: si no se puede probar que estuvo aprobada, la acción no
+  // procede y el dueño usa el rechazo de siempre, que es justamente el correcto
+  // para un alta que nunca se aprobó.
+  const { data: previousApproval } = await admin
+    .from("agency_reviews")
+    .select("id")
+    .eq("agency_id", input.agencyId)
+    .eq("decision", "approved")
+    .limit(1)
+    .maybeSingle();
+
+  if (!previousApproval) {
+    return {
+      error:
+        "Esta inmobiliaria nunca estuvo aprobada, así que no hay un estado anterior al que devolverla. Si el nombre no corresponde, usá «Rechazar la inmobiliaria» y explicá el motivo.",
+    };
+  }
+
+  const restoredName = agency.previous_name;
+
+  // Una sola escritura: el nombre vuelve, el rastro se limpia y la agencia
+  // queda aprobada. No hay estado intermedio posible.
+  const { error: updateError } = await admin
+    .from("agencies")
+    .update({
+      name: restoredName,
+      previous_name: null,
+      name_change_requested_at: null,
+      approval_status: "approved",
+    })
+    .eq("id", input.agencyId);
+
+  if (updateError) {
+    // ⚠ SE TRADUCE CON `status: "approved"`, Y NO ES UN DETALLE. Este UPDATE
+    // mete la fila DENTRO del predicado del índice parcial de matrícula
+    // (`WHERE approval_status = 'approved' AND license_number IS NOT NULL`), así
+    // que puede chocar con otra agencia aprobada de la misma ciudad que tenga la
+    // misma matrícula — exactamente como al aprobar. Pasar otro `status` haría
+    // que el choque saliera con el mensaje genérico "no se pudo", perdiendo la
+    // matrícula en conflicto y la explicación de la regla.
+    return { error: translateApprovalWriteError(updateError, "approved") };
+  }
+
+  // ── El motivo, donde el proyecto ya guarda esa información ───
+  //
+  // `agency_reviews`, vía `logDecision`, igual que el rechazo de la agencia.
+  //
+  // ⚠ SE REGISTRA COMO `'rejected'` PORQUE EL CHECK DE LA COLUMNA NO ADMITE UN
+  // VALOR NUEVO. Medido: `agency_reviews_decision_check` acepta seis valores
+  // —approved, rejected, plan_canceled, subscription_canceled,
+  // subscription_restored, plan_changed— y ninguno es específico de un rechazo
+  // de nombre. Agregar uno es un cambio de base, que acá no corresponde.
+  //
+  // Por eso la NOTA lleva un prefijo fijo que la identifica, y ahí está también
+  // el único registro que queda de los dos nombres: `previous_name` se limpia
+  // en este mismo UPDATE, así que si el par no se escribiera acá, qué nombre se
+  // rechazó y a cuál se volvió no se podría reconstruir desde ninguna parte.
+  const noteWithContext = `${NAME_REJECTION_PREFIX}: «${agency.name}» → se restauró «${restoredName}». Motivo: ${parsed.note}`;
+
+  const logError = await logDecision(
+    input.agencyId,
+    "rejected",
+    noteWithContext,
+    auth.ownerId
+  );
+  if (logError) return logError;
+
+  revalidatePath("/admin");
+  // La agencia vuelve a ser visible: su sitio de marca y su panel tienen que
+  // reflejarlo sin esperar a que algo se revalide solo.
+  revalidatePath("/dashboard/preferencias");
 }
 
 // ─── Eje comercial: cancelar pedido, dar de baja, reactivar ───

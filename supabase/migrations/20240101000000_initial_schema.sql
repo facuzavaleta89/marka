@@ -34,6 +34,11 @@
 --     colegio de corredores y aprobación a mano del dueño desde /admin.
 --     Backfill aplicado: las 10 agencias existentes quedaron en 'approved' y sin
 --     matrícula. Incluidos abajo con sus índices y su RLS.
+--   * previous_name y name_change_requested_at en agencies: YA MIGRADAS
+--     (12 sep 2026). Rastro de un cambio de nombre esperando decisión, para que
+--     el panel /admin distinga un alta nueva de una agencia que ya venía
+--     funcionando y solo se cambió el nombre. Las dos nullables, sin default y
+--     sin CHECK. Incluidas abajo con sus COMMENT ON.
 --   * check_agency_approved() + trg_check_agency_approved sobre properties, y
 --     check_property_limit() actualizada (sin fila de suscripción → límite 0):
 --     YA MIGRADOS (28 ago 2026). Son los DOS gates de publicación, incluidos
@@ -169,14 +174,54 @@ CREATE TABLE agencies (
   -- existían al migrar se backfillearon a 'approved'.
   approval_status TEXT NOT NULL DEFAULT 'pending'
               CHECK (approval_status IN ('pending', 'approved', 'rejected')),
+  -- ─── Rastro de un cambio de nombre esperando decisión ──────
+  -- (YA MIGRADO, 12 sep 2026. Las dos nullables, sin default y sin CHECK.)
+  --
+  -- ⚠ PARA QUÉ EXISTEN: cambiar el nombre de una agencia la devuelve a
+  -- 'pending', porque el colegio de corredores regula los nombres comerciales.
+  -- Sin estas dos columnas, el dueño de la plataforma veía "Pendiente" y NO
+  -- podía distinguir un alta nueva de una agencia que ya venía funcionando y
+  -- solo se cambió el nombre, ni saber cómo se llamaba antes —el `UPDATE`
+  -- pisaba `name` y el valor viejo desaparecía—. Aprobaba a ciegas.
+  --
+  -- ⚠ VAN SIEMPRE JUNTAS: se escriben juntas al pedir el cambio (en la misma
+  -- escritura que devuelve la agencia a la cola) y se limpian juntas al
+  -- resolverlo, tanto al aprobar como al rechazar. Una sola cargada es un
+  -- estado que no significa nada y que ninguna pantalla sabe leer.
+  --
+  -- ⚠ AL RECHAZAR NO SE REVIERTE EL NOMBRE: la agencia queda con el nombre
+  -- nuevo y en 'rejected'. Mientras está rechazada no se muestra en ningún
+  -- lado (la primera condición de agency_is_publicly_visible() es estar
+  -- aprobada), así que el nombre sin aprobar no llega al público; y revertirlo
+  -- en silencio le borraría a la agencia lo que pidió, dejándola leer un motivo
+  -- de rechazo sobre un nombre que ya no ve en ninguna pantalla.
+  --
+  -- Los dos comentarios de abajo son los de la base, transcritos textualmente
+  -- (medidos con col_description sobre public.agencies).
+  --
+  -- "Nombre que tenía la agencia antes del cambio pendiente de aprobación. Se
+  --  escribe al pedir el cambio y se limpia al resolverlo (aprobar o rechazar).
+  --  NULL = no hay cambio de nombre pendiente."
+  previous_name TEXT,
+  -- "Momento en que se pidió el cambio de nombre. Su presencia es lo que
+  --  distingue, en approval_status=pending, un alta nueva de una agencia que ya
+  --  venía funcionando y cambió su nombre. Se limpia junto con previous_name."
+  name_change_requested_at TIMESTAMPTZ,
   -- Branding para la futura vista white-label (plan profesional/premium).
   brand_color TEXT,                       -- ej: "#A0522D" (override del acento)
   created_at  TIMESTAMPTZ DEFAULT now()
 );
 -- Nota de fidelidad sobre el ORDEN de columnas: tenant_type, phone_wa,
--- license_number y approval_status se agregaron por ALTER, así que en la base
--- real están al final (posiciones 9 a 12). Acá van en su lugar lógico, que es
--- más legible y no cambia nada funcional: todo el acceso es por nombre.
+-- license_number, approval_status, previous_name y name_change_requested_at se
+-- agregaron por ALTER, así que en la base real están al final (posiciones 9 a
+-- 14). Acá van en su lugar lógico, que es más legible y no cambia nada
+-- funcional: todo el acceso es por nombre.
+
+-- Los COMMENT ON de las dos columnas nuevas, tal como están aplicados en la base.
+COMMENT ON COLUMN agencies.previous_name IS
+  'Nombre que tenía la agencia antes del cambio pendiente de aprobación. Se escribe al pedir el cambio y se limpia al resolverlo (aprobar o rechazar). NULL = no hay cambio de nombre pendiente.';
+COMMENT ON COLUMN agencies.name_change_requested_at IS
+  'Momento en que se pidió el cambio de nombre. Su presencia es lo que distingue, en approval_status=pending, un alta nueva de una agencia que ya venía funcionando y cambió su nombre. Se limpia junto con previous_name.';
 
 -- ─── TABLA: subscriptions ────────────────────────────────────
 -- Una suscripción por agencia. Controla el plan y el límite de propiedades.

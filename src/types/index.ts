@@ -187,6 +187,24 @@ export interface Agency {
   // Lo decide a mano el dueño de la plataforma desde /admin; el DEFAULT de la
   // base es 'pending', así que toda agencia nueva nace pendiente.
   approval_status: ApprovalStatus;
+  // ─── Rastro de un cambio de nombre esperando decisión ───────
+  //
+  // Las dos van juntas SIEMPRE: se escriben juntas al pedir el cambio y se
+  // limpian juntas al resolverlo (aprobar o rechazar). Una sola cargada es un
+  // estado que no significa nada.
+  //
+  // Comentarios de la base, transcritos:
+  //
+  //   previous_name            → "Nombre que tenía la agencia antes del cambio
+  //     pendiente de aprobación. Se escribe al pedir el cambio y se limpia al
+  //     resolverlo (aprobar o rechazar). NULL = no hay cambio de nombre
+  //     pendiente."
+  //   name_change_requested_at → "Momento en que se pidió el cambio de nombre.
+  //     Su presencia es lo que distingue, en approval_status=pending, un alta
+  //     nueva de una agencia que ya venía funcionando y cambió su nombre. Se
+  //     limpia junto con previous_name."
+  previous_name: string | null;
+  name_change_requested_at: string | null;
   logo_url: string | null;
   website: string | null;
   brand_color: string | null; // override del acento para futura vista white-label

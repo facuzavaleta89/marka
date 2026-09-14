@@ -25,7 +25,28 @@ import { NextResponse, type NextRequest } from "next/server";
 // devolvería HTML con estado 200, que el cliente leería como éxito.
 const PROTECTED_PREFIXES = ["/dashboard", "/admin", "/register/plan"];
 
+// ══════════════════════════════════════════════════════════════
+// ⚠ REFRESCAR LA SESIÓN Y EXIGIRLA SON DOS COSAS DISTINTAS, Y ESTE PROXY YA
+// LAS DISTINGUE. NO CONFUNDIRLAS AL LEER LA LISTA DE ARRIBA.
+// ══════════════════════════════════════════════════════════════
+//
+//   · REFRESCAR la sesión lo hace `updateSession(request)`, abajo, SIN MIRAR
+//     `PROTECTED_PREFIXES`: se ejecuta en TODA ruta que pase el `matcher` del
+//     final del archivo. O sea en la home, en `/[slug]`, en `/login` y en el
+//     área privada por igual. Es lo que mantiene viva la cookie de Supabase.
+//   · EXIGIRLA es lo único que gobierna `PROTECTED_PREFIXES`: sin sesión,
+//     redirect al login.
+//
+// Consecuencia que conviene tener escrita porque es fácil leerla al revés: que
+// una ruta NO esté en esa lista no significa que su sesión no se refresque.
+// `/[slug]` —el sitio de marca— no está y no debe estar (es una página pública),
+// y aun así su sesión SÍ se refresca, porque el `matcher` la cubre: no empieza
+// con `_next/static` ni `_next/image`, no es `favicon.ico` y no termina en una
+// extensión de imagen. No hace falta agregar nada para que una pantalla pública
+// futura pueda reconocer a un usuario logueado: la cookie ya llega fresca.
 export async function proxy(request: NextRequest) {
+  // Refresca la sesión en TODA ruta cubierta por el matcher (ver el bloque de
+  // arriba). Devuelve el usuario solo para decidir los redirects de abajo.
   const { supabaseResponse, user } = await updateSession(request);
 
   const { pathname } = request.nextUrl;

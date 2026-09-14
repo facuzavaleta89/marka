@@ -26,6 +26,9 @@ type AgencyQueryRow = {
   slug: string;
   license_number: string | null;
   approval_status: string;
+  // Rastro de un cambio de nombre esperando decisión. Ver el tipo `Agency`.
+  previous_name: string | null;
+  name_change_requested_at: string | null;
   subscription:
     | AgencySubscriptionEmbed
     | AgencySubscriptionEmbed[]
@@ -73,6 +76,7 @@ export default async function AdminPage() {
     { count: leadsMonthCount },
     { data: propertyOwners },
     { data: leadOwners },
+    { data: reviewRows },
   ] = await Promise.all([
     // La lista parte de AGENCIES, no de subscriptions. El sentido importa: esta
     // es la única pantalla donde se aprueba una agencia, así que ninguna agencia
@@ -82,8 +86,13 @@ export default async function AdminPage() {
     // Columnas explícitas, nunca "*".
     admin
       .from("agencies")
+      // ⚠ `previous_name` y `name_change_requested_at` TIENEN QUE ESTAR
+      // NOMBRADAS. Es una lista explícita de columnas: lo que no se nombra no
+      // llega, y llegaría como `undefined` sin que nada falle — el panel
+      // mostraría "alta nueva" para TODA agencia pendiente, que es exactamente
+      // el problema que estas columnas vienen a resolver, y en silencio.
       .select(
-        "id, name, slug, license_number, approval_status, subscription:subscriptions(plan, pending_plan, status, activated_at, current_period_end), city:cities(name)"
+        "id, name, slug, license_number, approval_status, previous_name, name_change_requested_at, subscription:subscriptions(plan, pending_plan, status, activated_at, current_period_end), city:cities(name)"
       )
       .order("created_at", { ascending: false }),
 
@@ -137,6 +146,33 @@ export default async function AdminPage() {
     // se puede resolver con una lectura barata y potencialmente desactualizada.
     admin.from("properties").select("agency_id, status"),
     admin.from("leads").select("agency_id"),
+
+    // ══════════════════════════════════════════════════════════
+    // ⚠ ¿ESTA AGENCIA ES UN ALTA NUEVA O YA PASÓ POR ACÁ?
+    // ══════════════════════════════════════════════════════════
+    //
+    // Sin esto, el dueño ve el MISMO badge "Pendiente" para una inmobiliaria que
+    // se registró hace diez minutos y para una que ya revisó, rechazó y que
+    // volvió a la cola tras corregir sus datos. Son dos trabajos distintos: en
+    // uno está aprobando un alta y en el otro está revisando una corrección
+    // sobre algo que ya miró —y que ya tiene un motivo de rechazo escrito por él
+    // mismo—. Hasta ahora `agency_reviews` se ESCRIBÍA y no se leía desde
+    // ninguna pantalla.
+    //
+    // Es una lectura más, no un cambio de base: las decisiones ya están ahí.
+    // Se traen todas y se agrupan en memoria, mismo patrón que los dos conteos
+    // de arriba (una lectura por tabla, no N consultas por agencia).
+    //
+    // ⚠ EL HISTORIAL TIENE HUECOS CONOCIDOS Y ESO NO INVALIDA LA SEÑAL.
+    // `reopenAgencyAction` no registra nada (es explícito en su comentario), el
+    // reenvío del cliente tampoco, y `logDecision` es best-effort. O sea que
+    // "sin filas" no prueba que sea un alta nueva. Por eso el badge solo se
+    // muestra cuando HAY filas —afirma lo que puede probar— y su ausencia no
+    // afirma nada.
+    admin
+      .from("agency_reviews")
+      .select("agency_id, decision, created_at")
+      .order("created_at", { ascending: false }),
   ]);
 
   // Conjuntos de agencias "no vacías". Si alguna de las dos lecturas fallara,
@@ -167,6 +203,43 @@ export default async function AdminPage() {
     occupiedByAgency.set(agencyId, (occupiedByAgency.get(agencyId) ?? 0) + 1);
   }
 
+  // Historial de decisiones por agencia. Solo interesan las del EJE DE
+  // APROBACIÓN (`approved` / `rejected`): las comerciales —dar de baja, cambiar
+  // de plan— viven en la misma tabla pero no dicen nada sobre si esta agencia ya
+  // fue revisada como inmobiliaria, que es la pregunta de acá.
+  //
+  // La consulta ya viene ordenada por fecha descendente, así que la PRIMERA que
+  // se ve de cada agencia es la más reciente.
+  const reviewHistory = new Map<
+    string,
+    { count: number; lastDecision: string; lastAt: string }
+  >();
+  // Agencias con AL MENOS UNA aprobación registrada, o sea que alguna vez
+  // estuvieron funcionando.
+  //
+  // ⚠ ES LO QUE HABILITA "RECHAZAR EL NOMBRE", y no es un detalle de interfaz:
+  // esa acción deja la agencia `approved`, así que sobre una que nunca lo estuvo
+  // no revertiría nada — le OTORGARÍA una aprobación que nadie le dio, por la
+  // vía de un botón que dice "rechazar". `rejectNameChangeAction` repite esta
+  // misma verificación contra la base, que es la barrera real.
+  const everApproved = new Set<string>();
+  for (const row of reviewRows ?? []) {
+    const decision = row.decision as string;
+    if (decision !== "approved" && decision !== "rejected") continue;
+    const agencyId = row.agency_id as string;
+    if (decision === "approved") everApproved.add(agencyId);
+    const previous = reviewHistory.get(agencyId);
+    if (previous) {
+      previous.count += 1;
+      continue;
+    }
+    reviewHistory.set(agencyId, {
+      count: 1,
+      lastDecision: decision,
+      lastAt: row.created_at as string,
+    });
+  }
+
   // Mapeo a la forma que consume la tabla. La suscripción puede faltar: en ese
   // caso `subscription` queda en null y la tabla lo muestra como "sin plan", no
   // como "undefined".
@@ -180,6 +253,11 @@ export default async function AdminPage() {
         slug: agency.slug,
         license_number: agency.license_number,
         approval_status: agency.approval_status as ApprovalStatus,
+        // Las dos van juntas: se escriben juntas y se limpian juntas. La fila
+        // las expone tal cual y la tabla decide cómo leerlas.
+        previous_name: agency.previous_name,
+        name_change_requested_at: agency.name_change_requested_at,
+        ever_approved: everApproved.has(agency.id),
         city_name: city?.name ?? null,
         // Vacía = sin propiedades y sin consultas. Es la única condición bajo la
         // que se ofrece eliminar.
@@ -187,6 +265,9 @@ export default async function AdminPage() {
           !agenciesWithProperties.has(agency.id) &&
           !agenciesWithLeads.has(agency.id),
         occupied_properties: occupiedByAgency.get(agency.id) ?? 0,
+        // Revisiones de aprobación previas. `null` = no hay ninguna registrada
+        // (ver la advertencia sobre los huecos del historial en la consulta).
+        previous_review: reviewHistory.get(agency.id) ?? null,
         subscription: subscription
           ? {
               plan: subscription.plan as SubscriptionPlan,
