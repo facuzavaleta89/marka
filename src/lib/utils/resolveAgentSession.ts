@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { Agency, Agent } from "@/types";
@@ -135,4 +136,55 @@ export async function requireAgentSession(): Promise<
   if (session.status === "unlinked") redirect("/logout?reason=no_agency");
 
   return session;
+}
+
+// ─── Variante para PÁGINAS PÚBLICAS ───────────────────────────
+//
+// Una pantalla pública que quiere reconocer a un usuario logueado —pero que
+// tiene que seguir funcionando, y funcionando RÁPIDO, para el anónimo— no puede
+// llamar a `resolveAgentSession()` de frente: eso son dos viajes (el `getUser()`
+// de Supabase Auth y el select de `agents`) que el 99 % del tráfico pagaría para
+// enterarse de que no hay sesión.
+//
+// ══════════════════════════════════════════════════════════════
+// ⚠ EL DESCARTE RÁPIDO: SI NO HAY COOKIE, NO HAY NADA QUE RESOLVER
+// ══════════════════════════════════════════════════════════════
+//
+// `@supabase/ssr` guarda la sesión en cookies cuyo nombre arranca con `sb-` y
+// contiene `auth-token` (`sb-<project-ref>-auth-token`, más los sufijos `.0`,
+// `.1`… cuando el token se parte en varias por tamaño). Si NO hay ninguna, no
+// puede haber sesión, y eso se sabe leyendo las cookies del request —que ya
+// están en memoria, sin red y sin base—.
+//
+// Costo real para un visitante anónimo: recorrer la lista de cookies del
+// request. CERO consultas, cero viajes. Para un usuario logueado el costo es el
+// mismo que antes, y encima suele estar ya pago: `resolveAgentSession` está
+// envuelto en `cache()`, así que si la misma navegación ya lo resolvió, esto no
+// agrega nada.
+//
+// ⚠ ES UN DESCARTE, NO UNA AUTORIZACIÓN. Una cookie presente no prueba nada: el
+// token puede estar vencido, ser inválido o de otro proyecto. Por eso el camino
+// positivo NO confía en la cookie y sigue derecho a `resolveAgentSession()`, que
+// valida contra Supabase. Esto solo puede decir que NO hay sesión, nunca que sí.
+// Nunca usarlo como barrera de acceso.
+async function hasAuthCookie(): Promise<boolean> {
+  const store = await cookies();
+  return store
+    .getAll()
+    .some(
+      (cookie) =>
+        cookie.name.startsWith("sb-") && cookie.name.includes("auth-token")
+    );
+}
+
+/**
+ * Resuelve la sesión SOLO si hay indicios de que existe. Para pantallas públicas
+ * que quieren reconocer a un usuario logueado sin cobrarle el trabajo al
+ * visitante anónimo.
+ *
+ * Devuelve `no_session` sin consultar nada cuando no hay cookie de sesión.
+ */
+export async function resolveAgentSessionIfPresent(): Promise<AgentSession> {
+  if (!(await hasAuthCookie())) return { status: "no_session" };
+  return resolveAgentSession();
 }

@@ -14,8 +14,10 @@ import {
   Trash2,
   CircleSlash,
   ArrowLeftRight,
+  TriangleAlert,
 } from "lucide-react";
 import { ErrorBanner } from "@/components/feedback/ErrorBanner";
+import { Notice } from "@/components/feedback/Notice";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -57,6 +59,7 @@ import {
   changePlanAction,
   deleteAgencyAction,
   rejectAgencyAction,
+  rejectNameChangeAction,
   reopenAgencyAction,
   restoreSubscriptionAction,
 } from "./actions";
@@ -108,6 +111,42 @@ export interface AgencyRow {
   // que check_property_limit() en la base. Sirve para anticipar si un cambio de
   // plan entraría; la barrera real vuelve a contar en changePlanAction.
   occupied_properties: number;
+  // Revisiones de aprobación ya tomadas sobre esta agencia (`approved` /
+  // `rejected`), de `agency_reviews`. `null` = ninguna registrada.
+  //
+  // ⚠ SIRVE PARA DISTINGUIR UN ALTA NUEVA DE UN REENVÍO. Sin esto, una
+  // inmobiliaria que se registró hace diez minutos y una que ya fue rechazada y
+  // volvió a la cola tras corregir sus datos se ven EXACTAMENTE IGUAL: el mismo
+  // badge "Pendiente", sin fecha y sin historia. Son dos trabajos distintos.
+  previous_review: {
+    count: number;
+    lastDecision: string;
+    lastAt: string;
+  } | null;
+  // ─── Cambio de nombre esperando decisión ───────────────────
+  //
+  // Las dos columnas de `agencies`, tal cual. Van juntas siempre: se escriben
+  // juntas al pedir el cambio y se limpian juntas al resolverlo.
+  //
+  // ⚠ ES LA SEÑAL MÁS IMPORTANTE DE ESTA TABLA sobre una agencia pendiente.
+  // Sin ella, aprobar un ALTA NUEVA y aprobar un NOMBRE NUEVO sobre una cuenta
+  // que ya venía funcionando se ven idénticos: el mismo badge "Pendiente". Son
+  // dos trabajos distintos y el segundo necesita, para poder decidirse, un dato
+  // que hasta ahora se perdía en el `UPDATE`: cómo se llamaba antes.
+  previous_name: string | null;
+  name_change_requested_at: string | null;
+  // ¿Tiene alguna aprobación registrada, o sea que alguna vez estuvo
+  // funcionando? Lo calcula la página desde `agency_reviews`.
+  //
+  // ⚠ Es lo que habilita "Rechazar el nombre": esa acción deja la agencia
+  // aprobada, así que sobre una que nunca lo estuvo no revertiría nada, le
+  // otorgaría una aprobación. La action lo vuelve a verificar contra la base.
+  ever_approved: boolean;
+}
+
+/** ¿Esta fila tiene un cambio de nombre esperando decisión? */
+function hasPendingNameChange(row: AgencyRow): boolean {
+  return row.previous_name !== null;
 }
 
 interface AgenciesTableProps {
@@ -236,6 +275,103 @@ function SubscriptionStatusBadge({ sub }: { sub: AgencySubscription | null }) {
   );
 }
 
+// ─── ¿Alta nueva, o vuelta a la cola? ─────────────────────────
+//
+// ⚠ ES LA DIFERENCIA ENTRE APROBAR UN ALTA Y REVISAR UNA CORRECCIÓN, y hasta
+// ahora el panel no la mostraba: las dos se veían como un badge "Pendiente"
+// pelado. El dueño no tenía forma de saber si estaba mirando algo por primera
+// vez o algo que él mismo ya había rechazado —ni cuándo—, así que revisaba a
+// ciegas.
+//
+// SE MUESTRA SOLO SOBRE UNA AGENCIA `pending`: en una aprobada o rechazada el
+// estado ya cuenta la historia, y el badge sería ruido en toda la tabla.
+//
+// ⚠ AFIRMA SOLO LO QUE PUEDE PROBAR. Aparece cuando HAY revisiones registradas;
+// su ausencia NO afirma que sea un alta nueva, porque el historial tiene huecos
+// conocidos (`reopenAgencyAction` no registra, el reenvío del cliente tampoco, y
+// el registro de decisiones es best-effort). Por eso no existe el badge inverso
+// "Alta nueva": sería una afirmación que los datos no sostienen.
+//
+// Tratamiento: `mist`/`graphite`, deliberadamente NEUTRO. No es un estado de la
+// cuenta ni una alarma —es contexto sobre el trabajo que el dueño tiene delante—
+// y no puede competir con los dos badges de estado que ya conviven en esa celda.
+// ─── Cambio de nombre: la señal, junto al estado ──────────────
+//
+// ⚠ ES LO PRIMERO QUE EL DUEÑO NECESITA SABER PARA DECIDIR, así que se ve SIN
+// ABRIR NADA, en la propia fila. Va en terracota —el único acento del sistema—
+// porque es lo accionable de esa fila: no es un estado más de la cuenta, es
+// "esto que estás por aprobar no es un alta, es un nombre".
+//
+// Gana sobre `ResubmissionBadge`: los dos hablan de "esta pendiente ya venía de
+// antes", pero éste dice ADEMÁS qué cambió, que es lo que permite decidir. Dos
+// badges apilados diciendo lo mismo sería ruido en la celda que más se mira.
+function NameChangeBadge({ row }: { row: AgencyRow }) {
+  if (!hasPendingNameChange(row)) return null;
+
+  return (
+    <span
+      className="inline-block font-sans text-[11px] font-semibold uppercase tracking-wide rounded-sm px-2 py-0.5 bg-terracota text-paper"
+      title={
+        row.name_change_requested_at
+          ? `Pedido el ${formatActivatedAt(row.name_change_requested_at)}`
+          : undefined
+      }
+    >
+      Cambio de nombre
+    </span>
+  );
+}
+
+// El nombre anterior, junto al nuevo. Va en la celda del NOMBRE y no en un
+// tooltip ni en una vista de detalle: el dueño compara los dos textos para
+// decidir, así que tienen que estar uno debajo del otro.
+//
+// El anterior va TACHADO y en `graphite`: se lee de un vistazo cuál rige y cuál
+// se pide, sin necesidad de leer la etiqueta.
+function PreviousNameLine({ row }: { row: AgencyRow }) {
+  if (!hasPendingNameChange(row)) return null;
+
+  return (
+    <span className="mt-0.5 block font-sans text-xs text-graphite">
+      Antes:{" "}
+      <span className="line-through">{row.previous_name}</span>
+    </span>
+  );
+}
+
+function ResubmissionBadge({
+  status,
+  review,
+  row,
+}: {
+  status: ApprovalStatus;
+  review: AgencyRow["previous_review"];
+  row: AgencyRow;
+}) {
+  // Un cambio de nombre ya cuenta —mejor— la misma historia: que esta agencia no
+  // es un alta nueva. Su badge lo reemplaza en vez de apilarse.
+  if (hasPendingNameChange(row)) return null;
+  if (status !== "pending" || !review) return null;
+
+  const label =
+    review.lastDecision === "rejected"
+      ? `Reenvío · rechazada ${formatActivatedAt(review.lastAt)}`
+      : `Reenvío · aprobada ${formatActivatedAt(review.lastAt)}`;
+
+  return (
+    <span
+      className="inline-block font-sans text-[11px] font-medium rounded-sm px-2 py-0.5 bg-mist text-graphite"
+      title={
+        review.count > 1
+          ? `${review.count} revisiones previas`
+          : "1 revisión previa"
+      }
+    >
+      {label}
+    </span>
+  );
+}
+
 // Badge del eje de aprobación. Tratamiento visual distinto del de suscripción a
 // propósito: son dos ejes y no deben leerse como lo mismo.
 function ApprovalBadge({ status }: { status: ApprovalStatus }) {
@@ -308,6 +444,8 @@ function limitLabel(plan: SubscriptionPlan): string {
 interface RowActionAvailability {
   approve: boolean;
   reject: boolean;
+  /** Rechazar solo el NOMBRE, dejando la inmobiliaria funcionando. */
+  rejectName: boolean;
   reopen: boolean;
   activate: boolean;
   cancelPlan: boolean;
@@ -321,10 +459,34 @@ function availableActions(row: AgencyRow): RowActionAvailability {
   const sub = row.subscription;
   const hasPendingPlan = sub?.pending_plan != null;
 
+  // ══════════════════════════════════════════════════════════
+  // ⚠ CON UN CAMBIO DE NOMBRE PENDIENTE, RECHAZAR SON DOS COSAS
+  // ══════════════════════════════════════════════════════════
+  //
+  // Son dos decisiones distintas y hacen falta LAS DOS:
+  //
+  //   · rechazar el NOMBRE       → se revierte el nombre y la agencia sigue
+  //     funcionando, como antes de pedir el cambio. Es el caso normal: el
+  //     nombre no corresponde, pero la inmobiliaria sí.
+  //   · rechazar la INMOBILIARIA → lo de siempre: queda fuera, su sitio se
+  //     apaga y sus propiedades desaparecen del mapa. Es el caso duro —pidió
+  //     algo indebido, o hay un motivo de fondo—, y sin él se perdería la
+  //     capacidad de sacar a una agencia que se cambió el nombre a algo que no
+  //     corresponde de ninguna manera.
+  //
+  // ⚠ PARA UN ALTA NUEVA NO CAMBIA NADA: sin cambio de nombre pendiente,
+  // `rejectName` es false y se ofrece solo el rechazo de siempre.
+  const nameChange = hasPendingNameChange(row);
+
   return {
     // Eje de legitimidad
     approve: row.approval_status === "pending",
     reject: row.approval_status === "pending",
+    // Solo con un cambio de nombre pendiente Y sobre una agencia que alguna vez
+    // estuvo aprobada: si nunca lo estuvo, esta acción no revertiría nada (ver
+    // `ever_approved`). `rejectNameChangeAction` repite las dos condiciones.
+    rejectName:
+      row.approval_status === "pending" && nameChange && row.ever_approved,
     reopen: row.approval_status === "rejected",
     // Eje comercial. Activar y cancelar son las dos salidas del mismo estado.
     activate: hasPendingPlan,
@@ -388,6 +550,7 @@ function RowActions({
   layout,
   onApprove,
   onReject,
+  onRejectName,
   onReopen,
   onActivate,
   onCancelPlan,
@@ -401,6 +564,7 @@ function RowActions({
   layout: "stacked" | "inline";
   onApprove: () => void;
   onReject: () => void;
+  onRejectName: () => void;
   onReopen: () => void;
   onActivate: () => void;
   onCancelPlan: () => void;
@@ -416,6 +580,10 @@ function RowActions({
       : "flex flex-wrap justify-end items-center gap-2";
 
   const hasMenu =
+    // Con un cambio de nombre pendiente, el rechazo de la inmobiliaria baja al
+    // menú: si no se cuenta acá, el menú no se renderiza y la acción dura
+    // quedaría inalcanzable — el caso duro desaparecería sin dar ninguna señal.
+    (can.reject && can.rejectName) ||
     can.cancelPlan ||
     can.changePlan ||
     can.suspend ||
@@ -424,7 +592,24 @@ function RowActions({
 
   return (
     <div className={wrapper}>
-      {/* Eje de aprobación */}
+      {/* ══════════════════════════════════════════════════════
+          Eje de aprobación
+
+          ⚠ CON UN CAMBIO DE NOMBRE PENDIENTE HAY DOS RECHAZOS, y no pueden
+          convivir como dos botones rojos gemelos en la misma fila: el dueño
+          decide rápido y las consecuencias son opuestas —una deja la agencia
+          funcionando, la otra la saca del mapa—.
+
+          El reparto sigue el criterio que este panel ya tiene escrito (DESIGN
+          §12): en la FILA lo que hace avanzar el flujo, en el menú `⋯` lo
+          excepcional y lo destructivo. Con un cambio de nombre:
+
+            fila  → "Aprobar el nombre" · "Rechazar el nombre"   (el caso normal)
+            menú  → "Rechazar la inmobiliaria"                   (el caso duro)
+
+          ⚠ PARA UN ALTA NUEVA NO CAMBIA NADA: `rejectName` es false, y
+          "Rechazar" sigue en la fila con su texto y su tratamiento de siempre.
+          ══════════════════════════════════════════════════════ */}
       {can.approve && (
         <RowButton
           variant="primary"
@@ -432,10 +617,25 @@ function RowActions({
           onClick={onApprove}
           icon={<ShieldCheck size={14} />}
         >
-          Aprobar
+          {can.rejectName ? "Aprobar el nombre" : "Aprobar"}
         </RowButton>
       )}
-      {can.reject && (
+      {/* El rechazo del NOMBRE: la agencia sigue funcionando, así que va en
+          `secondary` y no en rojo. El rojo de esta fila queda reservado para el
+          rechazo que efectivamente la saca. */}
+      {can.rejectName && (
+        <RowButton
+          variant="secondary"
+          loading={loading}
+          onClick={onRejectName}
+          icon={<Undo2 size={14} />}
+        >
+          Rechazar el nombre
+        </RowButton>
+      )}
+      {/* El rechazo de la AGENCIA queda en la fila SOLO cuando es el único que
+          hay (alta nueva). Con un cambio de nombre pendiente se va al menú. */}
+      {can.reject && !can.rejectName && (
         <RowButton
           variant="destructive"
           loading={loading}
@@ -480,6 +680,19 @@ function RowActions({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-60">
+            {/* Rechazar la INMOBILIARIA entera, con un cambio de nombre
+                pendiente. Va acá y no en la fila porque es el caso excepcional
+                —y el destructivo— de los dos rechazos; en rojo, para que no se
+                confunda con el del nombre que quedó arriba. */}
+            {can.reject && can.rejectName && (
+              <DropdownMenuItem
+                onSelect={onReject}
+                className="flex items-center gap-2 text-error focus:text-error"
+              >
+                <ShieldX size={14} />
+                Rechazar la inmobiliaria
+              </DropdownMenuItem>
+            )}
             {can.cancelPlan && (
               <DropdownMenuItem
                 onSelect={onCancelPlan}
@@ -553,6 +766,9 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
   // rechazo, la fecha de vencimiento opcional, el nombre para confirmar el
   // borrado), así que no son confirmaciones sí/no y no van en el AlertDialog.
   const [toReject, setToReject] = useState<AgencyRow | null>(null);
+  // Rechazo del NOMBRE, con su propio panel: pide un motivo igual que el otro,
+  // pero lo que anuncia es lo contrario (la agencia sigue funcionando).
+  const [toRejectName, setToRejectName] = useState<AgencyRow | null>(null);
   const [toActivate, setToActivate] = useState<AgencyRow | null>(null);
   const [toDelete, setToDelete] = useState<AgencyRow | null>(null);
   const [toChangePlan, setToChangePlan] = useState<AgencyRow | null>(null);
@@ -669,6 +885,7 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
       {toReject && (
         <RejectPanel
           row={toReject}
+          mode="agency"
           loading={pendingId === toReject.agency_id}
           onCancel={() => setToReject(null)}
           onConfirm={(note) => {
@@ -676,6 +893,24 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
             setToReject(null);
             run(target.agency_id, () =>
               rejectAgencyAction({ agencyId: target.agency_id, note })
+            );
+          }}
+        />
+      )}
+
+      {/* Rechazo del NOMBRE: mismo panel, otro modo y otra action. La agencia
+          queda funcionando, así que no comparte ni el texto ni el desenlace. */}
+      {toRejectName && (
+        <RejectPanel
+          row={toRejectName}
+          mode="name"
+          loading={pendingId === toRejectName.agency_id}
+          onCancel={() => setToRejectName(null)}
+          onConfirm={(note) => {
+            const target = toRejectName;
+            setToRejectName(null);
+            run(target.agency_id, () =>
+              rejectNameChangeAction({ agencyId: target.agency_id, note })
             );
           }}
         />
@@ -785,6 +1020,9 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
                         <span className="block font-sans text-sm font-medium text-black line-clamp-2">
                           {row.name}
                         </span>
+                        {/* El nombre anterior, pegado al nuevo: es la
+                            comparación que el dueño tiene que hacer. */}
+                        <PreviousNameLine row={row} />
                         {row.city_name && (
                           <span className="block font-sans text-xs text-graphite mt-0.5">
                             {row.city_name}
@@ -805,7 +1043,18 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
 
                       {/* Aprobación */}
                       <td className="px-4 py-3">
-                        <ApprovalBadge status={row.approval_status} />
+                        {/* En columna: el badge del estado arriba y el contexto
+                            del reenvío debajo, que es como se lee (primero qué
+                            es, después de dónde viene). */}
+                        <div className="flex flex-col items-start gap-1">
+                          <ApprovalBadge status={row.approval_status} />
+                          <NameChangeBadge row={row} />
+                          <ResubmissionBadge
+                            status={row.approval_status}
+                            review={row.previous_review}
+                            row={row}
+                          />
+                        </div>
                       </td>
 
                       {/* Plan que rige */}
@@ -851,6 +1100,7 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
                           layout="stacked"
                           onApprove={() => setToApprove(row)}
                           onReject={() => setToReject(row)}
+                          onRejectName={() => setToRejectName(row)}
                           onReopen={() => setToReopen(row)}
                           onActivate={() => setToActivate(row)}
                           onCancelPlan={() => setToCancelPlan(row)}
@@ -882,6 +1132,7 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
                       <p className="font-sans text-sm font-medium text-black truncate">
                         {row.name}
                       </p>
+                      <PreviousNameLine row={row} />
                       <p className="font-sans text-xs text-graphite mt-0.5">
                         Matrícula: {row.license_number ?? "—"}
                         {row.city_name ? ` · ${row.city_name}` : ""}
@@ -900,8 +1151,20 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
                         Activación: {formatActivatedAt(sub?.activated_at ?? null)}
                       </p>
                     </div>
+                    {/* ⚠ Mismo contenido que la tabla de escritorio, en el
+                        mismo orden. El precedente de esta pantalla es caro: las
+                        condiciones de fila estuvieron escritas dos veces y la
+                        copia de mobile se desincronizó, dejando una agencia sin
+                        ningún botón en el celular. Lo que se agrega arriba se
+                        agrega acá. */}
                     <div className="flex flex-col items-end gap-1.5 shrink-0">
                       <ApprovalBadge status={row.approval_status} />
+                      <NameChangeBadge row={row} />
+                      <ResubmissionBadge
+                        status={row.approval_status}
+                        review={row.previous_review}
+                        row={row}
+                      />
                       <SubscriptionStatusBadge sub={sub} />
                     </div>
                   </div>
@@ -917,6 +1180,7 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
                         layout="inline"
                         onApprove={() => setToApprove(row)}
                         onReject={() => setToReject(row)}
+                        onRejectName={() => setToRejectName(row)}
                         onReopen={() => setToReopen(row)}
                         onActivate={() => setToActivate(row)}
                         onCancelPlan={() => setToCancelPlan(row)}
@@ -1137,13 +1401,23 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
 // para "formulario que llena un admin": panel inline (ver CreateAgentForm en
 // TeamContent.tsx), con su propio botón de cerrar y su validación local.
 // El límite de largo se valida también en el server (REJECTION_NOTE_MAX).
+//
+// ⚠ UN SOLO PANEL PARA LOS DOS RECHAZOS, CON MODO. Los dos piden exactamente lo
+// mismo —un motivo obligatorio, con el mismo límite y la misma validación— y lo
+// único que cambia son los textos. Duplicarlo sería la tercera copia divergente
+// que este proyecto ya se cobró dos veces (`AgenciesTable` con las condiciones
+// de fila, `AgentCell` con los estados de la columna).
+type RejectMode = "agency" | "name";
+
 function RejectPanel({
   row,
+  mode,
   loading,
   onCancel,
   onConfirm,
 }: {
   row: AgencyRow;
+  mode: RejectMode;
   loading: boolean;
   onCancel: () => void;
   onConfirm: (note: string) => void;
@@ -1153,16 +1427,37 @@ function RejectPanel({
   const tooLong = trimmed.length > REJECTION_NOTE_MAX;
   const canSubmit = trimmed.length > 0 && !tooLong && !loading;
 
+  const isNameMode = mode === "name";
+  // ⚠ El caso duro sobre una agencia que VENÍA FUNCIONANDO. Es el único que
+  // necesita la advertencia: acá rechazar no es "no la dejamos entrar", es
+  // "la sacamos", y eso apaga un negocio en curso.
+  const wasRunning = !isNameMode && hasPendingNameChange(row);
+
   return (
     <section className="mb-4 bg-paper border border-stone rounded-lg p-6">
       <div className="flex items-start justify-between mb-4">
         <div>
           <h2 className="font-serif text-2xl font-semibold text-black">
-            Rechazar &quot;{row.name}&quot;
+            {isNameMode
+              ? `Rechazar el nombre "${row.name}"`
+              : `Rechazar "${row.name}"`}
           </h2>
           <p className="mt-1 font-sans text-xs text-graphite">
-            El motivo queda registrado para vos. La agencia puede corregir sus
-            datos y volver a pendiente: el rechazo no es definitivo.
+            {isNameMode ? (
+              <>
+                La inmobiliaria vuelve a llamarse{" "}
+                <span className="text-black">
+                  &quot;{row.previous_name}&quot;
+                </span>{" "}
+                y queda aprobada y funcionando, como antes de pedir el cambio. El
+                motivo le llega para que sepa qué proponer en su lugar.
+              </>
+            ) : (
+              <>
+                El motivo queda registrado para vos. La agencia puede corregir
+                sus datos y volver a pendiente: el rechazo no es definitivo.
+              </>
+            )}
           </p>
         </div>
         <button
@@ -1173,6 +1468,33 @@ function RejectPanel({
           <X size={18} />
         </button>
       </div>
+
+      {/* ⚠ LA ADVERTENCIA DEL CASO DURO. Esta agencia venía funcionando —tiene
+          un cambio de nombre pendiente, o sea que ya estaba aprobada— así que
+          rechazarla no es negarle la entrada: es apagarle el negocio. Y el
+          dueño llegó hasta acá desde un menú, en una fila donde el botón
+          visible era el otro rechazo, el inocuo. Sin este cartel las dos
+          acciones se parecen demasiado en el momento de decidir.
+          Tono `warning` y no `error`: no es un error, es una decisión legítima
+          con una consecuencia grande. */}
+      {wasRunning && (
+        <div className="mb-4">
+          <Notice
+            tone="warning"
+            title="Esta inmobiliaria está funcionando hoy"
+            icon={<TriangleAlert size={18} />}
+          >
+            Al rechazarla queda fuera: su sitio de marca se apaga, sus
+            propiedades desaparecen del mapa público y no va a poder publicar
+            nuevas hasta que vuelvas a aprobarla.{" "}
+            <span className="text-black">
+              Si lo único que está mal es el nombre
+            </span>
+            , cerrá esto y usá &quot;Rechazar el nombre&quot;: le revierte el
+            nombre anterior y la deja funcionando.
+          </Notice>
+        </div>
+      )}
 
       <div className="space-y-1.5">
         <Label
@@ -1186,7 +1508,11 @@ function RejectPanel({
           value={note}
           onChange={(e) => setNote(e.target.value)}
           rows={3}
-          placeholder="Ej: la matrícula no figura a nombre de la agencia."
+          placeholder={
+            isNameMode
+              ? "Ej: el colegio no admite ese nombre por su parecido con otra matriculada."
+              : "Ej: la matrícula no figura a nombre de la agencia."
+          }
           className={tooLong ? "border-error" : undefined}
         />
         <p
@@ -1204,7 +1530,11 @@ function RejectPanel({
           disabled={!canSubmit}
           className="h-11 px-4 rounded-md font-sans text-sm font-medium bg-terracota hover:bg-terracota-hover text-paper transition-colors duration-[120ms] disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          {loading ? "Rechazando..." : "Rechazar agencia"}
+          {loading
+            ? "Rechazando..."
+            : isNameMode
+              ? "Rechazar el nombre"
+              : "Rechazar la inmobiliaria"}
         </button>
         <button
           onClick={onCancel}

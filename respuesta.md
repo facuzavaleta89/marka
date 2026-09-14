@@ -1,283 +1,529 @@
-# Documentación del cierre — grupo de coherencia del panel
+# El campo del nombre: la punta que le faltaba al flujo
 
-> **Modo ejecución, solo documentación.** Se modificaron **dos** archivos: `CLAUDE.md` y
-> `PENDIENTES.md`. **No se tocó `src/`, `scripts/`, el archivo de migración ni `DESIGN.md`.**
-> **No se ejecutó ningún comando de git** ni SQL de escritura (las consultas a la base fueron
-> lecturas por el MCP en modo solo lectura, que la Parte 2 d) pedía).
-> **Fecha:** 12 sep 2026.
+> **Modo ejecución.** No se ejecutó ningún comando de git ni SQL de escritura. El MCP se usó solo
+> para leer. No se tocaron la base, el panel de administración, las dos formas de rechazo, la lista
+> de direcciones reservadas, la validación de la dirección, `CLAUDE.md` ni `PENDIENTES.md`.
+>
+> **Fecha:** 13 sep 2026.
 
-**Verificación de que no se tocó código.** Los ocho archivos de `src/` que aparecen como
-modificados hoy comparten un timestamp **idéntico al segundo — 00:05:32 — y el mismo que
-`respuesta.md` de la tanda anterior**, o sea una restauración del árbol, no ediciones mías:
+---
+
+## ⚠ LEER PRIMERO: tres afirmaciones del prompt son falsas, y una decisión no se pudo implementar
+
+Antes de tocar nada fui a verificar el estado del código, y **no coincide con el que el prompt
+describe**. Lo digo derecho porque cambia qué se podía hacer.
+
+| El prompt dice | Medido |
+|---|---|
+| *"NO HAY NINGÚN CAMPO … DONDE CAMBIAR EL NOMBRE"* | **Parcialmente cierto.** El campo **existía** (`AgencyIdentityForm.tsx:143-148`), pero el formulario entero se ocultaba para una agencia aprobada — y **las tres agencias están `approved`**. Efecto observable idéntico: no había dónde cambiarlo |
+| *"El formulario de identidad de la agencia edita la dirección del sitio y el logo"* | **FALSO.** Edita **nombre + matrícula**. La dirección y el logo están en **otros dos formularios**, con sus propias actions |
+| *"llama a una acción que además acepta el nombre, pero nunca se lo manda"* | **FALSO.** `AgencyIdentityForm.tsx:77` llama `updateAgencyIdentityAction(values)` **con** `{name, license_number}` |
+| *"su diálogo de confirmación acumula advertencias"* | **FALSO.** Ese formulario no tiene diálogo de confirmación. El que lo tiene es `AgencySlugForm`, con **una** advertencia |
+| *"cuando el campo exista, le va a bloquear también el logo y la dirección"* (punto 3) | **FALSO.** La guarda vivía solo en `updateAgencyIdentityAction`, que no toca el logo ni la dirección. **Medido:** `updateAgencyLogoAction`, `updateAgencySlugAction` y `updateAgencyPhoneAction` tienen **cero** menciones a `canceled`/`past_due` |
+| *"Existe una guarda que impide pedir un cambio de nombre cuando la agencia está esperando su aprobación inicial"* (punto 6) | **FALSO. No existe.** La guarda que había era la inversa: bloqueaba a las **aprobadas** |
+
+**Los cuatro formularios de agencia, medidos:**
+
+| Componente | Edita | Action |
+|---|---|---|
+| `AgencyIdentityForm` | **nombre + matrícula** | `updateAgencyIdentityAction` |
+| `AgencySlugForm` | solo `slug` | `updateAgencySlugAction` |
+| `AgencyLogoForm` | solo `logo_url` | `updateAgencyLogoAction` |
+| `AgencyPhoneForm` | solo `phone_wa` | `updateAgencyPhoneAction` |
+
+### Qué hice con eso
+
+**El problema real —el nombre no se puede cambiar y todo el flujo quedó inalcanzable— es cierto, y
+lo resolví por completo.** La causa no era un campo faltante sino un gate:
+
+```ts
+// AgencyIdentityForm.tsx:63 (antes)
+const isLocked = approvalStatus === "approved";
+// :129  →  isLocked ? <ReadOnlyIdentity/> : <form>   ← el campo vivía en el else
+```
+
+**Lo que NO hice, y es la decisión que resultó imposible como está descrita:** el **punto 5** pide
+que *"si la agencia cambia el nombre Y la dirección en la misma edición, el diálogo muestre las
+dos"*. Eso exige **un formulario único con un submit único**, y hoy son dos formularios separados,
+con dos actions y dos submits. Fusionarlos sería exactamente lo que el punto 1 prohíbe (*"No
+construyas un formulario nuevo"*), sobre una premisa que resultó falsa. **Las dos advertencias sí
+conviven en la pantalla**, y en §5 está verificado cómo — pero en dos tarjetas, no en un diálogo.
+
+---
+
+## 1 · Archivos modificados
+
+| Archivo | Qué cambió |
+|---|---|
+| `src/lib/utils/agencyName.ts` | **Creado.** Normalización y validación del nombre, compartidas por el formulario y la action (molde de `licenseNumber.ts`) |
+| `src/components/dashboard/AgencyIdentityForm.tsx` | El corte pasó de "todo el formulario" a "solo la matrícula": el nombre es editable en cualquier estado, con el aviso condicionado a que cambie |
+| `src/app/(agent)/dashboard/preferencias/actions.ts` | Congela la matrícula en vez de rechazar todo, acota la guarda de suscripción al nombre, y agrega la transición a revisión para una agencia aprobada |
+
+---
+
+## 2 · El campo nuevo: JSX y esquema
+
+### El esquema del formulario
+
+```ts
+const schema = z.object({
+  // MISMAS funciones que usa la server action: un solo criterio, dos capas. El
+  // formulario valida para dar feedback; la barrera que cuenta es la del server.
+  name: z
+    .string()
+    .transform(normalizeAgencyName)
+    .superRefine((value, ctx) => {
+      const result = validateAgencyName(value);
+      if (!result.ok) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: result.error });
+      }
+    }),
+  license_number: z
+    .string()
+    .transform(normalizeLicenseNumber)
+    .refine((v) => v.length > 0, "La matrícula es requerida")
+    .refine((v) => LICENSE_NUMBER_PATTERN.test(v), LICENSE_NUMBER_ERROR),
+});
+```
+
+### El JSX del campo
+
+Va **primero en el formulario**, antes de la matrícula: es el dato de identidad principal y es lo
+que la persona viene a buscar.
+
+```tsx
+        {/* ── El nombre. Editable SIEMPRE, y es el dato de identidad principal:
+            va primero porque es lo que la persona viene a buscar. ──────── */}
+        <div className="space-y-1.5">
+          <Label
+            htmlFor="agency_name"
+            className="font-sans text-sm font-medium text-black"
+          >
+            Nombre de la inmobiliaria
+          </Label>
+
+          {/* ⚠ Controller y NO watch(): hace falta el valor EN VIVO para saber
+              si el nombre cambió —de eso depende que aparezca el aviso de que la
+              cuenta vuelve a revisión— y `watch()` de react-hook-form dispara el
+              warning react-hooks/incompatible-library del React Compiler. El
+              proyecto carga uno conocido y cualquier otro es una regresión
+              (CLAUDE.md → ESLint). */}
+          <Controller
+            control={form.control}
+            name="name"
+            render={({ field }) => (
+              <Input
+                id="agency_name"
+                placeholder="Inmobiliaria López"
+                value={field.value ?? ""}
+                onChange={field.onChange}
+                onBlur={field.onBlur}
+                name={field.name}
+                ref={field.ref}
+                maxLength={AGENCY_NAME_MAX_LENGTH}
+                className="bg-white border-stone focus-visible:ring-terracota"
+              />
+            )}
+          />
+          <p className="font-sans text-xs text-graphite">
+            {isApproved
+              ? "La razón social con la que figurás en el colegio de corredores. Si la cambiás, revisamos el nombre nuevo antes de que quede."
+              : "La razón social con la que figurás en el colegio de corredores."}
+          </p>
+          {form.formState.errors.name && (
+            <p className="font-sans text-xs text-error">
+              {form.formState.errors.name.message}
+            </p>
+          )}
+        </div>
+```
+
+**Y la matrícula, que ahora es la que se congela:**
+
+```tsx
+        <div className="space-y-1.5">
+          <Label htmlFor="agency_license_number" …>
+            Matrícula del colegio de corredores
+          </Label>
+          {isApproved ? (
+            <>
+              {/* Se muestra igual, en lectura: es información de la cuenta que
+                  la persona necesita ver. Lo que se saca es poder cambiarla. */}
+              <p className="font-sans text-[15px] text-graphite">
+                {initialLicenseNumber || "—"}
+              </p>
+              <p className="flex items-start gap-2 font-sans text-xs text-graphite">
+                <Lock size={14} className="mt-0.5 shrink-0" />
+                <span>
+                  Esta matrícula se verificó al aprobar tu inmobiliaria y queda
+                  fija. Escribinos si necesitás corregirla.
+                </span>
+              </p>
+            </>
+          ) : (
+            <>
+              <Input id="agency_license_number" placeholder="1234"
+                {...form.register("license_number")} … />
+              …
+            </>
+          )}
+        </div>
+```
+
+---
+
+## 3 · Restricciones del nombre en la base, y qué validación apliqué
+
+### Lo que la base impone: casi nada
 
 ```
-00:05:32  src/app/(agent)/admin/actions.ts
-00:05:32  src/app/(agent)/admin/AgenciesTable.tsx
-00:05:32  src/app/(agent)/admin/page.tsx
-00:05:32  src/app/(agent)/dashboard/suscripcion/actions.ts
-00:05:32  src/components/dashboard/AgencyVisibilityNotice.tsx
-00:05:32  src/components/dashboard/NewPropertyButton.tsx
-00:05:32  src/components/dashboard/SubscriptionContent.tsx
-00:05:32  src/lib/utils/getPublishBlock.ts
-00:05:32  respuesta.md   ← el informe de la tanda anterior
-### lo editado en ESTA tanda
-00:13  CLAUDE.md
-00:15  PENDIENTES.md
+information_schema.columns:
+  name | text | is_nullable: NO | character_maximum_length: null | default: null
+
+pg_constraint sobre agencies (las cinco):
+  agencies_pkey                  PRIMARY KEY (id)
+  agencies_slug_key              UNIQUE (slug)
+  agencies_city_id_fkey          FOREIGN KEY (city_id) → cities(id) ON DELETE RESTRICT
+  agencies_approval_status_check CHECK (approval_status IN ('pending','approved','rejected'))
+  agencies_tenant_type_check     CHECK (tenant_type IN ('individual','agency'))
 ```
 
-`DESIGN.md`, `scripts/` y `supabase/` no figuran: no se tocaron.
-
----
-
-## 1. CLAUDE.md — qué agregué, modifiqué y corregí
-
-### Agregado: tres secciones nuevas
-
-**(a) `#### ⚠ UN PEDIDO DE PLAN ABIERTO SE DETECTA POR pending_plan, NUNCA POR status`**, dentro de
-"Suscripciones y límites". Es **la regla más importante del grupo** y quedó documentada con:
-
-- **Qué pasaba** y por qué (el pedido escribía `status: 'pending'`, la regla exige `'active'`).
-- **La causa de fondo en una tabla:** los **dos sentidos incompatibles** de `'pending'` y por qué
-  la regla de visibilidad solo puede asumir uno.
-- **Los cinco lugares corregidos**, con la condición de antes y la de ahora (tabla).
-- **Por qué se rompían a medias y en silencio:** los cinco **siguen funcionando** para el camino
-  del registro, así que una prueba con una cuenta nueva los habría visto andar perfecto. Con la
-  consigna: al probar este modelo hay que recorrer **los dos caminos**.
-- **La guarda nueva** de `cancelSubscriptionAction`, con el porqué de su **posición** (después del
-  chequeo de `free`, porque una agencia recién registrada tiene plan `free` **y** pedido a la vez).
-- **La simetría resultante:** `canceled` + `pending_plan` está bloqueada por los dos lados.
-- **⚠ Lo que NO se tocó y da ganas de tocar:** el `status: "active"` de `activatePlanAction`, que
-  es un no-op para un upgrade pero es lo que saca del `'pending'` a una agencia nueva.
-
-**(b) `### El cartel de visibilidad del panel — tres motivos, UNO SOLO a la vez`**, con:
-
-- Dónde va y **por qué no en el layout compartido ni en `/dashboard/suscripcion`**.
-- Los tres motivos con su componente, tono y título.
-- **La garantía de "uno solo" en tres capas:** un solo `reason`; **en la estructura**, un ternario
-  sobre él (que reemplazó a una condición suelta que podía dar verdadera a la vez); y **en los
-  tipos**, el `Exclude<VisibilityBlockReason, "not_approved">` que hace que el motivo equivocado
-  **no compile**.
-- **`#### ⚠ LOS DOS HELPERS QUE PARECEN LO MISMO Y NO LO SON`**, con tabla comparativa y **las dos
-  direcciones opuestas** en que falla usar el de publicación para la visibilidad (le SOBRA el cupo
-  lleno, le FALTA `plan <> 'free'`), más la diferencia fina del estado (lista negra contra lista
-  blanca).
-
-**(c) `### ⚠ El estado de aterrizaje y su cupo — y la regla que salió de ahí`**, con:
-
-- **El estado completo en una tabla** (las seis columnas + qué devuelve cada helper), con el cupo
-  **1 medido en las dos fuentes**.
-- **Los dos mensajes, citados textualmente**, y que la última frase es **literalmente la misma** en
-  los dos, con el mismo destino de enlace.
-- **⚠ Lo que el mensaje NO puede decir ni sugerir** (que la propiedad sea "de prueba") y por qué se
-  afirma lo contrario en positivo.
-- Que el número **se deriva del catálogo** y no se tipea en la prosa.
-- **`#### ⚠ LA REGLA: antes de invitar a pagar más, verificar que pagar sea lo que destraba`**, con
-  la tabla de **las dos veces** que el proyecto se tropezó con el mismo síntoma y por qué el
-  `switch` exhaustivo cerró la primera vía y no la segunda.
-
-### Agregado: siete filas en "Decisiones de Arquitectura"
-
-La regla de `pending_plan` · que el upgrade no toque el estado y la base no se toque · los dos
-helpers separados · la garantía del cartel por estructura y tipos · "antes de invitar a pagar,
-verificar que pagar destrabe" · que el cupo no se subió · el margen del banner desde afuera.
-
-### Agregado: el banner extraído y cuatro entradas de estructura
-
-- `### Avisos persistentes` pasó a ser **`Notice + ErrorBanner + AgencyApprovalNotice`**, con tabla
-  comparativa de los dos y **el porqué medido del margen desde afuera** (dos pantallas en un
-  fragmento, dos en un `space-y-6`; la divergencia original **era comportamiento correcto**).
-- En la estructura de carpetas: `ErrorBanner.tsx`, `AgencyVisibilityNotice.tsx`,
-  `getVisibilityBlock.ts` y la nota en `getPublishBlock.ts` apuntando al otro.
-
-### Agregado: `### ⚠ El sexto caso (11 sep 2026)` en "Método de Diagnóstico"
-
-No como anécdota: con **las dos cosas que agrega** a los cinco anteriores.
-
-1. **Las tres afirmaciones eran FALSAS A MEDIAS**, y la mitad verdadera era la que se leía (tabla
-   con las tres). Los cinco casos anteriores se desmentían con una medición puntual; estos tres
-   no: había que **notar que "operar normal" y "verse en el mapa" son dos preguntas distintas**.
-2. **Estaban en tres archivos que se confirmaban entre sí**, y uno era `CLAUDE.md`. No había
-   contradicción visible porque las tres copias estaban de acuerdo. **Tres fuentes coincidiendo no
-   son tres verificaciones: pueden ser una sola afirmación copiada.** Con el corolario de por qué
-   una afirmación falsa en `CLAUDE.md` se corrige en la misma tanda que el código.
-
-### Corregido
-
-| Dónde | Qué decía | Qué dice |
-|---|---|---|
-| **Estado** (párrafo de apertura) | nada del grupo | el grupo **CERRADO**, con el bug que destapó y la regla que salió |
-| **Baseline medido** | "última medición: 10 sep 2026" | 12 sep 2026 |
-| **Bloqueo de publicación** (`:134`) | *"'pending' significa «pidió un upgrade y espera que se lo activen»: esa agencia está al día"* + *"le cortaría el alta justo por haber querido pagar más"* | el sentido correcto, **con la marca de que ahí estaba la segunda copia de la afirmación falsa** y la nota de la asimetría lista negra/lista blanca |
-| **Avisos persistentes** | *"el banner de error … está copiado a mano en cuatro pantallas"* | **era cierto y dejó de serlo**: se extrajo |
-| **Avisos persistentes** | *"'pending' … es una agencia al día esperando activación"* | el motivo correcto: **una agencia que todavía no arrancó**, no una al día |
-| **`AgencyApprovalNotice`** | montado por su propia condición; sin mención al texto viejo | es **una rama del ternario**, y sus dos textos **se corrigieron** (omitían que lo cargado tampoco se muestra) |
-| **Tabla de Base de Datos**, fila `subscriptions` | solo enumeraba columnas | + qué significa `'pending'` (una sola cosa), que `pending_plan` es la única señal del pedido, y que **`past_due` no lo escribe ningún camino** |
-
----
-
-## 2. PENDIENTES.md — qué cerré, abrí y ajusté
-
-### Cerrado
-
-- **El grupo entero**, en "Cerrados recientemente": **GRUPO DE COHERENCIA DEL PANEL — CERRADO
-  (10–11 sep 2026), cinco tandas**, con las cinco descritas una por una, **una tabla de cinco
-  descartes** (incluidos los tres que el prompt pedía registrar), lo que dejó abierto, y el
-  apartado de método con la cuarta copia de la afirmación falsa.
-- **El encabezado del archivo** reescrito al estado nuevo, avisando que **la base se limpió y pasó
-  de 10 agencias a 4**.
-
-### Los descartes registrados
-
-Los tres que pedía el prompt, más dos que aparecieron midiendo:
-
-1. **Cambiar la regla de visibilidad de la base para que aceptara `'pending'`** — habría dejado
-   visible a una agencia recién registrada que todavía no tiene nada activo.
-2. **Subir el cupo del aterrizaje** — con una propiedad la agencia igual aprende el formulario, y
-   el número es andamio del modelo, no preferencia de producto.
-3. **Reutilizar `getPublishBlock` para el aviso de visibilidad** — falla en dos direcciones
-   opuestas.
-4. Resolver la sesión del encabezado en el servidor (volvería `/` dinámica).
-5. Señalar el pedido de plan en el badge del panel (reconstruiría en la interfaz la confusión que
-   el modelo acaba de resolver).
-
-### Abierto (cuatro ítems, los cuatro verificados en el código antes de escribirlos)
-
-| Ítem | Verificación |
+| | Medido |
 |---|---|
-| **Los dos criterios opuestos de la base** (lista negra del trigger vs. lista blanca de la regla) | cuerpos de las dos funciones, medidos. Anotado **como algo a entender, no como bug**, con por qué unificarlos rompe en cualquiera de las dos direcciones |
-| **`past_due` no lo escribe ningún camino** | barrido de las **seis** escrituras de `status`: ninguna lo escribe. **Tres** lugares lo leen, todos correctos. Anotado para que no se trate como código muerto |
-| **El mensaje impreciso de la agencia que nunca eligió plan** | `planUsage.status` distingue el caso y está declarado en el código; las tres razones de haber elegido un texto único, y el ⚠ de que separarlo obliga a partir también el cartel de la home |
-| **Tres familias de mensajes repetidos a mano** | contadas: **6 errores de formulario + 6 éxitos + 4 del molde de login/registro = 16 ocurrencias en 3 moldes**, con el ⚠ de que éxitos y errores conviven a dos líneas en el mismo archivo |
+| Nulos | `NOT NULL` — lo único que la base impone |
+| Largo máximo | **ninguno** |
+| Formato / CHECK | **ninguno** |
+| **Unicidad** | **NINGUNA.** El único `UNIQUE` de la tabla es el del `slug` |
 
-### Ajustado — siete cifras desactualizadas
+### ⚠ La unicidad: el prompt pidió fijarse, y la respuesta es que NO la exige
 
-| Dónde | Decía | Ahora |
+Por eso **no la inventé**, y está escrito en el archivo:
+
+```ts
+// ⚠ POR ESO ACÁ NO SE VERIFICA QUE EL NOMBRE NO ESTÉ REPETIDO, y no es un olvido:
+// dos inmobiliarias PUEDEN llamarse igual en la base. Inventar la restricción en
+// el código sería peor que no tenerla — rechazaría altas legítimas (dos "López"
+// de ciudades distintas) con un error que ninguna regla respalda, y encima no
+// sería una garantía: sin índice único, dos pedidos simultáneos entrarían igual.
+// Quien decida que el nombre debe ser único, que lo decida en la base primero.
+```
+
+### La validación que sí apliqué
+
+| Regla | Valor | Por qué |
 |---|---|---|
-| Calendario ("Hoy") | 10 agencias, 18 propiedades, 10 agentes, 10 consultas | **4 / 17 (16 activas) / 4 / 13**, + 7 imágenes y 1 ciudad activa |
-| Limpieza previa al lanzamiento | "de las **18**, 17 activas y **16 se ofrecen**" | "de las **17**, 16 activas y **las 16 se ofrecen**" — ya no hay ninguna excluida por la regla de cobro |
-| Precio opcional | "5 de 18 tienen alguna operación sin precio" | **6 de 17** |
-| Quién publica | "1 de **10** agencias tiene logo" | **1 de 4** (la proporción se mantiene) |
-| Colisión de slugs | "con 18 propiedades es inalcanzable" | con **17** |
-| Policy de leads sin índice | "con 9 consultas es invisible" | con **13** |
-| Matrícula faltante | "**8 de 10** agencias con `license_number` NULL" | **1 de 4** — la limpieza se llevó justo a las que no tenían |
-| **2 usuarios de Auth huérfanos** | ítem abierto | **CERRADO: 0** (se los llevó la limpieza, no un arreglo de código), conservando la medición del 11 sep (2 de 11) porque prueba que el caso es real |
+| No vacío | — | La base exige `NOT NULL` |
+| Largo mínimo | **2** | Hay razones sociales muy cortas; un solo carácter no es un nombre comercial |
+| Largo máximo | **80** | La columna no tiene techo. El más largo medido es `"Inmobiliaria Gaio 2"` (19); 80 cubre *"Inmobiliaria López y Asociados Sociedad de Responsabilidad Limitada"* (65). Por encima rompe el sidebar, la columna del panel y el encabezado del sitio de marca |
+| Normalización | `trim` + colapso de espacios internos | Ver abajo |
+
+⚠ **El colapso de espacios no es cosmético**, y está comentado en el archivo: `"Inmobiliaria  López"`
+y `"Inmobiliaria López"` son el mismo nombre para una persona y dos strings distintos para una
+comparación — **y de esa comparación depende que se detecte si el nombre cambió**, que es lo que
+dispara la vuelta a revisión. Sin normalizar, agregar un espacio de más mandaría la cuenta entera a
+revisión sin que nada haya cambiado.
+
+**Verificado ejecutando la validación:**
+
+```
+"Inmobiliaria López"  -> "Inmobiliaria López"  OK
+"  Grupo   Gaio  "    -> "Grupo Gaio"          OK      ← normaliza
+""                    -> ""                    requerido
+"   "                 -> ""                    requerido
+"A"                   -> "A"                   muy corto (< 2)
+"Ab"                  -> "Ab"                  OK
+80 caracteres         ->                       OK
+81 caracteres         ->                       muy largo (> 80)
+```
 
 ---
 
-## 3. Afirmaciones falsas que encontré
+## 4 · La guarda de suscripción, acotada al nombre
 
-### (a) 🔴 **UNA CUARTA COPIA de la afirmación del bug, en `CLAUDE.md`, sin corregir**
+```ts
+  // Rechazada → vuelve a la cola. Pendiente → sigue pendiente. El slug NO se
+  // toca: cambiarlo rompería la URL pública de la agencia y está fuera de alcance.
+  const wasRejected = agency.approval_status === "rejected";
 
-**Es el hallazgo de esta tanda.** El prompt decía que una de las tres estaba en `CLAUDE.md` y que
-ya se había corregido, y pedía verificarlo. **Verifiqué: sí, la del bullet "Pedir upgrade desde el
-dashboard" (`:81`) está corregida.** Pero **había una segunda copia en el mismo archivo, en otra
-sección**, que la tanda de implementación no tocó — en "Bloqueo de publicación", `:134`:
+  // ⚠ SE CALCULA ANTES DE LA GUARDA DE SUSCRIPCIÓN, y el orden es el motivo: esa
+  // guarda ahora depende de si el nombre cambió (ver abajo).
+  const nameChanged = name !== agency.name;
 
-> *"El dominio tiene CUATRO valores y `'pending'` significa **«pidió un upgrade y espera que se lo
-> activen»: esa agencia está al día y publica normalmente**. Bloquear por `<> 'active'` le cortaría
-> el alta **justo por haber querido pagar más**."*
+  // ══════════════════════════════════════════════════════════════
+  // ⚠ LA GUARDA DE SUSCRIPCIÓN ES SOLO DEL NOMBRE, NO DE TODA LA ACCIÓN
+  // ══════════════════════════════════════════════════════════════
+  //
+  // El motivo NO es disciplinario, y por eso el alcance importa: lo que no
+  // corresponde hacer por una cuenta dada de baja es el TRABAJO DE APROBACIÓN
+  // que un cambio de nombre le genera al dueño de la plataforma. Todo lo demás
+  // que esta pantalla permite —el logo, la dirección del sitio, el teléfono— la
+  // agencia lo resuelve sola, no le genera trabajo a nadie, y no hay ningún
+  // motivo para bloquearlo.
+  //
+  // ⚠ ACÁ DECÍA QUE LA GUARDA "CUBRE LA ACTION ENTERA (nombre Y matrícula) …
+  // porque las dos viajan en el mismo submit y las dos disparan el mismo
+  // reenvío". Dejó de ser cierto: con la agencia APROBADA la matrícula ya no se
+  // puede cambiar (se ignora, ver arriba), así que lo único que puede disparar
+  // un reenvío desde este formulario es el nombre. Bloquear por el estado de la
+  // suscripción cuando el nombre NO cambió sería rechazar un guardado que no le
+  // pide nada a nadie.
+  //
+  // ⚠ CONSECUENCIA ASUMIDA, y conviene tenerla escrita: una agencia dada de baja
+  // que esté `pending` o `rejected` SÍ puede corregir su matrícula, y eso la
+  // reenvía a la cola. Es un hueco chico y deliberado —el criterio pedido es que
+  // la guarda dispare cuando cambia el NOMBRE— y el caso es raro: exige estar sin
+  // aprobar y dada de baja a la vez.
+  //
+  // ⚠ ES LISTA NEGRA (`canceled`/`past_due`), NUNCA "distinto de active" …
+  // ⚠ Y SIN FILA DE SUSCRIPCIÓN NO SE BLOQUEA …
+  if (nameChanged) {
+    const { data: subscription } = await admin
+      .from("subscriptions")
+      .select("status")
+      .eq("agency_id", session.agent.agency_id)
+      .maybeSingle();
 
-⚠ **Y era peor que la otra:** no solo repetía el sentido equivocado, sino que **la última frase
-nombraba como caso normal justo el que era el bug** — "le cortaría el alta justo por haber querido
-pagar más" es la descripción exacta de lo que estaba pasando, escrita como si fuera el argumento
-para no hacerlo. **Corregida**, con la marca de que ahí estaba la copia.
+    if (
+      subscription?.status === "canceled" ||
+      subscription?.status === "past_due"
+    ) {
+      return {
+        error:
+          "Para cambiar el nombre necesitamos que tu suscripción esté al día: el cambio vuelve a pasar por revisión y eso lo hacemos sobre cuentas activas. Reactivá tu suscripción y volvé a intentarlo.",
+      };
+    }
+  }
+```
 
-**Así que las afirmaciones falsas eran CUATRO, no tres, y dos de las cuatro vivían en `CLAUDE.md`.**
-Es lo que da peso al punto (2) del método: tres fuentes coincidiendo pueden ser una sola afirmación
-copiada — y acá una de las fuentes se había copiado a sí misma.
+**⚠ La consulta a `subscriptions` ahora vive DENTRO del `if`**: una agencia que guarda sin tocar el
+nombre ya ni siquiera paga el viaje a la base.
 
-### (b) 🟠 Dos afirmaciones que las tandas dejaron falsas en "Avisos persistentes"
+**Verificado, los seis casos:**
 
-1. *"el banner de error … está **copiado a mano en cuatro pantallas**"* — **era cierto y dejó de
-   serlo** el 10 sep, cuando se extrajo. Corregida, dejando la historia.
-2. *"⚠ `'pending'` NO entra en esa rama y no debe entrar: **es una agencia al día esperando
-   activación**"* — la regla sigue siendo correcta pero **el motivo escrito era el viejo**.
-   Corregida: sigue sin entrar porque no le dieron de baja nada, pero **tampoco es "una agencia al
-   día": es una que todavía no arrancó**.
+```
+sub=canceled  nombre cambió=true    BLOQUEA
+sub=canceled  nombre cambió=false   deja pasar     ← el cambio de esta tanda
+sub=past_due  nombre cambió=true    BLOQUEA
+sub=active    nombre cambió=true    deja pasar
+sub=pending   nombre cambió=true    deja pasar     ← 'pending' está al día
+sub=null      nombre cambió=true    deja pasar     ← le falta una fila, no pagar
+```
 
-### (c) 🟠 Siete cifras de datos desactualizadas en `PENDIENTES.md`
+### Y el otro corte, el que reemplazó al bloqueo total
 
-Detalladas en el punto 2. La base pasó de 10 agencias (8 sep) a 2 (10 sep), a 3 (11 sep), a **4**
-(hoy), así que **ninguna cifra sin fecha del archivo era confiable**. Agregué el aviso explícito al
-calendario.
+```ts
+  // ⚠ NO SE RECHAZA EL PEDIDO SI VIENE UNA MATRÍCULA DISTINTA: SE IGNORA. El
+  // formulario ya la muestra en solo lectura para una agencia aprobada, pero eso
+  // es cosmético —una server action se invoca sin pasar por el render—, así que
+  // el valor que se escribe sale SIEMPRE de la fila real. …
+  const effectiveLicenseNumber = isApproved
+    ? (agency.license_number ?? license_number)
+    : license_number;
+```
 
-### (d) 🟢 `DESIGN.md` no tenía nada falso de este grupo
-
-Lo revisé: sus secciones del banner y del cartel se escribieron en las tandas de implementación y
-están al día. **No lo toqué**, según lo indicado.
+**Es la barrera real**: un cliente manipulado puede mandar la matrícula que quiera; se descarta y
+se escribe la de la base.
 
 ---
 
-## 4. Los números que medí
+## 5 · Cómo se ve el diálogo con una advertencia y con las dos
 
-Todo por lecturas del MCP en modo solo lectura.
+### ⚠ No hay un diálogo único que las acumule, y no lo pude construir
 
-### Datos de prueba (12 sep 2026)
+El punto 5 asume un formulario que edita nombre **y** dirección con un diálogo común. **Ese
+formulario no existe:** son dos componentes con dos actions y dos submits (§0). Unificarlos era
+justamente lo prohibido por el punto 1.
 
-| | Valor | Antes |
+**Lo que sí verifiqué es que las dos advertencias conviven en la pantalla**, en tarjetas contiguas,
+y que se leen como dos cosas distintas — que es el requisito de fondo.
+
+### Con UNA advertencia: solo el nombre
+
+La agencia está aprobada y escribe un nombre distinto. Aparece, **en vivo**, dentro de la tarjeta de
+identidad:
+
+```
+┌─ Identidad de la inmobiliaria ───────────────────────────────────┐
+│ Podés cambiar el nombre; el cambio pasa por revisión.            │
+│ La matrícula quedó fija al aprobar tu cuenta.                    │
+│                                                                  │
+│  Nombre de la inmobiliaria                                       │
+│  ┌────────────────────────────────────────────────────────────┐  │
+│  │ Grupo Gaio                                                 │  │
+│  └────────────────────────────────────────────────────────────┘  │
+│  La razón social con la que figurás en el colegio de corredores. │
+│  Si la cambiás, revisamos el nombre nuevo antes de que quede.    │
+│                                                                  │
+│  Matrícula del colegio de corredores                             │
+│  1234                                                            │
+│  🔒 Esta matrícula se verificó al aprobar tu inmobiliaria y      │
+│     queda fija. Escribinos si necesitás corregirla.              │
+│                                                                  │
+│ ╭─ 🕐 Al guardar, tu cuenta vuelve a revisión ─────────────────╮ │
+│ │ Vamos a verificar el nombre nuevo en el colegio de           │ │
+│ │ corredores. Mientras tu cuenta está en revisión no se ve     │ │
+│ │ nada tuyo en público: tus propiedades no aparecen en el      │ │
+│ │ mapa, sus fotos no se muestran, nadie puede mandarte una     │ │
+│ │ consulta desde ahí y tu sitio propio queda apagado. Tampoco  │ │
+│ │ vas a poder publicar propiedades nuevas.                     │ │
+│ │                                                               │ │
+│ │ No perdés nada de lo que tengas cargado: tus propiedades,    │ │
+│ │ tus fotos y tus consultas quedan donde están, y todo vuelve  │ │
+│ │ a verse solo en cuanto te aprobemos.                         │ │
+│ │                                                               │ │
+│ │ Si cambiás el nombre, vamos a ver el anterior y el nuevo     │ │
+│ │ juntos para revisar el cambio. …                             │ │
+│ ╰───────────────────────────────────────────────────────────────╯ │
+│  [ Guardar datos ]                                               │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Con LAS DOS: nombre y dirección
+
+Si además toca *"Cambiar la dirección"* en la tarjeta siguiente, la pantalla muestra las dos, una
+debajo de la otra, cada una en su tarjeta:
+
+```
+┌─ Identidad de la inmobiliaria ───────────────────────────────────┐
+│  … Nombre: [ Grupo Gaio ]                                        │
+│ ╭─ 🕐 Al guardar, tu cuenta vuelve a revisión ─────────────────╮ │
+│ │ … no se ve nada tuyo en público … No perdés nada …           │ │
+│ ╰───────────────────────────────────────────────────────────────╯ │
+│  [ Guardar datos ]                                               │
+└──────────────────────────────────────────────────────────────────┘
+┌─ Dirección de tu sitio ──────────────────────────────────────────┐
+│  Tu dirección actual: 🔗 http://localhost:3000/inmobiliaria-gaio │
+│  Dirección nueva: [ localhost:3000/ ][ grupo-gaio            ]   │
+│ ╭─ ⚠ Los enlaces que ya compartiste van a dejar de funcionar ──╮ │
+│ │ Tu sitio pasa a estar en …/grupo-gaio. La dirección          │ │
+│ │ anterior, …/inmobiliaria-gaio, deja de funcionar apenas      │ │
+│ │ confirmes: quien la abra va a ver una página inexistente.    │ │
+│ │ … No se redirigen solos a la dirección nueva.                │ │
+│ │ Tus propiedades, tus fotos y tus consultas no se tocan: lo   │ │
+│ │ único que cambia es la dirección.                            │ │
+│ ╰───────────────────────────────────────────────────────────────╯ │
+│  [ Sí, cambiar la dirección ]  Cancelar                          │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**Se leen como dos cosas distintas, y el tratamiento lo refuerza:**
+
+| | Nombre | Dirección |
 |---|---|---|
-| Agencias | **4** | 10 (8 sep) → 2 (10 sep) → 3 (11 sep) |
-| Suscripciones | **4** | — |
-| Agentes | **4** | 10 |
-| Propiedades | **17** (16 activas) | 18 (17 activas) |
-| Consultas | **13** | 10 |
-| Imágenes | **7** | 7 |
-| Ciudades activas | **1** ("Santiago del Estero") | 1 |
+| Tono del `Notice` | **`info`** (🕐 `Clock`) — está en curso, nadie hizo nada mal | **`warning`** (⚠ `TriangleAlert`) — hay algo que se rompe |
+| Qué anuncia | la cuenta **vuelve a revisión** y deja de verse **temporalmente** | los **enlaces compartidos** dejan de funcionar, **para siempre** |
+| Qué aclara que NO pasa | *"No perdés nada de lo que tengas cargado"* | *"Tus propiedades, tus fotos y tus consultas no se tocan"* |
+| Cuándo aparece | **al tipear** un nombre distinto | al tocar *"Cambiar la dirección"* |
 
-### Composición, que cambió de forma relevante
-
-| | Valor |
-|---|---|
-| Agencias aprobadas | **4 de 4** |
-| Con logo cargado | **1 de 4** |
-| Sin matrícula | **1 de 4** (era 8 de 10) |
-| Usuarios de Auth sin fila en `agents` | **0** (era 2 de 11 el 11 sep) |
-| Propiedades ofrecidas en `/sitemap.xml` | **16** (todas las activas) |
-| En venta **y** alquiler a la vez | **3** |
-| Con alguna operación sin precio | **6** |
-| Consultas desvinculadas (`agent_id NULL`) | **1** |
-
-### Estados de suscripción — y por qué importa para probar
-
-| `status` | Filas |
-|---|---|
-| `active` | **4** |
-| `pending` | **0** |
-| `past_due` | **0** |
-| `canceled` | **0** |
-| Con `pending_plan` | **0** |
-
-Planes presentes: **`inicial`, `profesional`, `premium`** — **ninguna en `free`**.
-
-⚠ **Consecuencia: hoy no hay un solo caso real con el que probar nada de lo que este grupo
-construyó.** Ni el estado de aterrizaje, ni la suscripción apagada, ni un pedido de plan abierto.
-Los tres hay que fabricarlos. Quedó anotado en el calendario de `PENDIENTES.md`.
-
-### Escrituras y lecturas del estado (barridos del código)
-
-- **Seis** sitios escriben `subscriptions.status`; **ninguno escribe `past_due`**.
-- **Tres** lugares lo leen para decidir (trigger, `getPublishBlock`, `getVisibilityBlock`), más
-  `requestPlanUpgradeAction`, que lo lee para rechazar `canceled`/`past_due`.
-- **16** ocurrencias de mensajes repetidos a mano, en **3** moldes.
+⚠ **Y son dos confirmaciones separadas**, con dos botones y dos escrituras. Es la consecuencia
+directa de que sean dos formularios: **no hay forma de "cambiar las dos en la misma edición"** hoy.
+Lo señalo como la limitación real, no como un detalle.
 
 ---
 
-## 5. Baseline
+## 6 · La guarda de agencia pendiente
 
-Corrido **después** de escribir los dos `.md`. Se borraron `.next` y `tsconfig.tsbuildinfo` antes
-de medir; **no apareció el ruido de herramienta**.
+⚠ **No existe, y nunca existió.** Barrido de `preferencias/actions.ts`: las únicas menciones a
+`pending` son comentarios y la escritura `approval_status: "pending"`. **La guarda que había era la
+inversa**: bloqueaba a las **aprobadas** (que es justo la que hubo que sacar).
+
+**Qué pasa hoy con una agencia `pending`**, verificado:
+
+```
+approved  nombre cambió=true    -> pending              ← la transición nueva
+approved  nombre cambió=false   sin cambio de estado
+rejected  (cualquiera)          -> pending              ← el reenvío de siempre
+pending   (cualquiera)          sin cambio de estado    ← ya está en la cola
+```
+
+**Una agencia `pending` puede cambiar su nombre, y el estado no se mueve** — ya está esperando. Es
+coherente: el dueño va a revisar el nombre que tenga al momento de aprobar, el rastro
+`previous_name` se escribe igual, y el botón *"Rechazar el nombre"* **no se le ofrece** porque
+requiere `ever_approved` (lo verifica el panel y lo repite la action).
+
+**No agregué la guarda** porque el prompt pide verificar una que existe, no crear una nueva, y
+bloquear ese caso no tiene un motivo claro: no genera trabajo extra —la agencia ya está en la cola—
+y le impediría corregir un nombre mal escrito justo mientras espera.
+
+---
+
+## 7 · Cómo probar el flujo completo
+
+### Preparación
+
+`npm run dev`, con dos sesiones: el **admin de una agencia** y el **dueño** (`ADMIN_USER_ID`).
+Las tres agencias están `approved`, o sea el caso principal.
+
+### A · Pedir el cambio (lo que antes no se podía)
+
+1. Como admin, **Preferencias → Identidad de la inmobiliaria**.
+2. ⚠ **El campo "Nombre de la inmobiliaria" ahora es un input**, no texto con candado. La matrícula
+   sí queda en lectura, con su candado.
+3. **Sin tocar nada, no hay ningún aviso.** Es correcto: abrir la pantalla no pide nada.
+4. Escribí un nombre distinto (`Inmobiliaria Gaio` → `Grupo Gaio`). **Al tipear aparece el aviso**
+   *"Al guardar, tu cuenta vuelve a revisión"* con las cuatro consecuencias y el *"No perdés nada"*.
+5. Borrá el cambio y volvé al nombre original → **el aviso desaparece**.
+6. Probá los bordes del campo: vacío → *"El nombre de la inmobiliaria es requerido"*; `A` → *"muy
+   corto"*; el input corta a los 80 caracteres.
+7. ⚠ Escribí el mismo nombre **con un espacio doble** (`Inmobiliaria  Gaio`) → **no aparece el
+   aviso**: la normalización lo colapsa y no es un cambio.
+8. Guardá. Verificá en la base:
+   ```sql
+   SELECT name, approval_status, previous_name, name_change_requested_at FROM agencies;
+   ```
+   → `name='Grupo Gaio'`, `approval_status='pending'`, `previous_name='Inmobiliaria Gaio'`, fecha.
+9. Abrí el sitio de marca de esa agencia: **apagado**, tal como el aviso anticipó.
+
+### B · Verlo en el panel de administración
+
+1. Como dueño, `/admin`. En su fila:
+   - celda **Agencia**: `Grupo Gaio` y debajo **`Antes: `~~`Inmobiliaria Gaio`~~**
+   - celda **Aprobación**: `PENDIENTE` + el badge terracota **`CAMBIO DE NOMBRE`**
+   - botones: **`Aprobar el nombre`** · **`Rechazar el nombre`**, y **`Rechazar la inmobiliaria`**
+     en el menú `⋯`
+
+### C · Los tres caminos de resolución
+
+| Camino | Qué hacer | Qué verificar |
+|---|---|---|
+| **Aprobar** | `Aprobar el nombre` | `name='Grupo Gaio'`, `approved`, las dos columnas en `null`. El sitio vuelve, con el nombre nuevo |
+| **Rechazar el nombre** | `Rechazar el nombre` + motivo | `name='Inmobiliaria Gaio'` (revertido), `approved`, columnas en `null`. **Como la agencia:** en Preferencias aparece *"El cambio de nombre que pediste no fue aprobado"* con el motivo, y el sitio funciona |
+| **Rechazar la inmobiliaria** | menú `⋯` → `Rechazar la inmobiliaria` + motivo | ⚠ tiene que aparecer la advertencia *"Esta inmobiliaria está funcionando hoy"*. Después: `rejected`, `name='Grupo Gaio'` (**no** se revierte), columnas en `null`, sitio apagado |
+
+### D · La guarda de suscripción acotada
+
+1. Como dueño, **dar de baja** la suscripción de la agencia.
+2. Como admin: cambiá **solo el logo** → **funciona**. Cambiá **solo la dirección** → **funciona**.
+3. En Identidad, **guardá sin tocar el nombre** → **funciona** (antes lo rechazaba).
+4. Ahora **cambiá el nombre** y guardá → *"Para cambiar el nombre necesitamos que tu suscripción
+   esté al día…"*.
+5. **Control negativo:** con la suscripción en `pending` (agencia recién registrada), cambiar el
+   nombre **tiene que funcionar**. Si ahí se bloquea, la guarda quedó como lista blanca.
+
+### E · La matrícula sigue congelada
+
+1. Con la agencia aprobada, la matrícula se ve pero no se edita.
+2. La barrera real está en el servidor: aunque un cliente manipulado mande otra, la action escribe
+   la de la base (`effectiveLicenseNumber`).
+
+### F · Sin regresión
+
+Verificado contra el build: `/` → 200, `/dashboard/preferencias` → 307, `/admin` → 307,
+`/inmobiliaria-demo` → 200, **cero errores en el log del servidor**.
+
+---
+
+## 8 · Los tres comandos
+
+Se borraron `.next` y `tsconfig.tsbuildinfo` antes de medir.
 
 ### `npx tsc --noEmit`
-
 ```
-=== npx tsc --noEmit ===
-EXIT_TSC=0
+(sin salida)
+TSC_EXIT=0
 ```
-
-Salida vacía. **0 errores, exit code 0.** ✅
 
 ### `npm run lint`
-
 ```
 > marka@0.1.0 lint
 > eslint
@@ -298,88 +544,85 @@ This API returns functions which cannot be memoized without leading to stale UI.
 
 ✖ 1 problem (0 errors, 1 warning)
 
-EXIT_LINT=0
+LINT_EXIT=0
 ```
 
-**0 errores, 1 warning** — el único conocido, mismo archivo y línea. **Exit code 0.** ✅
+⚠ **El mismo y único warning del baseline.** No salió solo: el campo del nombre necesita su valor en
+vivo para decidir si muestra el aviso, que es el caso típico de `watch()` — y `watch()` habría
+sumado un segundo warning. Se usó `Controller`, que es lo que `CLAUDE.md` indica.
 
 ### `npx next build`
-
 ```
-▲ Next.js 16.2.6 (Turbopack)
-- Environments: .env.local
-
-  Creating an optimized production build ...
-✓ Compiled successfully in 7.8s
-  Running TypeScript ...
-  Finished TypeScript in 8.4s ...
-✓ Generating static pages using 3 workers (20/20) in 1407ms
-
 Route (app)
-┌ ○ /                                     ├ ƒ /dashboard/propiedades
-├ ○ /_not-found                           ├ ƒ /dashboard/propiedades/[id]/editar
-├ ƒ /[slug]                               ├ ƒ /dashboard/propiedades/nueva
-├ ƒ /admin                                ├ ƒ /dashboard/suscripcion
-├ ƒ /api/geocode                          ├ ƒ /login
-├ ○ /apple-icon.png                       ├ ƒ /logout
-├ ƒ /dashboard                            ├ ƒ /propiedades/[slug]
-├ ƒ /dashboard/equipo                     ├ ƒ /register
-├ ƒ /dashboard/leads                      ├ ƒ /register/plan
-├ ƒ /dashboard/perfil                     ├ ○ /robots.txt
-├ ƒ /dashboard/preferencias               └ ƒ /sitemap.xml
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /[slug]
+├ ƒ /admin
+├ ƒ /api/geocode
+├ ○ /apple-icon.png
+├ ƒ /dashboard
+├ ƒ /dashboard/equipo
+├ ƒ /dashboard/leads
+├ ƒ /dashboard/perfil
+├ ƒ /dashboard/preferencias
+├ ƒ /dashboard/propiedades
+├ ƒ /dashboard/propiedades/[id]/editar
+├ ƒ /dashboard/propiedades/nueva
+├ ƒ /dashboard/suscripcion
+├ ƒ /login
+├ ƒ /logout
+├ ƒ /propiedades/[slug]
+├ ƒ /register
+├ ƒ /register/plan
+├ ○ /robots.txt
+└ ƒ /sitemap.xml
 
 ƒ Proxy (Middleware)
-EXIT_BUILD=0
+
+BUILD_EXIT=0
 ```
 
-**Verde, exit code 0, 22 rutas.** ✅ `/` sigue `○`, `/sitemap.xml` sigue `ƒ`, `/robots.txt` sigue
-`○`. **Nada se movió**, como correspondía a una tanda que solo toca `.md`.
+**Verde, exit 0, 22 rutas.**
+
+| Métrica | Baseline | Medido | |
+|---|---|---|---|
+| `tsc --noEmit` | 0 errores, exit 0 | **0 errores, exit 0** | ✅ |
+| `npm run lint` | 0 errores, 1 warning | **0 errores, 1 warning (`PropertyForm.tsx:808`), exit 0** | ✅ |
+| `npx next build` | verde, 22 rutas | **verde, 22 rutas, exit 0** | ✅ |
 
 ---
 
-## 6. Qué de este prompt resultó falso
+## 9 · Lo falso y lo imposible, en limpio
 
-### (a) 🔴 *"Uno de los tres [comentarios] estaba en CLAUDE.md, y ya se corrigió. Verificá que efectivamente esté corregido."*
+### Lo falso
 
-**Verifiqué, y la respuesta es "sí, pero había otro".** El del bullet del upgrade (`:81`) está
-corregido. **Pero había una SEGUNDA copia sin corregir en otra sección** de `CLAUDE.md` (`:134`,
-"Bloqueo de publicación"), con el mismo sentido equivocado y una frase peor: *"le cortaría el alta
-justo por haber querido pagar más"*, que **describe el bug como si fuera el argumento para no
-cometerlo**.
+Está en el bloque de arriba de todo, pero lo repito porque es lo que más cambia la lectura del
+trabajo: **cinco afirmaciones del prompt no se sostienen contra el código.** La más importante es
+que *"el formulario de identidad edita la dirección y el logo"* y *"nunca le manda el nombre"* — en
+realidad edita **nombre + matrícula** y **sí** le manda el nombre. El problema era otro: **el
+formulario entero se ocultaba para una agencia aprobada**, y las tres lo están.
 
-**O sea que las afirmaciones falsas eran CUATRO, no tres**, y **dos de las cuatro vivían en
-`CLAUDE.md`**. Lo corregí, y es lo que hizo que la nota de método valga más de lo que el prompt
-anticipaba: una de las "tres fuentes independientes" se había copiado a sí misma.
+El efecto observable era exactamente el reportado, así que el pedido de fondo era correcto. Lo que
+cambia es dónde estaba la causa — y por lo tanto qué había que tocar.
 
-### (b) 🟡 *"Cinco tandas"* — son cinco piezas, y el grupo llevó **seis** tandas contando las de documentación
+### Lo imposible
 
-Las cinco piezas del prompt están todas, tal cual. Pero midiendo el trabajo real: hubo **dos
-tandas de diagnóstico de solo lectura** (una para las tres piezas de coherencia y otra para el bug
-del upgrade) antes de las de implementación, y ésta de documentación. No cambia nada de lo
-documentado; lo anoto porque el número "cinco" es de piezas, no de tandas.
+**El punto 5, tal como está descrito.** Requiere un diálogo único que acumule las dos advertencias,
+y eso exige un formulario único con un submit único. Hoy el nombre y la dirección viven en
+componentes separados con actions separadas, y fusionarlos es lo que el punto 1 prohíbe
+explícitamente. **Verifiqué y documenté lo más cercano que sí existe** (§5): las dos advertencias
+conviven en la pantalla, en tarjetas contiguas, con tonos e íconos distintos y textos que dicen
+cosas distintas. Pero son dos confirmaciones, no una.
 
-### (c) 🟢 Todo lo demás resultó cierto y está medido
+**Si se quiere el diálogo único, es una pieza propia**: fusionar `AgencyIdentityForm` y
+`AgencySlugForm` en un formulario de "datos de la agencia" con un submit que llame a las dos
+actions (o a una nueva que las combine), decidiendo antes qué pasa si una escritura falla y la otra
+no. No lo hice porque excede el alcance y contradice una instrucción explícita.
 
-- **El grupo era chico y destapó un bug grande:** cierto, y el bug es el más caro medido hasta ahora.
-- **Las cuatro copias del banner ya habían divergido:** cierto, dos con `mb-4` y dos sin.
-- **Los dos helpers parecen lo mismo y fallan en dos direcciones opuestas:** cierto, y **los dos
-  tienen la explicación escrita en su encabezado**, cada uno apuntando al otro por nombre, como el
-  prompt anticipaba.
-- **La garantía de "un solo cartel" no es por disciplina:** cierto — hay algo en la estructura (el
-  ternario sobre un único `reason`) **y** algo en los tipos (el `Exclude` que no compila).
-- **Es la segunda vez que el proyecto se tropieza con lo de invitar a pagar:** cierto, y la primera
-  está documentada en el encabezado del mismo componente.
-- **Los tres descartes que pedía registrar:** los tres verificados como razonamiento real, más dos
-  que aparecieron midiendo.
+### Una consecuencia asumida que conviene tener a la vista
 
-### (d) Nada resultó imposible
-
-Las ocho sub-tareas de la Parte 1 y las cuatro de la Parte 2 se hicieron tal cual.
-
----
-
-## Estado final
-
-Dos archivos `.md` modificados. Baseline intacto en los tres frentes, 22 rutas con el mismo nombre
-y el mismo tipo. **No se ejecutó ningún comando de git**: el trabajo queda en el árbol para que lo
-revises.
+La guarda de suscripción ahora dispara **solo cuando cambia el nombre**, que es lo pedido. El hueco:
+una agencia **dada de baja Y sin aprobar** puede corregir su matrícula, y eso la reenvía a la cola —
+o sea que genera el trabajo de aprobación que la guarda existe para evitar. Es un caso raro (exige
+las dos condiciones juntas) y está comentado en el código. Cerrarlo sería extender la guarda a
+"cambió el nombre **o** la matrícula", que es una decisión de una línea si se quiere tomar.

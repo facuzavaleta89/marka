@@ -38,3 +38,15 @@ export function absoluteUrl(path: string): string {
 export function propertyUrl(slug: string): string {
   return absoluteUrl(`/propiedades/${slug}`);
 }
+
+/**
+ * Dirección pública del sitio de marca de una agencia. Un solo lugar arma esta
+ * ruta, igual que `propertyUrl`.
+ *
+ * ⚠ Va en el PRIMER NIVEL, sin prefijo: es lo que la agencia compra con su plan
+ * (una URL limpia), y el root está reservado para las agencias. Por eso el slug
+ * compite con las rutas de la aplicación — ver `lib/utils/reservedSlugs.ts`.
+ */
+export function agencyUrl(slug: string): string {
+  return absoluteUrl(`/${slug}`);
+}
