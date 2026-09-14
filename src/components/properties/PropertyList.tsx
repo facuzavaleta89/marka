@@ -6,6 +6,8 @@ import {
   useMapFilters,
   selectActiveFiltersCount,
 } from "@/store/mapFiltersStore";
+import { useVisitedProperties } from "@/lib/hooks/useVisitedProperties";
+import { registerView } from "@/lib/utils/registerView";
 import { PropertyCard } from "./PropertyCard";
 import type { City } from "@/types";
 
@@ -63,6 +65,10 @@ export function PropertyList({ city, agencyId }: PropertyListProps) {
   // Mismos datos y filtros que el mapa, pero sin bounds (toda la ciudad).
   const { properties, isLoading } = useProperties(city.id, null, agencyId);
   const setSelectedProperty = useMapFilters((s) => s.setSelectedProperty);
+  // Abrir una propiedad desde la lista la marca como vista, igual que el pin
+  // del mapa (DESIGN §5: visitado = "ya abrió el modal"). Antes la lista abría
+  // el modal sin marcar nada. Va arriba de los returns tempranos: es un hook.
+  const { markVisited } = useVisitedProperties();
   // Las operaciones filtradas deciden qué precio muestra cada card (mismo
   // criterio que el pin del mapa).
   const operationTypes = useMapFilters((s) => s.filters.operation_types);
@@ -126,7 +132,13 @@ export function PropertyList({ city, agencyId }: PropertyListProps) {
             key={p.id}
             property={p}
             filteredOperations={operationTypes}
-            onSelect={() => setSelectedProperty(p.id)}
+            onSelect={() => {
+              setSelectedProperty(p.id);
+              // Mismo criterio que el click en el pin: marcar y, SOLO si era
+              // nueva para este visitante, sumar la visita. Manejador de
+              // evento: una vez por toque, y un segundo toque devuelve false.
+              if (markVisited(p.id)) registerView(p.id);
+            }}
           />
         ))}
       </div>

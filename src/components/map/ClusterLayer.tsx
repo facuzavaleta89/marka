@@ -16,6 +16,7 @@ import {
 import { useMapFilters } from "@/store/mapFiltersStore";
 import { useVisitedProperties } from "@/lib/hooks/useVisitedProperties";
 import { useFavorites } from "@/lib/hooks/useFavorites";
+import { registerView } from "@/lib/utils/registerView";
 import type { OperationType, Property } from "@/types";
 
 // ─── Ícono de los grupos de clusters ──────────────────────────
@@ -126,7 +127,14 @@ export function ClusterLayer({ properties }: ClusterLayerProps) {
         filteredOpsRef.current,
         () => {
           setSelectedProperty(property.id);
-          markVisited(property.id);
+          // Marcar como vista y, SOLO si era nueva para este visitante, sumar
+          // la visita en la base. Se cuenta acá —y no en el modal— porque este
+          // click es el que marca: desde el modal `markVisited` ya devolvería
+          // "ya estaba". Es un manejador de evento, así que corre una vez por
+          // click (StrictMode no duplica eventos) y un segundo click sobre el
+          // mismo pin devuelve false. `registerView` no espera ni lanza: el
+          // tono visitado de abajo no depende de que la base responda.
+          if (markVisited(property.id)) registerView(property.id);
           // Aplicar el tono "visitado" al instante sobre el elemento vivo
           setMarkerState(marker, { visited: true });
         }

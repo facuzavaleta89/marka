@@ -86,6 +86,15 @@
 --     desvincula y conserva el nombre en una copia CONGELADA que escribe la
 --     base. Cierra el bug de que no se pudiera borrar un agente con consultas a
 --     su nombre. Incluidos abajo con el porqué de cada pieza.
+--   * update_updated_at() con GUARDA para el contador de visitas + la función
+--     increment_views(), que hasta ahora NO estaba en este archivo aunque
+--     existía en la base: YA MIGRADAS (14 sep 2026, aplicadas a mano; transcriptas
+--     con pg_get_functiondef). increment_views() pone la variable
+--     `marka.skip_updated_at` en 'on', local a la transacción, alrededor de su
+--     UPDATE, y el trigger conserva updated_at en ese caso. Motivo: updated_at es
+--     el lastModified del mapa del sitio, y cada visita lo movía. Las dos
+--     funciones están ACOPLADAS y el trigger es COMPARTIDO con subscriptions:
+--     ver la sección "TRIGGER: updated_at automático + CONTADOR DE VISITAS".
 --   * ⚠ DISCREPANCIA CONOCIDA Y NO RESUELTA en UNA clave foránea
 --     (properties.agent_id: NOT NULL + ON DELETE CASCADE, cuando el modelo
 --     escrito pretendía nullable + SET NULL): ver la nota en esa tabla. Este
@@ -1154,14 +1163,92 @@ CREATE INDEX idx_agency_reviews_agency
 CREATE INDEX idx_leads_agency
   ON leads(agency_id, created_at DESC);
 
--- ─── TRIGGER: updated_at automático ──────────────────────────
-CREATE OR REPLACE FUNCTION update_updated_at()
-RETURNS TRIGGER AS $$
+-- ─── TRIGGER: updated_at automático + CONTADOR DE VISITAS ────
+-- Las dos funciones de esta sección —update_updated_at() e increment_views()—
+-- van JUNTAS a propósito: están ACOPLADAS y no se entienden por separado.
+-- Transcriptas de la base con pg_get_functiondef el 14 sep 2026 (aplicadas a mano
+-- desde el SQL Editor ese mismo día, 16:32 UTC).
+--
+-- ⚠ POR QUÉ EXISTE LA GUARDA. `properties.updated_at` NO es una fecha interna:
+-- es el `lastModified` que el mapa del sitio (src/app/sitemap.ts) le informa a
+-- los buscadores por cada ficha pública. increment_views() es un UPDATE sobre
+-- properties, así que sin la guarda disparaba este trigger y CADA VISITA sellaba
+-- la fecha: le decía a Google que la propiedad había cambiado cuando lo único que
+-- cambió es un contador. Con el tiempo eso le enseña que las fechas del sitio no
+-- significan nada, y deja de usarlas para decidir cuándo volver.
+--
+-- CÓMO FUNCIONA. increment_views() escribe la variable de configuración
+-- `marka.skip_updated_at` = 'on' justo antes de su UPDATE y 'off' justo después.
+-- update_updated_at() la lee: en un UPDATE con la variable en 'on' conserva
+-- OLD.updated_at; en CUALQUIER otro caso (variable ausente, 'off', o un INSERT)
+-- sella now(), como siempre.
+--
+-- ⚠⚠ LAS DOS FUNCIONES ESTÁN ACOPLADAS, Y ROMPER EL ACOPLE NO FALLA: SE APAGA
+-- EN SILENCIO. El vínculo es un string literal repetido en los dos cuerpos
+-- ('marka.skip_updated_at') y el valor 'on'. Nada lo verifica:
+--   · Renombrar la variable, cambiar 'on' o sacar el set_config de un solo lado
+--     → la guarda deja de actuar sin ningún error: el contador sigue subiendo
+--     bien y cada visita vuelve a mover la fecha que ven los buscadores.
+--   · Al revés: si otra función pusiera la variable en 'on' y actualizara algo
+--     más que el contador en esa ventana, esa modificación real NO sellaría la
+--     fecha, también sin error.
+-- Quien toque una de las dos, tiene que leer y tocar la otra.
+--
+-- ⚠ POR QUÉ LA VARIABLE ES LOCAL A LA TRANSACCIÓN (tercer argumento de
+-- set_config en `true`). Con `false` quedaría puesta en la SESIÓN, o sea en la
+-- conexión de Postgres, que no pertenece a nadie: PostgREST y el pooler
+-- reutilizan la misma conexión para requests de distintos usuarios. Un 'on' de
+-- sesión se filtraría a lo que venga después por esa conexión —la edición de
+-- una propiedad hecha por un agente, un cambio de estado— y esas
+-- modificaciones REALES dejarían de sellar la fecha, sin error y sin forma de
+-- saber cuáles. Local a la transacción, el valor muere con el COMMIT o el
+-- ROLLBACK de la llamada, y si el UPDATE lanza, se revierte junto con ella
+-- (también dentro de un bloque EXCEPTION, que abre una subtransacción).
+-- El set_config(..., 'off', true) posterior no es redundante: cubre el caso de
+-- que increment_views() se invoque dentro de una transacción más grande que
+-- después haga otros UPDATE.
+--
+-- ⚠ EL TRIGGER ES COMPARTIDO CON `subscriptions` (trg_subscriptions_updated_at,
+-- medido), así que la guarda también rige ahí: un UPDATE sobre subscriptions
+-- dentro de una transacción con la variable en 'on' conservaría su updated_at
+-- anterior. HOY NO OCURRE: la única función que pone la variable en 'on' es
+-- increment_views(), y entre su 'on' y su 'off' solo actualiza properties.
+-- Además, ningún código de la app lee subscriptions.updated_at (medido: solo
+-- figura en el tipo `Subscription`). Si algún día otra función usa esta
+-- variable, este párrafo deja de ser cierto.
+--
+-- ⚠ LO QUE SE PROBÓ ANTES Y NO FUNCIONÓ, para que nadie vuelva ahí "porque es
+-- más limpio": comparar la fila vieja con la nueva salvo views_count y
+-- updated_at (`to_jsonb(NEW) - 'views_count' - 'updated_at' IS DISTINCT FROM
+-- to_jsonb(OLD) - …`). La fecha se seguía sellando, y la causa no se determinó.
+-- HIPÓTESIS NO VERIFICADA: `properties.location` es una columna GENERATED ...
+-- STORED, y Postgres calcula las columnas generadas DESPUÉS de los triggers
+-- BEFORE; dentro del trigger NEW.location no tiene todavía el valor final
+-- mientras OLD.location sí, así que las dos filas nunca dan iguales. Encaja con
+-- que la comparación hecha AFUERA del trigger (sobre filas ya guardadas) solo
+-- mostrara diferencias en esas dos columnas.
+CREATE OR REPLACE FUNCTION public.update_updated_at()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
 BEGIN
+  -- increment_views() avisa, con una variable de sesión acotada a la
+  -- transacción, que lo único que está cambiando es el contador de visitas.
+  -- En ese caso updated_at NO se toca.
+  -- Motivo: updated_at es el lastModified que el sitemap le informa a los
+  -- buscadores. Sin esta guarda, cada visita le diría a Google que la
+  -- propiedad se modificó, y con el tiempo eso le enseña que nuestras fechas
+  -- no significan nada.
+  IF TG_OP = 'UPDATE'
+     AND coalesce(current_setting('marka.skip_updated_at', true), '') = 'on' THEN
+    NEW.updated_at = OLD.updated_at;
+    RETURN NEW;
+  END IF;
+
   NEW.updated_at = now();
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$function$;
 
 CREATE TRIGGER trg_properties_updated_at
   BEFORE UPDATE ON properties
@@ -1170,6 +1257,42 @@ CREATE TRIGGER trg_properties_updated_at
 CREATE TRIGGER trg_subscriptions_updated_at
   BEFORE UPDATE ON subscriptions
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ─── FUNCIÓN: contador de visitas (acoplada a update_updated_at) ─
+-- Suma 1 a properties.views_count. La llama el navegador del visitante
+-- (src/lib/utils/registerView.ts) con `rpc("increment_views", { property_id })`,
+-- una vez por propiedad por visitante. ⚠ Leé el bloque de arriba antes de
+-- tocarla: el set_config de acá es la mitad de una guarda cuya otra mitad vive
+-- en update_updated_at().
+--
+-- SECURITY DEFINER porque el visitante es anónimo y ninguna policy le permite
+-- escribir en properties. search_path fijo, como las demás funciones SECURITY
+-- DEFINER del archivo. ⚠ NO VALIDA NADA: no mira el estado de la propiedad ni
+-- si su agencia está al día, y cualquiera con la anon key puede invocarla las
+-- veces que quiera por /rest/v1/rpc/increment_views.
+--
+-- ⚠ El nombre del parámetro es `property_id` y la app lo usa literal. Cambiarlo
+-- rompe la llamada del navegador sin que el compilador lo vea.
+CREATE OR REPLACE FUNCTION public.increment_views(property_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  -- El tercer parámetro en true acota la variable a esta transacción: no
+  -- puede filtrarse a otra operación de la misma conexión.
+  PERFORM set_config('marka.skip_updated_at', 'on', true);
+  UPDATE properties SET views_count = views_count + 1 WHERE id = property_id;
+  PERFORM set_config('marka.skip_updated_at', 'off', true);
+END;
+$function$;
+
+-- Medido: proacl = {=X/postgres, postgres=X, anon=X, authenticated=X,
+-- service_role=X}. En Supabase esos permisos los dan los privilegios por
+-- defecto del esquema; se dejan explícitos porque la app DEPENDE de que `anon`
+-- pueda ejecutarla (mismo criterio que auth_agency_id).
+GRANT EXECUTE ON FUNCTION increment_views(uuid) TO anon, authenticated, service_role;
 
 -- ─── ROW LEVEL SECURITY ───────────────────────────────────────
 
