@@ -136,8 +136,11 @@ export function AgencyMapView({
         onClose={() => setFilterPanelOpen(false)}
       />
 
-      {/* ── FABs mobile (par coherente) ────────────────────────── */}
-      {!selectedPropertyId && (
+      {/* ── FABs mobile (par coherente) ──────────────────────────
+          Se ocultan con el PropertyModal abierto y con la hoja de filtros
+          abierta: en los dos casos quedarían encima del final de la hoja. Misma
+          condición que la home (public)/page.tsx, que duplica estos botones. */}
+      {!selectedPropertyId && !filterPanelOpen && (
         <>
           {/* Filtros — secundario */}
           <button

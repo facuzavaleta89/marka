@@ -123,7 +123,8 @@ function ImageCarousel({
 
 function ModalSkeleton() {
   return (
-    <div className="flex flex-col h-full animate-pulse">
+    // `flex-1 min-h-0` y NO `h-full`: mismo motivo que la raíz de ModalContent.
+    <div className="flex min-h-0 flex-1 flex-col animate-pulse">
       {/* Foto */}
       <div className="h-[220px] md:h-[260px] bg-stone/30 shrink-0" />
       {/* Cuerpo */}
@@ -259,7 +260,14 @@ function ModalContent({
   };
 
   return (
-    <div className="flex flex-col h-full">
+    // ⚠ `flex-1 min-h-0` y NO `h-full`. En la hoja de celular este contenedor
+    // tiene un hermano arriba (el handle, 20px): con `h-full` pedía el 100% del
+    // alto de la hoja, el `min-height: auto` de un ítem flex no lo dejaba
+    // achicarse, y sobresalía 20px por debajo del borde de la pantalla (medido:
+    // 4px del botón de WhatsApp quedaban afuera). En el drawer de escritorio no
+    // hay hermano y las dos formas miden lo mismo. Misma causa y mismo arreglo
+    // que el contenido de FilterPanel.
+    <div className="flex min-h-0 flex-1 flex-col">
       {/* Imágenes + controles flotantes */}
       <div className="relative">
         <ImageCarousel
