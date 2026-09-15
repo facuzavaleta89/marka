@@ -1,10 +1,12 @@
-# Tanda: hojas desde abajo en pantallas chicas — informe
+# Tanda: campos de formulario — definición única de la caja y teléfono con prefijo
 
-> **Modo ejecución.** Se modificaron 4 archivos de `src/`. No se ejecutó ningún comando de git. No se tocó la base: la única consulta fue un `SELECT` de solo lectura para conseguir un sitio de marca activo contra el cual probar. **`CLAUDE.md` NO se modificó**; el motivo está en el punto 6: el número resultó correcto después del arreglo.
+> **Modo ejecución.** Sin comandos de git y sin SQL de ningún tipo en esta tanda: la base no se tocó. `CLAUDE.md` y `PENDIENTES.md` no se tocaron. Tampoco se tocaron el enlace de contacto (`waMessage.ts`), las hojas del mapa ni la policy de `agents`.
 >
-> **Cómo se midió:** build de producción servido con `next start`, Chrome headless manejado por el protocolo de DevTools, viewport emulado de 375×667 táctil (`deviceScaleFactor` 2). Mismo script antes y después, así que las dos columnas son comparables. Los scripts están en el scratchpad de la sesión, fuera del repo. El servidor y los Chrome quedaron apagados.
->
-> ⚠ **Límite:** los eventos táctiles del protocolo son sintéticos. Son los mismos eventos de puntero que genera un dedo, pero no hay barras del navegador ni gestos del sistema. Por eso el punto 9 detalla la prueba en un teléfono real.
+> **Cómo se midió:**
+> - **Build y navegador:** build de producción servido con `next start` y medido con Chrome headless por el protocolo de DevTools.
+> - **Campos reales:** inicio de sesión y registro (incluidos el estado de error, el pegado y el tipeo en el teléfono).
+> - **Pantallas con sesión** (perfil, preferencias, equipo, admin): no inicié sesión. Medí elementos con **la clase final que produce el código**, calculada con `tailwind-merge` a partir de las constantes reales de `fieldStyles.ts` e inyectada sobre `/login`, que carga la misma hoja de estilos global. Es el mismo CSS aplicado a la misma clase, **no la pantalla autenticada**.
+> - **Limpieza:** servidor y Chrome apagados. Scripts en el scratchpad de la sesión, fuera del repo.
 
 ---
 
@@ -12,336 +14,468 @@
 
 | Archivo | Qué cambió |
 |---|---|
-| `src/components/map/FilterPanel.tsx` | Contenedor interno de `h-full` a `flex-1 min-h-0` (desborde). Arrastre para cerrar desde la franja y el encabezado. Cierre con Escape |
-| `src/components/map/PropertyModal.tsx` | Las dos raíces con `h-full` —`ModalContent` y `ModalSkeleton`— pasan a `flex-1 min-h-0` (mismo desborde). **El gesto no se tocó** |
-| `src/app/(public)/page.tsx` | Los botones flotantes se ocultan también con la hoja de filtros abierta |
-| `src/components/map/AgencyMapView.tsx` | Lo mismo, en el sitio de marca, que duplica esos botones |
-
-⚠ **`ModalSkeleton` no estaba nombrado en el prompt** y tiene exactamente el mismo `h-full` dentro de la misma hoja (`PropertyModal.tsx:127`). Si se corregía solo `ModalContent`, el esqueleto de carga seguía desbordando 20 px y **el contenido saltaba 20 px al terminar de cargar**. Es el defecto que el propio comentario de `ModalSkeleton` dice querer evitar. Lo incluí por eso.
-
----
-
-## 2. ⚠ Mediciones antes y después — 375×667, con el scroll al fondo
-
-La hoja mide 566,94 px (85vh) y su franja 20 px, **igual antes y después: la altura no se tocó.**
-
-### Cero filtros activos
-
-| | Antes | Después |
-|---|---|---|
-| Contenedor interno (alto) | 566,94 | **546,94** |
-| **Desborde por debajo de la pantalla** | **20 px** (terminaba en y = 687) | **0 px** (termina en y = 667) |
-| Cuerpo scrolleable | caja 509,94, de los cuales 489,94 visibles | **489,94, todo visible** |
-| Relleno inferior del cuerpo (20 px) | fuera de pantalla | visible |
-| Fila "Solo propiedades destacadas" | y 646,56 → 666,56 (pegada al borde) | **y 626,56 → 646,56** (20 px de aire) |
-| Título "Destacadas" | y 618,06 → 634,56 | y 598,06 → 614,56 |
-| Botones flotantes | **presentes**, y 599 → 643 | **no están en el DOM** |
-| **Qué quedaba debajo de ellos** | **título "Destacadas"**. `elementFromPoint` en x = 27 → `FAB_FILTROS` y en x = 322 → `FAB_LISTA`, a y = 606/621/635 | **nada**: en esos mismos puntos responden "Destacadas" y "Solo propiedades destacadas" |
-
-⚠ **El acople que advertía el prompt, confirmado:** después del arreglo del desborde, la fila "Solo destacadas" ocupa y 626,56 → 646,56. Los botones ocupaban y 599 → 643, así que **16,44 de sus 20 px habrían quedado debajo del botón**. En la medición "después", los puntos (27, 635) y (322, 635) —antes `FAB_FILTROS` y `FAB_LISTA`— caen sobre esa fila. Arreglar solo el desborde la metía debajo de los botones; ocultarlos es lo que la deja libre.
-
-### Con filtros activos (dos: "Pileta" y "Solo destacadas")
-
-| | Antes | Después |
-|---|---|---|
-| Contenedor interno (alto) | 566,94 | **546,94** |
-| **Desborde por debajo de la pantalla** | **20 px** | **0 px** |
-| Pie "Limpiar filtros" | y 612 → 687 (20 px afuera) | **y 592 → 667** |
-| Botón "Limpiar filtros (2)" | y 629 → 671, **4 px fuera de pantalla** | **y 609 → 651, 0 px afuera** |
-| Cuerpo scrolleable | 434,94 | **414,94** (el pie subió 20 px) |
-| Botones flotantes | **presentes**, y 599 → 643 (el de filtros dice "Filtros (2)", 16 → 137,13) | **no están en el DOM** |
-| **Qué quedaba debajo de ellos** | **la franja superior del botón "Limpiar filtros (2)"** (y 629 → 643, a los costados) | **nada**: en los 9 puntos donde estaban los botones responde "Limpiar filtros (2)" |
-
-### Control de regresión: panel lateral de escritorio (1280×800)
-
-| | Antes | Después |
-|---|---|---|
-| Contenedor interno | 744 | **744** |
-| Cuerpo scrolleable | 744 (contenido 954) | **744 (contenido 954)** |
-
-Idéntico: en escritorio el contenedor no tiene hermano arriba, así que `h-full` y `flex-1 min-h-0` miden lo mismo.
+| **`src/components/forms/fieldStyles.ts`** (nuevo) | **La definición única** del campo con caja, su error, el error del subrayado y el campo con prefijo |
+| **`src/components/forms/PhoneWaInput.tsx`** (nuevo) | Campo de teléfono con prefijo `+54 9` fijo (limpia al pegar y al salir) + aviso de número a revisar |
+| **`src/lib/utils/phoneWa.ts`** (nuevo) | Fuente única del formato: normalización, validación de largo, separación del número guardado y campo de zod. Cliente y servidor |
+| `src/components/dashboard/ProfileForm.tsx` | 4 campos pasan a la caja; teléfono con `PhoneWaInput` y número guardado preservado |
+| `src/components/dashboard/AgencyPhoneForm.tsx` | Ídem para el teléfono de la agencia |
+| `src/components/dashboard/AgencyIdentityForm.tsx` | 2 campos (nombre, matrícula) pasan a la caja |
+| `src/components/dashboard/TeamContent.tsx` | 4 campos del alta de agente pasan a la caja; teléfono con `PhoneWaInput` |
+| `src/components/dashboard/AgencySlugForm.tsx` | El campo con prefijo usa la definición única en vez de su caja escrita a mano |
+| `src/components/properties/PropertyForm.tsx` | Se borró su constante `FIELD`/`FIELD_ERR`; importa la única (13 + 6 usos) |
+| `src/app/(agent)/admin/AgenciesTable.tsx` | Se borró su copia de `FIELD`; importa la única. El área de texto del motivo de rechazo pasa a la caja |
+| `src/app/(agent)/login/LoginForm.tsx` | El error colorea el subrayado en vez de convertir el campo en caja |
+| `src/app/(agent)/register/RegisterForm.tsx` | Ídem (5 campos + selector de ciudad); teléfono con `PhoneWaInput` en variante subrayado |
+| `src/app/(agent)/dashboard/perfil/actions.ts` | **Valida el teléfono en el servidor** (antes no validaba nada) |
+| `src/app/(agent)/register/actions.ts` | **Valida el teléfono en el servidor** antes de crear el usuario; un solo valor para las dos tablas |
+| `src/app/(agent)/dashboard/preferencias/actions.ts` | Validación del teléfono con la fuente única, preservando el número guardado |
+| `src/app/(agent)/dashboard/equipo/actions.ts` | Validación del teléfono con la fuente única |
 
 ---
 
-## 3. Cómo se ocultan los botones flotantes
+## 2. La definición única del campo con caja
 
-**Se siguió el mecanismo que ya existía.** Los botones ya se ocultaban con la hoja del detalle de propiedad mediante un render condicional (`{!selectedPropertyId && (…)}`). Se agregó la segunda condición a esa misma expresión, **en las dos pantallas**:
+### Dónde vive y cómo quedó
 
-```tsx
-// src/app/(public)/page.tsx:170
-      {!selectedPropertyId && !filterPanelOpen && (
+`src/components/forms/fieldStyles.ts`:
+
+```ts
+/** Caja completa para `Input`, `Textarea` y `SelectTrigger`. */
+export const FIELD_BOX =
+  "rounded-md border border-stone border-b-stone bg-white px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracota/20 focus-visible:ring-offset-1 focus-visible:border-graphite focus-visible:border-b-graphite";
+
+/** Estado de error de la caja. Se suma a `FIELD_BOX`, nunca va solo. */
+export const FIELD_BOX_ERROR = "border-error border-b-error";
+
+export const FIELD_UNDERLINE_ERROR =
+  "border-b-error focus-visible:border-b-error aria-invalid:border-b-error";
+
+export const FIELD_BOX_GROUP =
+  "flex items-center rounded-md border border-stone bg-white pl-3 focus-within:ring-2 focus-within:ring-terracota/20 focus-within:ring-offset-1 focus-within:border-graphite";
+export const FIELD_BOX_GROUP_ERROR = "border-error";
+export const FIELD_UNDERLINE_GROUP =
+  "flex items-center border-b border-input focus-within:border-ring";
+export const FIELD_UNDERLINE_GROUP_ERROR = "border-error focus-within:border-error";
+export const FIELD_GROUP_PREFIX =
+  "shrink-0 font-sans text-base md:text-sm text-graphite select-none whitespace-nowrap";
+export const FIELD_BOX_GROUP_INPUT =
+  "border-0 bg-transparent pr-3 shadow-none focus-visible:ring-0";
+export const FIELD_UNDERLINE_GROUP_INPUT =
+  "border-0 bg-transparent shadow-none focus-visible:ring-0";
 ```
 
-```tsx
-// src/components/map/AgencyMapView.tsx:143
-      {!selectedPropertyId && !filterPanelOpen && (
-```
+**`FIELD_BOX` es textualmente la constante que ya tenían duplicada `PropertyForm` y `AgenciesTable`.** Se mudó, no se reinventó: esas dos pantallas se ven exactamente igual que antes, medido (12 px de relleno, anillo de foco igual).
 
-`filterPanelOpen` es el estado que ya controlaba la hoja en cada pantalla (`page.tsx:59`, `AgencyMapView.tsx:44`). No hubo que subir estado ni pasar nada nuevo.
+### Por qué constantes y no una variante del componente
 
-**Verificado en las dos pantallas:**
-- **Home:** los botones están con la hoja cerrada, desaparecen al abrirla y vuelven al cerrarla (tanto con la ✕ como arrastrando).
-- **Sitio de marca `/inmobiliaria-demo`:** con la hoja cerrada `{filtros: true, lista: true}`, abierta `{false, false}` y cerrada por arrastre `{true, true}`. Ahí el desborde también dio 0 (el contenido termina en y = 667).
+**Porque la caja tiene que vestir cosas que no son un `<input>`.** En un campo con prefijo fijo —la dirección del sitio de marca y ahora el teléfono— la caja la dibuja **el contenedor** `<div>`, y el input va adentro sin borde. Una variante de `Input` no llega a ese contenedor, y la definición del campo con prefijo quedaría en otro lado: dos fuentes.
 
-**No se tocó:** el orden de capas (los botones siguen en `z-[610]`) ni ninguna altura.
+Además, `Input`, `Textarea` y `SelectTrigger` consumen **la misma clase**, así que un solo lugar alcanza para los tres sin tocar los componentes de fábrica. Y es el patrón que ya estaba probado en `PropertyForm`, solo que copiado.
+
+El archivo explica arriba de todo **por qué existe**: la trampa de `tailwind-merge`, que convertía un color de borde en una caja sin relleno.
+
+### Quiénes la consumen
+
+Búsqueda de `components/forms/fieldStyles` en `src/`: **9 archivos**.
+
+| Consumidor | Qué usa |
+|---|---|
+| `ProfileForm.tsx` | `FIELD_BOX` (nombre, 2 contraseñas) + el teléfono vía `PhoneWaInput` |
+| `AgencyPhoneForm.tsx` | teléfono vía `PhoneWaInput` |
+| `AgencyIdentityForm.tsx` | `FIELD_BOX` (nombre, matrícula) |
+| `TeamContent.tsx` | `FIELD_BOX` (nombre, email, contraseña) + teléfono vía `PhoneWaInput` |
+| `AgencySlugForm.tsx` | `FIELD_BOX_GROUP` + `FIELD_GROUP_PREFIX` + `FIELD_BOX_GROUP_INPUT` |
+| `PropertyForm.tsx` | `FIELD_BOX` (13 usos: `Input`, `Textarea`, 3 `SelectTrigger`) + `FIELD_BOX_ERROR` (6) |
+| `AgenciesTable.tsx` | `FIELD_BOX` (3 `Input` + el `Textarea` del motivo) + `FIELD_BOX_ERROR` |
+| `LoginForm.tsx`, `RegisterForm.tsx` | `FIELD_UNDERLINE_ERROR` (y `PhoneWaInput` en registro) |
+| `PhoneWaInput.tsx` | las constantes de grupo |
+
+**Verificación de "una sola fuente":**
+- No queda ninguna `const FIELD` en `src/`.
+- No queda ningún `bg-white border-stone focus-visible:ring-terracota` (búsquedas con resultado vacío).
+- Único `"border-error"` suelto que queda: `LocationPicker.tsx:158`. Es el recuadro del mini-mapa, no un campo.
+
+### ⚠ Cambios visibles en la dirección del sitio de marca
+
+Al pasar su caja a la definición única, ese campo cambió en tres cosas:
+
+| | Antes | Después | Por qué |
+|---|---|---|---|
+| Color del prefijo | `stone` (#C8C0B7) | **`graphite`** (#4E4A46) | `stone` es el color de los placeholders: el prefijo se leía como texto de ayuda. Contraste sobre blanco: ~1,7:1 → ~9:1 |
+| Tamaño del prefijo en celular | 14 px | **16 px** | Igual al input que acompaña, que en celular va a 16 px |
+| Anillo de foco | terracota **sólido** | **terracota al 20 %** + borde `graphite` | El de toda la familia caja. DESIGN.md pide sólido; ver la inconsistencia #16 del informe anterior, que sigue abierta |
+
+La geometría no cambió (medido): prefijo a 13 px del borde, valor pegado al final del prefijo, alto 42 px.
+
+### Decisión 5 — área de texto y selector
+
+| Dónde conviven | Qué se hizo |
+|---|---|
+| **Formulario de propiedades** (`Textarea` y 3 `SelectTrigger` junto a `Input` con caja) | ya usaban la caja; ahora de la fuente única |
+| **Panel admin** (`Textarea` del motivo de rechazo en una pantalla donde todos los demás campos son caja) | **pasó a `FIELD_BOX`** + `py-2`, como la descripción de propiedades. Medido: 12 px de relleno. Antes era subrayado, y con error, caja roja con 0 px |
+| **Registro** (`SelectTrigger` de ciudad junto a `Input` subrayados) | **queda subrayado**, coherente con su pantalla; su error usa `FIELD_UNDERLINE_ERROR` |
+
+No hay otro lugar donde un área de texto o un selector conviva con campos de la otra familia.
 
 ---
 
-## 4. El gesto
+## 3. El estado de error de inicio de sesión y registro
 
-### El código
+**Elegí colorear el subrayado sin convertirlo en caja.**
 
-Constantes, `src/components/map/FilterPanel.tsx:47-53`:
+**Por qué:**
+- **Esas pantallas son de la familia subrayado.** Pasar a caja al fallar le cambiaría la forma al campo **justo en el momento del error**.
+- **El texto se correría.** Con la caja entera (12 px de relleno), el texto se movería 12 px respecto de la etiqueta y del enlace "Volver al mapa", que DESIGN §14 alinea a propósito. Con la caja sin relleno se reproduciría el defecto.
+- **Error debe ser menos cambio, no más.** El mismo campo, con otro color de línea.
+
+La constante lleva **solo clases de borde inferior**. Ese es el punto: nunca le pasa a `tailwind-merge` un color de los cuatro lados.
+
+⚠ **Un hallazgo que salió midiendo, y quedó resuelto en la misma constante.** La primera versión era `border-b-error focus-visible:border-b-error`. Con ella, el selector de ciudad salía con el rojo **del preset** (`lab(48 77 61)`) y no con el `error` del proyecto. El selector lleva `aria-invalid`, y la clase de fábrica `aria-invalid:border-b-destructive` pesa más: tiene selector de atributo. Se agregó `aria-invalid:border-b-error`, que hace que `tailwind-merge` descarte la de fábrica (verificado en la clase final). Medido después: **los tres campos del registro con error en `rgb(155, 35, 53)`**.
+
+**Medido después, sobre los campos reales:**
+
+| Campo | Bordes con ancho | Color de los laterales | Color inferior | Relleno | Radio |
+|---|---|---|---|---|---|
+| Inicio de sesión, email con error | 1 px (laterales transparentes) | `rgba(0,0,0,0)` | **`rgb(155, 35, 53)`** | 0 | 0 |
+| Registro, nombre con error | ídem | transparente | **`rgb(155, 35, 53)`** | 0 | 0 |
+| Registro, selector de ciudad con error | ídem | transparente | **`rgb(155, 35, 53)`** | 0 | 0 |
+| Registro, teléfono con error | solo inferior | — | **`rgb(155, 35, 53)`** | 0 | 0 |
+
+Antes (informe anterior, mismo código): **caja roja de 4 lados con 0 px de relleno**.
+
+---
+
+## 4. El anillo de foco
+
+| Pantallas | Antes | Después |
+|---|---|---|
+| **Perfil, preferencias (nombre, matrícula, teléfono), equipo** | **ninguno** (medido `box-shadow: none`) | **resuelto por la definición única.** Medido: `rgb(255,255,255) 0 0 0 1px, lab(44 30 36 / 0.2) 0 0 0 3px` (anillo de 2 px terracota al 20 % con 1 px de separación), **idéntico al del formulario de propiedades** |
+| Teléfono y dirección del sitio (con prefijo) | dirección: terracota sólido | el mismo anillo, en el contenedor (`focus-within`) |
+| **Inicio de sesión y registro** | solo cambia el borde inferior | **igual: sin anillo**. Es el diseño de la familia subrayado (el foco se marca en la línea). Con error, la línea sigue roja al enfocar (medido). Lo reporto sin arreglarlo: agregarle anillo a esa familia es una decisión de diseño aparte |
+
+⚠ **El anillo de la familia caja sigue siendo al 20 %, no el sólido que pide `DESIGN.md:433`.** Tomé el de la constante existente para no cambiar el aspecto de propiedades y admin. Esa divergencia con DESIGN ya estaba anotada (#16 del informe anterior) y sigue abierta.
+
+---
+
+## 5. Espacio entre el borde y el primer carácter
+
+"Desde el borde externo" incluye el 1 px del borde.
+
+| Pantalla y campo | Cómo se midió | Antes | Después |
+|---|---|---|---|
+| **Perfil** (nombre, contraseñas) | clase final inyectada | **1 px** (0 px de relleno), caja sin radio | **13 px** (12 de relleno), radio 8 px |
+| **Preferencias** (nombre, matrícula) | ídem | **1 px** | **13 px** |
+| **Equipo** (nombre, email, contraseña) | ídem | **1 px** | **13 px** |
+| **Teléfono en perfil, preferencias y equipo** | contenedor + prefijo inyectados | **1 px** (sin prefijo) | prefijo `+54 9` a **13 px**; **8 px** entre el prefijo y el primer dígito (dígito a 58,3 px del borde) |
+| Dirección del sitio | ídem | prefijo a 13 px, valor pegado | **igual**: prefijo a 13 px, valor pegado (0 px) |
+| **Admin, motivo de rechazo** | ídem | 1 px (subrayado; con error, caja) | **13 px** |
+| Propiedades y admin (fechas, confirmación) | ídem | 13 px | **13 px** (sin cambio) |
+| **Inicio de sesión** (real) | real | 1 px, subrayado | **1 px, subrayado** (sin cambio, a propósito) |
+| **Inicio de sesión con error** (real) | real | **1 px dentro de una caja roja** | **1 px, subrayado rojo** |
+| **Registro** (real) | real | 1 px, subrayado | 1 px, subrayado |
+| **Registro con error** (real) | real | **1 px dentro de una caja roja** | **1 px, subrayado rojo** |
+| **Registro, teléfono** (real, 390×844) | real | 1 px, sin prefijo | prefijo `+54 9` a **0 px** (alineado con la etiqueta, medido); el input empieza a 50,6 px |
+
+---
+
+## 6. El campo de teléfono
+
+### El JSX
+
+`src/components/forms/PhoneWaInput.tsx`, el render:
 
 ```tsx
-// Arrastre para cerrar la hoja (mobile). Por debajo de DRAG_SLOP_PX de
-// movimiento el gesto es un TOQUE y no mueve nada: es lo que deja funcionar la
-// ✕, que vive en la misma zona que se arrastra. DRAG_CLOSE_PX es el mismo
-// umbral que usa la hoja del detalle de propiedad (PropertyModal), para que las
-// dos franjas, que son idénticas a la vista, respondan igual al tacto.
-const DRAG_SLOP_PX = 8;
-const DRAG_CLOSE_PX = 120;
+  return (
+    <div
+      className={cn(
+        box ? FIELD_BOX_GROUP : FIELD_UNDERLINE_GROUP,
+        invalid && (box ? FIELD_BOX_GROUP_ERROR : FIELD_UNDERLINE_GROUP_ERROR)
+      )}
+    >
+      {!isPreserved && (
+        <span id={prefixId} className={cn(FIELD_GROUP_PREFIX, "pr-2")}>
+          {PHONE_WA_PREFIX_LABEL}
+        </span>
+      )}
+      <Input
+        id={id}
+        name={name}
+        ref={inputRef}
+        type="tel"
+        inputMode="numeric"
+        autoComplete="tel-national"
+        value={value}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        placeholder={PHONE_WA_PLACEHOLDER}
+        aria-invalid={invalid || undefined}
+        aria-describedby={
+          [isPreserved ? null : prefixId, describedBy].filter(Boolean).join(" ") ||
+          undefined
+        }
+        className={box ? FIELD_BOX_GROUP_INPUT : FIELD_UNDERLINE_GROUP_INPUT}
+      />
+    </div>
+  );
 ```
 
-Escape y arrastre, `FilterPanel.tsx:182-308`:
+Cuándo limpia:
 
 ```tsx
-  // ── Cierre de la hoja (solo mobile) ────────────────────────────
-  //
-  // Escape: solo la instancia mobile y solo con la hoja abierta. La instancia
-  // de escritorio está montada siempre, y escuchar la tecla ahí cerraría algo
-  // que no existe.
-  useEffect(() => {
-    if (!mobile || !isOpen) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose?.();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [mobile, isOpen, onClose]);
+  function handleChange(e: ChangeEvent<HTMLInputElement>) {
+    const next = e.target.value;
+    // Más de un carácter de una sola vez = pegado o autocompletado. …
+    const insertedAtOnce = next.length - value.length > 1;
+    onChange(
+      insertedAtOnce ? normalizePhoneWaNational(next) : sanitizePhoneWaTyping(next)
+    );
+  }
 
-  // Arrastre hacia abajo para cerrar.
-  //
-  // ⚠ SE ESCUCHA SOLO EN LA ZONA QUE NO SCROLLEA: la franja y el encabezado.
-  // NUNCA en la hoja entera. Arrastrar para cerrar y scrollear el contenido son
-  // dos gestos verticales; si el arrastre se escuchara en el cuerpo, un intento
-  // de volver al principio de la lista cerraría el panel. La hoja del detalle de
-  // propiedad (PropertyModal) escucha la hoja entera sin mirar el scroll: de ahí
-  // se tomó el mecanismo (desplazamiento en vivo + umbral), NO el alcance. La
-  // garantía es estructural: los manejadores se montan en la franja y en el
-  // encabezado, y el cuerpo scrolleable no es descendiente de ninguno de los dos.
-  //
-  // ⚠ LA HOJA SE MUEVE CON LA PROPIEDAD CSS `translate`, NO CON `transform`.
-  // Tailwind v4 escribe `translate-y-0` / `translate-y-full` como `translate`
-  // (medido: `transform` da `none` con la hoja abierta y cerrada). Escribir
-  // `transform` en línea SUMARÍA un segundo desplazamiento en vez de reemplazar
-  // el de la clase. El estilo en línea de abajo pisa la misma propiedad.
-  //
-  // El desplazamiento se escribe directo en el DOM y no en un estado de React:
-  // un setState por `pointermove` re-renderizaría el panel entero —todos los
-  // filtros— en cada píxel del gesto.
-  const sheetRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{
-    pointerId: number;
-    startY: number;
-    dy: number;
-    dragging: boolean;
-  } | null>(null);
-  // Un arrastre que empezó sobre la ✕ no tiene que terminar en un click sobre
-  // ella. Se limpia en cada `pointerdown`, así que nunca se come el click de un
-  // toque posterior.
-  const suppressClickRef = useRef(false);
-
-  const setSheetOffset = (dy: number | null) => {
-    const el = sheetRef.current;
-    if (!el) return;
-    if (dy === null) {
-      // Al soltar se devuelve el control a la clase: su `transition` anima la
-      // vuelta a `translate-y-0` o, si se cerró, la salida a `translate-y-full`
-      // desde donde quedó el dedo.
-      el.style.translate = "";
-      el.style.transition = "";
-    } else {
-      el.style.translate = `0 ${dy}px`;
-      el.style.transition = "none";
+  function handleBlur() {
+    // … Un número guardado sin tocar NO se toca …
+    if (!isPreserved) {
+      const normalized = normalizePhoneWaNational(value);
+      if (normalized !== value) onChange(normalized);
     }
-  };
+    onBlur();
+  }
+```
 
-  const handleDragStart = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!e.isPrimary || (e.pointerType === "mouse" && e.button !== 0)) return;
-    suppressClickRef.current = false;
-    dragRef.current = {
-      pointerId: e.pointerId,
-      startY: e.clientY,
-      dy: 0,
-      dragging: false,
-    };
-    // Capturar de entrada, salvo que el gesto empiece sobre un botón: capturar
-    // redirige el `pointerup` a esta zona, el click dejaría de caer en la ✕ y el
-    // botón no cerraría con un toque. Sobre un botón se captura recién cuando el
-    // movimiento pasa a ser arrastre.
-    if (!(e.target as Element).closest("button")) {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    }
-  };
+Montaje en perfil (`ProfileForm.tsx`), con `Controller` y **sin `watch()`**:
 
-  const handleDragMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current;
-    if (!drag || e.pointerId !== drag.pointerId) return;
-    const delta = e.clientY - drag.startY;
-    if (!drag.dragging) {
-      // Toque vs. arrastre: hasta DRAG_SLOP_PX de movimiento es un toque (el
-      // temblor natural de un dedo no mueve la hoja ni anula el click).
-      if (Math.abs(delta) < DRAG_SLOP_PX) return;
-      drag.dragging = true;
-      if (!e.currentTarget.hasPointerCapture(e.pointerId)) {
-        e.currentTarget.setPointerCapture(e.pointerId);
+```tsx
+            <Controller
+              control={profileForm.control}
+              name="phone_wa"
+              render={({ field, fieldState }) => (
+                <>
+                  <PhoneWaInput
+                    id="phone_wa"
+                    name={field.name}
+                    value={field.value ?? ""}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    inputRef={field.ref}
+                    variant="box"
+                    invalid={!!fieldState.error}
+                    preservedValue={preservedPhone}
+                    describedBy="phone_wa_help"
+                  />
+                  {preservedPhone !== null && field.value === preservedPhone && (
+                    <PhoneWaReviewNotice stored={preservedPhone} />
+                  )}
+                </>
+              )}
+            />
+```
+
+**Teclado numérico (decisión 13):** los cuatro campos de teléfono (perfil, preferencias, equipo, registro) son ahora el mismo componente, con `type="tel"` y `inputMode="numeric"`. Medido en el registro real: `type: "tel"`, `inputMode: "numeric"`, `autoComplete: "tel-national"`. Antes, tres de los cuatro no tenían ninguno de los dos atributos.
+
+### La función que limpia
+
+`src/lib/utils/phoneWa.ts`:
+
+```ts
+export function normalizePhoneWaNational(value: string): string {
+  let digits = value.replace(/\D/g, "");
+
+  let previous: string;
+  do {
+    previous = digits;
+    digits = digits.replace(/^0+/, "");
+    if (digits.startsWith("54")) digits = digits.slice(2);
+    if (digits.startsWith("9")) digits = digits.slice(1);
+  } while (digits !== previous);
+
+  if (digits.length === PHONE_WA_NATIONAL_LENGTH + 2) {
+    for (const at of [2, 3, 4]) {
+      if (digits.slice(at, at + 2) === "15") {
+        return digits.slice(0, at) + digits.slice(at + 2);
       }
     }
-    // Solo hacia abajo: hacia arriba la hoja ya está en su tope.
-    drag.dy = Math.max(0, delta);
-    setSheetOffset(drag.dy);
-  };
+  }
 
-  const handleDragEnd = (e: React.PointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current;
-    if (!drag || e.pointerId !== drag.pointerId) return;
-    dragRef.current = null;
-    if (!drag.dragging) return; // fue un toque: el click sigue su curso
-    suppressClickRef.current = true;
-    setSheetOffset(null);
-    // `pointercancel` (el sistema se llevó el gesto) vuelve la hoja a su lugar
-    // sin cerrarla.
-    if (e.type === "pointerup" && drag.dy > DRAG_CLOSE_PX) onClose?.();
-  };
-
-  const handleDragClickCapture = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!suppressClickRef.current) return;
-    suppressClickRef.current = false;
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  // `touch-none` en las dos zonas: sin eso el navegador puede reclamar el gesto
-  // táctil para sí (desplazamiento, recarga al tirar hacia abajo) y cancelarlo
-  // con `pointercancel` a mitad de camino. Esas zonas no scrollean, así que no
-  // se pierde nada.
-  const dragZoneProps = {
-    onPointerDown: handleDragStart,
-    onPointerMove: handleDragMove,
-    onPointerUp: handleDragEnd,
-    onPointerCancel: handleDragEnd,
-    onClickCapture: handleDragClickCapture,
-  };
+  return digits;
+}
 ```
 
-Montaje, solo en las dos zonas fijas (`FilterPanel.tsx:372-376` y `:612-617`):
+y la validación y el valor a guardar:
 
-```tsx
-      {mobile && (
-        <div
-          {...dragZoneProps}
-          className="flex items-center justify-between px-5 py-4 border-b border-stone shrink-0 touch-none"
-        >
+```ts
+const NATIONAL_PATTERN = /^[1-3]\d{9}$/;
+
+export function resolvePhoneWaForSave(
+  input: string,
+  preserved: string | null = null
+): string | null {
+  if (preserved !== null && preserved !== "" && input === preserved) {
+    return preserved;
+  }
+  const national = normalizePhoneWaNational(input);
+  return isValidPhoneWaNational(national)
+    ? PHONE_WA_STORED_PREFIX + national
+    : null;
+}
 ```
 
-```tsx
-        <div
-          {...dragZoneProps}
-          className="flex justify-center pt-3 pb-1 shrink-0 touch-none"
-        >
-          <div className="w-10 h-1 bg-stone rounded-full" />
-        </div>
-```
+**Por qué es seguro quitar 0, 9 y 54 del principio:** toda característica argentina empieza con 1, 2 o 3, así que ninguno de los tres puede ser el comienzo real del número.
 
-### Cómo se distingue un toque de un arrastre
+**Largo (decisión 10): mínimo Y máximo, exactamente 10 dígitos.** Característica + número suman siempre 10 en Argentina, sea cual sea el largo de la característica.
 
-- **Umbral de 8 px.** Mientras el dedo se mueve menos de `DRAG_SLOP_PX`, el gesto sigue siendo un toque: la hoja no se mueve y al soltar `handleDragEnd` sale por `if (!drag.dragging) return;` **sin tocar nada**, así que el click llega a la ✕.
-- **Captura de puntero diferida sobre la ✕.** Si el gesto empieza sobre un botón, el puntero **no se captura** hasta pasar a arrastre. Capturar de entrada redirigiría el `pointerup` a la zona y el click dejaría de caer en la ✕. Fuera de un botón se captura de entrada, así un arrastre que sale de la zona de 77 px sigue llegando a los manejadores.
-- **Un arrastre no termina en click.** Si hubo arrastre, `suppressClickRef` se enciende y `onClickCapture` anula el click siguiente sobre la zona. Se apaga en cada `pointerdown`, así que nunca se come el click de un toque posterior.
+### Qué produce cada entrada
 
-### Cómo se garantiza que no se dispare desde el cuerpo
+Ejecutado contra la función real (`node` sobre `src/lib/utils/phoneWa.ts`):
 
-**Por estructura, no por una condición.** Los manejadores están solo en la franja y en el encabezado, y el cuerpo scrolleable es **hermano** del encabezado, no descendiente: un `pointerdown` en el cuerpo nunca llega a ellos. **No se copió el alcance del precedente**: `PropertyModal` escucha la hoja entera (`onTouchStart`/`Move`/`End` en el contenedor).
-
-### El desplazamiento
-
-- **Antes de escribir se midió:** con la hoja cerrada `translate: "0px 100%"` y `transform: "none"`; abierta, `translate: "0px"` y `transform: "none"`. La transición cubre `transform, translate, scale, rotate`. O sea: **Tailwind v4 mueve la hoja con `translate`**.
-- El gesto escribe **`style.translate`**, la misma propiedad que la clase, así que la **reemplaza** en vez de sumarse. Medido a mitad de arrastre: `translate: "0px 30px"` con la hoja corrida exactamente 30 px (arriba de 100,06 a 130,06) y `transform` en `none`.
-- Al soltar se limpia el estilo en línea y la transición de la clase anima la vuelta o la salida. Medido después de todas las pruebas: sin estilo en línea residual.
-
-### Las 13 pruebas del gesto (después)
-
-| # | Prueba | Antes | Después |
-|---|---|---|---|
-| 1 | Arrastrar 60 px desde la franja | no se mueve | se mueve 30 px a mitad de camino y **vuelve** (no cierra) |
-| 2 | Arrastrar 200 px desde la franja | no se mueve | **cierra**; los botones vuelven |
-| 3 | Arrastrar 200 px desde el encabezado | no se mueve | **cierra** |
-| 4 | **Arrastrar 200 px desde el cuerpo** (con scroll en 200) | scrollea a 0, la hoja quieta | **scrollea a 0, la hoja quieta** (arriba en 100,06, sin estilo en línea) |
-| 5 | Toque en la ✕ | cierra | **cierra** |
-| 6 | Toque en la ✕ con 4 px de temblor | cierra | **cierra** |
-| 7 | Arrastre de 60 px que empieza sobre la ✕ | no cierra | **no cierra** (ni por gesto ni por click) |
-| 8 | Arrastre de 200 px que empieza sobre la ✕ | no cierra | **cierra por gesto** |
-| 9 | Escape | **no cierra** | **cierra** |
-| 10 | Mouse: arrastre de 200 px desde la franja | no cierra | **cierra** |
-| 11 | Mouse: click en la ✕ | cierra | **cierra** |
-| 12 | Tocar el velo | cierra | **cierra** |
-| 13 | Estilo en línea residual | — | **ninguno** |
-
-**La hoja del detalle de propiedad ya no tiene Escape, y no se implementó** porque está fuera de alcance. Una búsqueda de `"Escape"` en `src/` solo encuentra `FilterPanel.tsx:184` y `:190`. **Su gesto sigue funcionando**: verificado que un arrastre de 200 px desde su franja la cierra después del cambio.
-
----
-
-## 5. Área scrolleable después del arreglo (375×667)
-
-| Hoja | Antes | Después |
+| Entrada | Queda en el campo | Se guarda |
 |---|---|---|
-| **Filtros, cero filtros** | caja 509,94, visibles 489,94 (**20 px fuera de pantalla**) | **489,94**, todo visible |
-| **Filtros, con filtros** (el pie ocupa 75 px) | 434,94 (el **pie** tenía 20 px afuera) | **414,94**, todo visible |
-| **Detalle de propiedad** | 197,44 (la zona inferior terminaba en 687: **4 px del botón de WhatsApp afuera**) | **177,44**, con el botón en y 607 → 651, 0 px afuera |
+| **Número completo con el signo más** `+54 9 385 400-0000` | `3854000000` | **`5493854000000`** |
+| **Con el código de país sin el signo** `5493854000000` | `3854000000` | **`5493854000000`** |
+| **Con cero adelante** `03854000000` | `3854000000` | **`5493854000000`** |
+| **Con quince** `0385 15 400 0000` | `3854000000` | **`5493854000000`** |
+| **Solo característica y número** `3854000000` | `3854000000` | **`5493854000000`** |
+| Con espacios `385 400 0000` | `3854000000` | `5493854000000` |
+| Con quince sin cero `385154000000` | `3854000000` | `5493854000000` |
+| 54 sin el 9 `543854000000` | `3854000000` | `5493854000000` |
+| Buenos Aires con 0 y 15 `011 15 1234-5678` | `1112345678` | `5491112345678` |
+| Bariloche (característica de 4) con 15 `02944 15 123456` | `2944123456` | `5492944123456` |
+| Discado internacional `0054 9 385 4000000` | `3854000000` | `5493854000000` |
+| **Prefijo duplicado** (pegado sobre el prefijo) `5495493854000000` | `3854000000` | `5493854000000` |
+| Sin característica `15 4000000` | `154000000` | **error** |
+| Corto `385400000` | igual | **error** |
+| Largo `38540000000` | igual | **error** |
 
-⚠ **El área scrolleable NO creció: bajó 20 px en las tres filas, y es lo correcto.** Antes esos 20 px "sobraban" porque el fondo del contenido estaba fuera de pantalla, así que eran área inalcanzable, no área útil. Lo que se ve y se puede tocar es lo mismo o más. En el detalle de propiedad, el cambio real es que **el botón de contacto entra entero**.
+**Las cinco formas de escribir el mismo número (+, código de país, cero, quince, a mano) guardan exactamente el mismo valor.**
 
-**Escritorio, sin cambios:** panel de filtros 744 px. El panel lateral del detalle mide 744 de contenido en 744 de alto (cuerpo 354,5 + zona inferior 129,5), sin desborde.
+**Medido en el navegador**, sobre el campo real del registro:
+
+| Acción | En el campo al hacerla | Al salir del campo |
+|---|---|---|
+| **Pegar** `+54 9 385 400-0000` | **`3854000000`** (limpio en el acto) | `3854000000` |
+| Pegar `5493854000000` | `3854000000` | `3854000000` |
+| Pegar `0385 15 400 0000` | `3854000000` | `3854000000` |
+| Pegar `011 15 1234-5678` | `1112345678` | `1112345678` |
+| **Tipear** `+54 9 385 400-0000` de a una tecla | `5493854000000` (solo dígitos) | **`3854000000`** |
+| Tipear `03854000000` | `03854000000` | `3854000000` |
+| Tipear `0385 15 400 0000` | `0385154000000` | `3854000000` |
+| Tipear `385 4000000` | `3854000000` | `3854000000` |
+
+**Por qué al tipear no se quitan prefijos tecla por tecla:** borraría un `5` o un `0` recién escrito antes de que la persona termine. Mientras tipea solo se sacan los caracteres que no son dígitos. Al salir del campo, al pegar y al validar, se limpia entero.
+
+**Mensaje de error** (cliente y servidor, el mismo):
+
+> Revisá el número: la característica y el número juntos tienen que ser 10 dígitos (ej: 385 4000000).
+
+**Texto de ayuda** debajo del campo:
+
+> Característica y número, sin el 0 ni el 15. Si pegás el número completo, se acomoda solo.
 
 ---
 
-## 6. El número de `CLAUDE.md`: NO se modificó, porque después del arreglo es correcto
+## 7. Un perfil cuyo número guardado no tiene el formato esperado
 
-La advertencia (`CLAUDE.md:1596`) dice:
+**El caso real:** 2 de los 6 números guardados son `543853000299`, sin el 9 de celular.
 
-> `| **Hoy** | 546,9 − 20 (handle) − 220 (carrusel) − 129,5 = **≈ 177 px** |`
+**Qué pasa, en orden:**
 
-| | Área que scrollea en la hoja del detalle |
-|---|---|
-| Medido **antes** de esta tanda | **197,44 px**, con 4 px del botón de contacto fuera de pantalla |
-| Medido **después** de esta tanda | **177,44 px**, con el botón entero |
-| Lo que dice `CLAUDE.md` | **≈ 177 px** |
+1. `splitStoredPhoneWa("543853000299")` → `{ national: "543853000299", recognized: false }` (ejecutado).
+2. El campo se carga **con el número tal cual**: `543853000299`.
+3. **El prefijo `+54 9` no se muestra** mientras el campo conserve ese valor sin tocar. Mostrarlo haría leer "+54 9 543853000299", que es otro número.
+4. Al salir del campo **no se limpia**: `handleBlur` no normaliza un valor preservado.
+5. **Debajo del campo aparece este aviso** (`PhoneWaReviewNotice`, tono `warning`, título con ícono de alerta):
 
-**El número era incorrecto respecto del código de antes y es correcto respecto del código de ahora.** La cuenta de la advertencia (restarle al alto de la hoja los 20 px de la franja) describe exactamente cómo reparte el alto el contenedor cuando no desborda, que es lo que esta tanda arregló. La fila siguiente (*"Con un botón de ancho completo más ≈ 123 px"*) también cierra: 177,44 − 54 = 123,44.
+   > **Revisá este número de WhatsApp**
+   >
+   > El número guardado, **543853000299**, no tiene el formato de un celular argentino (+54 9, característica y número), así que el enlace de WhatsApp puede no llegar a destino.
+   >
+   > No lo cambiamos por vos. Si está bien, dejalo como está; si no, borralo y escribí la característica y el número.
 
-El prompt autorizaba corregir **solo ese número con lo medido después**. Lo medido coincide con lo escrito, así que reescribirlo habría sido un cambio sin efecto sobre un archivo que la tanda no debía tocar. **`CLAUDE.md` quedó sin cambios.** Ver el punto 10.
+6. **Si guarda el perfil sin tocar el teléfono** (por ejemplo, cambió el nombre): el esquema acepta ese valor exacto y lo manda **sin reformatear**, y el servidor también (ver 9). Ejecutado:
+   - `phoneWaField("543853000299").safeParse("543853000299")` → `{"success":true,"data":"543853000299"}`;
+   - `resolvePhoneWaForSave("543853000299", "543853000299")` → `"543853000299"`.
 
----
+   **El teléfono queda igual.** Sin la preservación, el mismo valor se habría guardado como `"5493853000299"`, corregido en silencio (ejecutado para comprobar el riesgo).
+7. **Si toca el campo**, pasa a ser un número nuevo: aparece el prefijo, el aviso desaparece, y al salir se limpia y valida como cualquier otro.
 
-## 7. Inconsistencias nuevas (sin arreglar, fuera de alcance)
-
-El diagnóstico anterior listó 23; estas no estaban.
-
-1. **`src/components/map/PropertyModal.tsx:747-755` y `:783-788` — `ModalContent` se monta DOS veces** cada vez que se abre una propiedad: una en el panel lateral de escritorio (`hidden md:flex`) y otra en la hoja de celular (`md:hidden`). Son dos árboles completos, con estado separado (campo de nombre, error de consulta, compartir, favorito) y el doble de DOM y de trabajo, de los cuales siempre uno está oculto. Mismo patrón de doble montaje que el panel de filtros, que produce los IDs duplicados.
-2. **`PropertyModal.tsx:747` — el panel lateral usa `top-14` fijo**, acoplado por un número repetido al `h-14` de los dos encabezados (`page.tsx:41`, `AgencyMapView.tsx:53`). Si un encabezado cambia de alto, el panel queda montado encima o deja un hueco, sin ningún error.
-3. **Efecto colateral de esta tanda: al cerrar la hoja de filtros no hay a dónde devolver el foco.** El botón que la abrió **se desmonta** mientras está abierta (la decisión 1), así que al cerrar con Escape o con la ✕ el foco queda en un elemento de la hoja, que ahora está fuera de pantalla. Por lectura, no medido. Agrava la inconsistencia 7 del informe anterior (la hoja sin manejo de foco), y **pasa igual con la hoja del detalle**, que ya desmontaba los botones.
-4. **Los botones flotantes desaparecen de golpe** mientras la hoja sube en 220 ms, y reaparecen de golpe mientras baja. Es la consecuencia visual de ocultarlos con un render condicional, el mecanismo que ya usaba la hoja del detalle: las dos hojas quedan coherentes, pero ninguna anima esa salida.
-5. **Las dos hojas mueven la misma superficie con propiedades CSS distintas:** la de filtros escribe `translate` (`FilterPanel.tsx:238`) y la del detalle escribe `transform` (`PropertyModal.tsx`, el `style` del contenedor de la hoja). Las dos funcionan hoy, pero la del detalle **suma** su desplazamiento al de la clase en vez de reemplazarlo.
-6. **Asimetría deliberada que conviene saber:** la franja ahora arrastra en las dos hojas, pero **la del detalle también cierra arrastrando desde el cuerpo**, y la de filtros no. Tocar las dos igual al principio del gesto no garantiza el mismo resultado al seguir bajando.
-7. **`DESIGN.md:908` (§16, FABs mobile) dice *"Se ocultan cuando el PropertyModal está abierto"***, y desde esta tanda también se ocultan con la hoja de filtros abierta. El prompt no pedía tocar `DESIGN.md`, así que queda desactualizado.
-8. **El usuario de solo lectura del MCP no puede ejecutar `agency_is_publicly_visible`** (`ERROR: 42501: permission denied for function agency_is_publicly_visible`). `CLAUDE.md` indica medir la base por MCP, pero la regla de cobro —la función central del modelo— no se puede evaluar desde ahí; hay que reconstruir sus condiciones a mano en cada consulta.
+⚠ **Límite:** este flujo **no lo vi en la pantalla real de perfil** (exige sesión). Lo verifiqué con la función real, el esquema real y el código del componente.
 
 ---
 
-## 8. Baseline de calidad
+## 8. El registro escribe el mismo valor normalizado en las dos tablas
 
-Antes de correr borré `.next/` y `tsconfig.tsbuildinfo` para no mezclar artefactos de `next start` con los tipos generados. Son artefactos regenerados e ignorados por git.
+`src/app/(agent)/register/actions.ts`:
+- **Resolución:** el teléfono se resuelve **una sola vez**, antes de crear el usuario de Auth.
+- **Escrituras:** las dos usan esa variable, verificado por búsqueda.
+
+```ts
+  const phoneWa =
+    typeof data.phoneWa === "string" ? resolvePhoneWaForSave(data.phoneWa) : null;
+  if (phoneWa === null) {
+    return { error: PHONE_WA_ERROR };
+  }
+```
+
+```
+100:        phone_wa: phoneWa,     ← insert en agencies
+136:    phone_wa: phoneWa,         ← insert en agents
+```
+
+No queda ningún `data.phoneWa` en las escrituras. **Agencia y admin nacen con el mismo número, byte a byte.** Y como la validación va antes del `signUp`, un teléfono inválido no deja un usuario de Auth creado que haya que borrar.
+
+---
+
+## 9. Validaciones del servidor
+
+**Los cuatro caminos que escriben un teléfono validan ahora en el servidor, con la misma función.**
+
+| Camino | Antes | Ahora |
+|---|---|---|
+| `perfil/actions.ts` → `updateProfileAction` | **ninguna** | lee `phone_wa` actual de la fila del agente → `resolvePhoneWaForSave(input, actual)` → error si `null`. Se escribe el valor resuelto |
+| `register/actions.ts` → `registerAction` | **ninguna** | `resolvePhoneWaForSave(input)` antes del `signUp`; un solo valor para las dos tablas |
+| `preferencias/actions.ts` → `updateAgencyPhoneAction` | regex `^\d{10,}$` | lee `phone_wa` actual de la agencia (service role, acotado a la agencia de la sesión) → `resolvePhoneWaForSave(input, actual)` |
+| `equipo/actions.ts` → `createAgentAction` | regex `^\d{10,}$` | `phoneWaField()` en su esquema de zod: normaliza, valida largo y entrega el valor completo |
+
+**Detalles que importan:**
+- **El valor preservado sale SIEMPRE de la fila real**, leída en la misma action, nunca del cliente. Solo permite reenviar el número que ya estaba guardado; no sirve para colar uno nuevo sin validar.
+- **Un valor que no es texto** (cliente manipulado) se rechaza con el mismo mensaje.
+- **Normalizar en el servidor es idempotente:** `resolvePhoneWaForSave("5493854000000")` → `"5493854000000"` (ejecutado). Que el cliente ya mande el número completo no rompe nada.
+- **En preferencias la validación pasó a correr después de la sesión**, porque necesita saber de qué agencia es el número guardado. Los mensajes de sesión y rol son los mismos de antes.
+
+---
+
+## 10. Inconsistencias nuevas (sin arreglar, fuera de alcance)
+
+Las de informes anteriores no se repiten.
+
+1. **`CLAUDE.md` quedó desactualizado por esta tanda y no lo toqué, por instrucción:**
+   - **baseline:** cita el warning en `PropertyForm.tsx:808`, y ahora está en **`:804`**: se borraron las 4 líneas de la constante duplicada más arriba. Es el mismo warning, sobre la misma llamada `watch("amenities")`;
+   - **árbol de carpetas:** no lista `src/components/forms/` ni `src/lib/utils/phoneWa.ts`;
+   - **"Convenciones → WhatsApp":** no describe el prefijo fijo ni la preservación.
+2. **`DESIGN.md` §6 "Inputs y formularios" (`:427-433`) no describe las dos familias** (subrayado y caja) ni el campo con prefijo, que ahora son una definición del proyecto.
+3. **Quedan cajas escritas a mano fuera de la definición única**, en pantallas fuera de alcance (dos son hojas del mapa):
+   - `FilterPanel.tsx:115-122`;
+   - `PropertyContact.tsx:119-127`;
+   - `PropertyModal.tsx:597-605`;
+   - `ShareButton.tsx:212-217`.
+
+   Usan `focus:` en vez de `focus-visible:`, y rellenos de 12 y 8 px.
+4. **Dentro de la familia caja, el error no se muestra igual:**
+   - **formulario de propiedades:** colorea el campo (`FIELD_BOX_ERROR`);
+   - **teléfono:** colorea el contenedor;
+   - **nombre y contraseñas de perfil, y alta de agente e identidad** (`ProfileForm.tsx`, `TeamContent.tsx`, `AgencyIdentityForm.tsx`): solo muestran el texto rojo debajo, con el campo intacto.
+5. **`aria-invalid` está solo en el selector de ciudad del registro y en el campo de teléfono.** Los demás campos de inicio de sesión, registro, perfil, equipo y preferencias no lo tienen: un lector de pantalla no anuncia que están en error.
+6. **El campo de teléfono en variante subrayado mide 41 px de alto** y los otros subrayados 40 px (medido). El contenedor suma su borde inferior al alto del input.
+7. **`PhoneWaReviewNotice` dice que "el enlace de WhatsApp puede no llegar a destino"** también en el teléfono de la agencia (`AgencyPhoneForm.tsx`), cuyo número no se usa para ningún enlace (hallazgo del informe anterior). El texto es cierto para perfil y exagerado ahí.
+8. **Guardar un número preservado sin tocarlo muestra "Teléfono de la agencia actualizado"** (`AgencyPhoneForm.tsx`) aunque no cambió nada. El aviso de revisión sigue a la vista, pero el mensaje de éxito sugiere que algo se guardó.
+9. **La familia subrayado no tiene anillo de foco** (`LoginForm.tsx`, `RegisterForm.tsx`): medido `box-shadow: none` al enfocar. DESIGN.md pide anillo terracota para todos los campos.
+10. **`LoginForm.tsx:66-122` tiene los hijos del `<form>` con una indentación distinta** (12 espacios contra 6 del `<form>`) y el `</Button>` desalineado. Es cosmético y previo a esta tanda.
+11. **La quita del 15 no distingue características de 4 dígitos terminadas en "15"**: el algoritmo prueba las posiciones 2, 3 y 4 en ese orden. **No verifiqué** si existe alguna característica argentina así; si existe, un número dictado con 15 podría resolverse mal (en ese caso, el largo sigue siendo 10 y no daría error).
+12. **Un número con 54 y sin el 9 escrito a mano** (`543854000000`) se guarda **con el 9 agregado** (`5493854000000`). Es coherente con la decisión de solo celular. Pero una inmobiliaria que atienda WhatsApp Business desde una línea fija (van sin el 9) no puede cargar su número, y el sistema se lo "corrige" sin avisar mientras lo escribe. La decisión de no aceptar fijos ya estaba tomada; lo anoto por el efecto concreto.
+
+---
+
+## 11. Baseline de calidad
+
+Borré `.next/` y `tsconfig.tsbuildinfo` antes de correr. **Corrida final, después del último cambio:**
 
 ### `npx tsc --noEmit`
 
@@ -359,25 +493,25 @@ Sin salida: **0 errores, exit 0.**
 
 
 /home/facuzavaleta89/dev/marka/src/components/properties/PropertyForm.tsx
-  808:30  warning  Compilation Skipped: Use of incompatible library
+  804:30  warning  Compilation Skipped: Use of incompatible library
 
 This API returns functions which cannot be memoized without leading to stale UI. To prevent this, by default React Compiler will skip memoizing this component/hook. However, you may see issues if values from this API are passed to other components/hooks that are memoized.
 
-/home/facuzavaleta89/dev/marka/src/components/properties/PropertyForm.tsx:808:30
-  806 |   });
-  807 |
-> 808 |   const selectedAmenities = (watch("amenities") ?? []) as string[];
+/home/facuzavaleta89/dev/marka/src/components/properties/PropertyForm.tsx:804:30
+  802 |   });
+  803 |
+> 804 |   const selectedAmenities = (watch("amenities") ?? []) as string[];
       |                              ^^^^^ React Hook Form's `useForm()` API returns a `watch()` function which cannot be memoized safely.
-  809 |   const lat = watch("lat");
-  810 |   const lng = watch("lng");
-  811 |   const address = watch("address") ?? "";  react-hooks/incompatible-library
+  805 |   const lat = watch("lat");
+  806 |   const lng = watch("lng");
+  807 |   const address = watch("address") ?? "";  react-hooks/incompatible-library
 
 ✖ 1 problem (0 errors, 1 warning)
 
 LINT_EXIT=0
 ```
 
-**0 errores, 1 warning (el conocido), exit 0.**
+**0 errores, 1 warning, exit 0.** Es el mismo warning, sobre la misma llamada `watch("amenities")`. **Solo cambió el número de línea (808 → 804)**, porque se borró la constante duplicada 4 líneas más arriba. **No se agregó ningún `watch()`:** los cuatro campos de teléfono usan `Controller`, y la búsqueda de `watch(` en los archivos tocados solo encuentra comentarios.
 
 ### `npx next build`
 
@@ -386,15 +520,15 @@ LINT_EXIT=0
 - Environments: .env.local
 
   Creating an optimized production build ...
-✓ Compiled successfully in 10.0s
+✓ Compiled successfully in 8.9s
   Running TypeScript ...
-  Finished TypeScript in 9.7s ...
+  Finished TypeScript in 8.5s ...
   Collecting page data using 3 workers ...
   Generating static pages using 3 workers (0/20) ...
   Generating static pages using 3 workers (5/20) 
   Generating static pages using 3 workers (10/20) 
   Generating static pages using 3 workers (15/20) 
-✓ Generating static pages using 3 workers (20/20) in 1442ms
+✓ Generating static pages using 3 workers (20/20) in 1171ms
   Finalizing page optimization ...
 
 Route (app)
@@ -430,63 +564,17 @@ Route (app)
 BUILD_EXIT=0
 ```
 
-**Verde, exit 0, 22 rutas**, con los mismos nombres y tipos (`○`/`ƒ`) que antes. **Sin cambios en el baseline.**
+**Verde, exit 0, 22 rutas**, mismos nombres y tipos. **Sin cambios en el baseline**, salvo el número de línea del warning ya explicado.
 
 ---
 
-## 9. Cómo probarlo en un teléfono, paso a paso
+## 12. Lo que resultó falso o imposible
 
-### Poner la app en el teléfono
+**Ninguna decisión resultó imposible.** Las trece se implementaron como estaban descritas.
 
-- **Opción A, red local.** En la PC, con el teléfono en la misma Wi-Fi: `npm run build` y después `npx next start -H 0.0.0.0 -p 3000`. En el teléfono, abrir `http://<IP-de-la-PC>:3000`. La IP sale de `ip addr` o `hostname -I`.
-- **Opción B, vista previa de Vercel.** Subiendo la rama, que es un paso de git a hacer a mano.
+**Lo que resultó falso o incompleto en el prompt:**
 
-### Hoja de filtros, sin filtros
-
-1. Abrir `/`. Abajo tienen que verse los dos botones, "Filtros" y "Ver lista".
-2. Tocar **Filtros**. **Los dos botones tienen que desaparecer** mientras la hoja sube.
-3. Scrollear el contenido hasta el final. **"Solo propiedades destacadas" tiene que verse entera, con aire debajo**, y nada encima.
-4. Tocar el checkbox "Solo propiedades destacadas" y destildarlo: tiene que responder.
-
-### Hoja de filtros, con filtros activos (forzar el caso)
-
-5. Con la hoja abierta, **marcar "Pileta" y "Solo propiedades destacadas"**. Abajo aparece el pie **"Limpiar filtros (2)"**.
-6. Scrollear al final. **El botón "Limpiar filtros (2)" tiene que verse entero**, con su borde inferior sobre el borde de la pantalla, y ser tocable en todo su ancho, costados incluidos.
-7. **No tocarlo todavía**: cerrar la hoja con la ✕. Los botones tienen que volver, con el de la izquierda diciendo **"Filtros (2)"**.
-
-### El gesto
-
-8. Abrir la hoja. **Apoyar el dedo en la franja gris y bajarlo un poco** (1 cm) y soltar: la hoja tiene que acompañar el dedo y **volver a su lugar**.
-9. Repetir **bajando bastante** (3–4 cm): **tiene que cerrarse**.
-10. Repetir desde el **título "Filtros"** del encabezado: igual.
-11. **Tocar la ✕** normalmente: tiene que cerrar. Probar también tocándola con poco cuidado, apenas moviendo el dedo.
-12. **La prueba importante:** abrir la hoja, **scrollear el contenido hacia abajo**, y después **arrastrar el contenido hacia abajo para volver arriba**, empezando en el medio de la lista. **La hoja NO tiene que moverse ni cerrarse**: solo el contenido scrollea. Insistir hasta llegar al principio y seguir tirando.
-13. Arrastrar hacia abajo empezando **sobre la ✕** y bajar bastante: tiene que cerrarse por gesto, **sin** dispararse además un segundo cierre raro.
-14. **Tocar el velo oscuro** por encima de la hoja: tiene que cerrar.
-
-### Sitio de marca
-
-15. Abrir `/inmobiliaria-demo` y repetir los pasos 2, 3, 5, 6 y 9. **Los botones tienen que ocultarse igual.**
-
-### Escape
-
-16. En el teléfono no hay tecla Escape salvo con un teclado bluetooth. Alternativa: en la PC, abrir DevTools, activar el modo dispositivo con un teléfono de 375 px, abrir la hoja y apretar Escape. **Tiene que cerrar.** En el detalle de una propiedad, Escape **no** cierra (fuera de alcance).
-
-### Hoja del detalle de propiedad
-
-17. Tocar **Ver lista**, tocar una propiedad. Sin scrollear, **el botón verde "Consultar por WhatsApp" tiene que verse entero** sobre el borde inferior.
-18. Arrastrar hacia abajo desde su franja: tiene que seguir cerrando, como antes.
-
----
-
-## 10. Lo que resultó falso o imposible
-
-**Ninguna decisión resultó imposible.** Las cuatro se implementaron como estaban descritas.
-
-**Lo que resultó falso o impreciso en el prompt:**
-
-1. **"La última fila del contenido queda fuera de la pantalla" — impreciso.** Medido antes: sin filtros, lo que estaba fuera de pantalla era **el relleno inferior del cuerpo** (20 px vacíos); la última fila, "Solo propiedades destacadas", se veía entera pero **pegada al borde** (a 0,44 px). Con filtros, lo que salía era **el pie**: 4 px del botón "Limpiar filtros" y todo su relleno inferior. El defecto era real y del tamaño que decía el prompt (20 px); lo que caía afuera no era una fila de contenido.
-2. **"El número de CLAUDE.md es incorrecto" — cierto respecto del código de antes, falso respecto del de ahora.** El área medida antes era 197,44 px con el CTA recortado; la documentada, ≈ 177 px; la medida después, 177,44 px. **La advertencia describía el estado sin desborde, que recién esta tanda produjo.** No se editó.
-3. **"Es la misma línea" (el desborde en las dos hojas) — incompleto.** En la hoja del detalle son **dos** raíces con la misma causa: `ModalContent` y **`ModalSkeleton`**. Se corrigieron las dos (ver el punto 1).
-
-**Confirmado tal cual:** el acople entre desborde y botones (la fila habría quedado 16,44 px debajo del botón); el precedente de ocultar los botones (`!selectedPropertyId`); la duplicación de esos botones en dos pantallas; la franja idéntica que arrastra en la otra hoja; que esa hoja escucha el gesto en el contenedor entero; que Tailwind mueve la hoja con `translate` y no con `transform`; y que la hoja del detalle no se cierra con Escape.
+1. **"Sacá del principio … el quince que se usa al dictar un celular" — el quince no va al principio.** Se dicta **después de la característica** ("0385 **15** 400 0000", "011 **15** 1234 5678"), y su posición depende del largo de la característica. Se implementó en esas tres posiciones posibles, **solo cuando sobran exactamente dos dígitos**, que es la única forma de saber que está. Un "15" escrito realmente al principio, sin característica ("15 4000000"), no se puede completar y da error de largo, que es lo correcto.
+2. **"Dos pantallas más ya definieron la variante de caja por su cuenta" — eran tres.** Además de las dos con la constante duplicada, **`AgencySlugForm` tenía su propia caja escrita a mano** (el contenedor del campo con prefijo, con otro anillo y otro color de prefijo). Se pasó a la definición única, y eso le cambió tres detalles visibles (sección 2). Siguen existiendo cajas a mano **fuera de alcance** (inconsistencia #3).
+3. **"Hoy, cuando hay un error, esos campos se convierten en una caja sin relleno" — cierto, y había un segundo defecto en el mismo estado:** el selector de ciudad del registro no se convertía en caja (ya traía `aria-invalid`), pero se pintaba con **el rojo del preset**, no con el `error` del proyecto. Salió al medir y quedó resuelto en la misma constante (sección 3).
+4. **Decisión 4 — "si la definición única lo resuelve, bien":** lo resuelve en perfil, preferencias y equipo (medido). En **inicio de sesión y registro no hay anillo y no es por el override**: es el diseño de la familia subrayado. Lo reporto sin arreglarlo (inconsistencia #9).

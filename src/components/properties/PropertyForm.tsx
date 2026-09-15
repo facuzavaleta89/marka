@@ -25,6 +25,7 @@ import {
   updatePropertyAction,
 } from "@/app/(agent)/dashboard/propiedades/actions";
 import { cn } from "@/lib/utils";
+import { FIELD_BOX, FIELD_BOX_ERROR } from "@/components/forms/fieldStyles";
 import { AMENITY_LABELS, RENT_REQUIREMENT_LABELS } from "@/lib/utils/labels";
 import { roundCoords, type Coords } from "@/lib/utils/coords";
 import type { LocationChangeCause } from "./LocationPicker";
@@ -51,11 +52,6 @@ const ALL_AMENITIES = Object.keys(AMENITY_LABELS) as Amenity[];
 const ALL_RENT_REQUIREMENTS = Object.keys(
   RENT_REQUIREMENT_LABELS
 ) as RentRequirement[];
-
-// Clases de override para los shadcn inputs (este proyecto usa estilo "línea")
-const FIELD =
-  "rounded-md border border-stone border-b-stone bg-white px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracota/20 focus-visible:ring-offset-1 focus-visible:border-graphite focus-visible:border-b-graphite";
-const FIELD_ERR = "border-error border-b-error";
 
 // ─── Zod schema ───────────────────────────────────────────────
 
@@ -390,7 +386,7 @@ function OperationField({
                           onChange={(e) => priceField.onChange(e.target.value)}
                           onBlur={priceField.onBlur}
                           placeholder="Dejalo vacío si es a convenir"
-                          className={cn(FIELD, priceError && FIELD_ERR)}
+                          className={cn(FIELD_BOX, priceError && FIELD_BOX_ERROR)}
                         />
                       </Field>
 
@@ -537,7 +533,7 @@ function RentRequirementsOtherField({
                       ? "Llegaste al máximo"
                       : "Ej: garante con propiedad en la ciudad"
                   }
-                  className={cn(FIELD, tooLong && FIELD_ERR)}
+                  className={cn(FIELD_BOX, tooLong && FIELD_BOX_ERROR)}
                 />
               </div>
               <button
@@ -962,7 +958,7 @@ export function PropertyForm({
           <Input
             {...register("title")}
             placeholder="Casa 3 ambientes en el centro"
-            className={cn(FIELD, errors.title && FIELD_ERR)}
+            className={cn(FIELD_BOX, errors.title && FIELD_BOX_ERROR)}
           />
         </Field>
 
@@ -971,7 +967,7 @@ export function PropertyForm({
             {...register("description")}
             placeholder="Describí la propiedad con detalle..."
             rows={4}
-            className={cn(FIELD, "min-h-[96px] resize-y py-2")}
+            className={cn(FIELD_BOX, "min-h-[96px] resize-y py-2")}
           />
         </Field>
 
@@ -982,7 +978,7 @@ export function PropertyForm({
               control={control}
               render={({ field }) => (
                 <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger className={cn(FIELD, "w-full", errors.property_type && FIELD_ERR)}>
+                  <SelectTrigger className={cn(FIELD_BOX, "w-full", errors.property_type && FIELD_BOX_ERROR)}>
                     <SelectValue placeholder="Seleccioná" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1013,7 +1009,7 @@ export function PropertyForm({
               control={control}
               render={({ field }) => (
                 <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger className={cn(FIELD, "w-full")}>
+                  <SelectTrigger className={cn(FIELD_BOX, "w-full")}>
                     <SelectValue placeholder="Estado" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1037,7 +1033,7 @@ export function PropertyForm({
               control={control}
               render={({ field }) => (
                 <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger className={cn(FIELD, "w-full")}>
+                  <SelectTrigger className={cn(FIELD_BOX, "w-full")}>
                     <SelectValue placeholder="Seleccioná un agente" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1100,7 +1096,7 @@ export function PropertyForm({
               type="text"
               inputMode="numeric"
               placeholder="150"
-              className={FIELD}
+              className={FIELD_BOX}
             />
           </Field>
           <Field label="Área cubierta m²">
@@ -1109,7 +1105,7 @@ export function PropertyForm({
               type="text"
               inputMode="numeric"
               placeholder="120"
-              className={FIELD}
+              className={FIELD_BOX}
             />
           </Field>
         </FieldRow>
@@ -1129,7 +1125,7 @@ export function PropertyForm({
                 type="text"
                 inputMode="numeric"
                 placeholder="0"
-                className={cn(FIELD, err && FIELD_ERR)}
+                className={cn(FIELD_BOX, err && FIELD_BOX_ERROR)}
               />
             </Field>
           ))}
@@ -1143,14 +1139,14 @@ export function PropertyForm({
             <Input
               {...register("address")}
               placeholder="Av. Belgrano 1234"
-              className={cn(FIELD, errors.address && FIELD_ERR)}
+              className={cn(FIELD_BOX, errors.address && FIELD_BOX_ERROR)}
             />
           </Field>
           <Field label="Barrio">
             <Input
               {...register("neighborhood")}
               placeholder="Centro"
-              className={FIELD}
+              className={FIELD_BOX}
             />
           </Field>
         </FieldRow>
@@ -1242,7 +1238,7 @@ export function PropertyForm({
               type="text"
               inputMode="numeric"
               placeholder="2005"
-              className={FIELD}
+              className={FIELD_BOX}
             />
           </Field>
         </FieldRow>

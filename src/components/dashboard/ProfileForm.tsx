@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef, useTransition } from "react";
-import { useForm } from "react-hook-form";
+import { useMemo, useState, useRef, useTransition } from "react";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Camera } from "lucide-react";
@@ -12,6 +12,16 @@ import {
 } from "@/app/(agent)/dashboard/perfil/actions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FIELD_BOX } from "@/components/forms/fieldStyles";
+import {
+  PhoneWaInput,
+  PhoneWaReviewNotice,
+} from "@/components/forms/PhoneWaInput";
+import {
+  PHONE_WA_HELP,
+  phoneWaField,
+  splitStoredPhoneWa,
+} from "@/lib/utils/phoneWa";
 
 interface ProfileFormProps {
   agentId: string;
@@ -22,13 +32,14 @@ interface ProfileFormProps {
   };
 }
 
-const profileSchema = z.object({
-  full_name: z.string().min(1, "El nombre es requerido"),
-  phone_wa: z
-    .string()
-    .min(10, "El número debe tener al menos 10 dígitos")
-    .regex(/^\d+$/, "Solo números, sin + ni espacios. Ej: 5491112345678"),
-});
+// El esquema depende del número guardado: si es uno viejo sin el formato
+// esperado, ese valor exacto se acepta sin reformatear (ver `phoneWaField`).
+function makeProfileSchema(preservedPhone: string | null) {
+  return z.object({
+    full_name: z.string().min(1, "El nombre es requerido"),
+    phone_wa: phoneWaField(preservedPhone),
+  });
+}
 
 const passwordSchema = z
   .object({
@@ -40,7 +51,7 @@ const passwordSchema = z
     path: ["confirm"],
   });
 
-type ProfileValues = z.infer<typeof profileSchema>;
+type ProfileValues = z.infer<ReturnType<typeof makeProfileSchema>>;
 type PasswordValues = z.infer<typeof passwordSchema>;
 
 export function ProfileForm({ agentId, agent }: ProfileFormProps) {
@@ -54,11 +65,21 @@ export function ProfileForm({ agentId, agent }: ProfileFormProps) {
   const [profilePending, startProfileTransition] = useTransition();
   const [passwordPending, startPasswordTransition] = useTransition();
 
+  // ⚠ Un número guardado sin el formato esperado se muestra TAL CUAL y se
+  // conserva si la persona no lo toca: guardar el nombre no puede cambiarle el
+  // teléfono. Uno con el formato esperado se muestra sin el prefijo.
+  const storedPhone = splitStoredPhoneWa(agent.phone_wa);
+  const preservedPhone = storedPhone.recognized ? null : agent.phone_wa;
+  const profileSchema = useMemo(
+    () => makeProfileSchema(preservedPhone),
+    [preservedPhone]
+  );
+
   const profileForm = useForm<ProfileValues>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
       full_name: agent.full_name,
-      phone_wa: agent.phone_wa,
+      phone_wa: storedPhone.national,
     },
   });
 
@@ -100,6 +121,7 @@ export function ProfileForm({ agentId, agent }: ProfileFormProps) {
         avatar_url = urlData.publicUrl;
       }
 
+      // `values.phone_wa` ya es el número COMPLETO: lo armó el esquema.
       const result = await updateProfileAction({
         full_name: values.full_name,
         phone_wa: values.phone_wa,
@@ -198,7 +220,7 @@ export function ProfileForm({ agentId, agent }: ProfileFormProps) {
             <Input
               id="full_name"
               {...profileForm.register("full_name")}
-              className="bg-white border-stone focus-visible:ring-terracota"
+              className={FIELD_BOX}
             />
             {profileForm.formState.errors.full_name && (
               <p className="font-sans text-xs text-error">
@@ -215,14 +237,31 @@ export function ProfileForm({ agentId, agent }: ProfileFormProps) {
             >
               Número de WhatsApp
             </Label>
-            <Input
-              id="phone_wa"
-              placeholder="5491112345678"
-              {...profileForm.register("phone_wa")}
-              className="bg-white border-stone focus-visible:ring-terracota"
+            <Controller
+              control={profileForm.control}
+              name="phone_wa"
+              render={({ field, fieldState }) => (
+                <>
+                  <PhoneWaInput
+                    id="phone_wa"
+                    name={field.name}
+                    value={field.value ?? ""}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    inputRef={field.ref}
+                    variant="box"
+                    invalid={!!fieldState.error}
+                    preservedValue={preservedPhone}
+                    describedBy="phone_wa_help"
+                  />
+                  {preservedPhone !== null && field.value === preservedPhone && (
+                    <PhoneWaReviewNotice stored={preservedPhone} />
+                  )}
+                </>
+              )}
             />
-            <p className="font-sans text-xs text-graphite">
-              Solo números, sin + ni espacios. Ejemplo: 5491112345678
+            <p id="phone_wa_help" className="font-sans text-xs text-graphite">
+              {PHONE_WA_HELP}
             </p>
             {profileForm.formState.errors.phone_wa && (
               <p className="font-sans text-xs text-error">
@@ -269,7 +308,7 @@ export function ProfileForm({ agentId, agent }: ProfileFormProps) {
               id="password"
               type="password"
               {...passwordForm.register("password")}
-              className="bg-white border-stone focus-visible:ring-terracota"
+              className={FIELD_BOX}
             />
             {passwordForm.formState.errors.password && (
               <p className="font-sans text-xs text-error">
@@ -289,7 +328,7 @@ export function ProfileForm({ agentId, agent }: ProfileFormProps) {
               id="confirm"
               type="password"
               {...passwordForm.register("confirm")}
-              className="bg-white border-stone focus-visible:ring-terracota"
+              className={FIELD_BOX}
             />
             {passwordForm.formState.errors.confirm && (
               <p className="font-sans text-xs text-error">

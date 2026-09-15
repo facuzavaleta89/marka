@@ -22,6 +22,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FIELD_BOX, FIELD_BOX_ERROR } from "@/components/forms/fieldStyles";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -66,13 +67,6 @@ import {
 
 // Override del Checkbox de shadcn a terracota en estado marcado (mismo patrón
 // que FilterPanel/PropertyForm, para consistencia en toda la app).
-// Mismo tratamiento de campo que el resto de los formularios del proyecto
-// (DESIGN §6: fondo white, borde stone, rounded-md, foco terracota). El Input
-// base del preset es de borde inferior, así que se lo sobreescribe igual que en
-// PropertyForm y AgencyIdentityForm.
-const FIELD =
-  "rounded-md border border-stone border-b-stone bg-white px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracota/20 focus-visible:ring-offset-1 focus-visible:border-graphite focus-visible:border-b-graphite";
-
 const CHECKBOX_TERRACOTA =
   "border-stone data-[state=checked]:bg-terracota data-[state=checked]:border-terracota data-[state=checked]:text-paper";
 
@@ -1513,7 +1507,7 @@ function RejectPanel({
               ? "Ej: el colegio no admite ese nombre por su parecido con otra matriculada."
               : "Ej: la matrícula no figura a nombre de la agencia."
           }
-          className={tooLong ? "border-error" : undefined}
+          className={`${FIELD_BOX} py-2 ${tooLong ? FIELD_BOX_ERROR : ""}`}
         />
         <p
           className={`font-sans text-xs ${tooLong ? "text-error" : "text-graphite"}`}
@@ -1619,7 +1613,7 @@ function ActivatePlanPanel({
           value={periodEnd}
           min={minDate}
           onChange={(e) => setPeriodEnd(e.target.value)}
-          className={`${FIELD} ${isPastDate ? "border-error border-b-error" : ""}`}
+          className={`${FIELD_BOX} ${isPastDate ? FIELD_BOX_ERROR : ""}`}
         />
         <p
           className={`font-sans text-xs ${isPastDate ? "text-error" : "text-graphite"}`}
@@ -1723,7 +1717,7 @@ function DeleteAgencyPanel({
           onChange={(e) => setTyped(e.target.value)}
           placeholder={row.name}
           autoComplete="off"
-          className={FIELD}
+          className={FIELD_BOX}
         />
       </div>
 
@@ -1892,7 +1886,7 @@ function ChangePlanPanel({
           value={periodEnd}
           min={minDate}
           onChange={(e) => setPeriodEnd(e.target.value)}
-          className={`${FIELD} ${isPastDate ? "border-error border-b-error" : ""}`}
+          className={`${FIELD_BOX} ${isPastDate ? FIELD_BOX_ERROR : ""}`}
         />
         <p
           className={`font-sans text-xs ${isPastDate ? "text-error" : "text-graphite"}`}

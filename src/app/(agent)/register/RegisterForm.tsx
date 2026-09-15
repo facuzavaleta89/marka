@@ -17,12 +17,15 @@ import {
 } from "@/components/ui/select";
 import { registerAction } from "./actions";
 import { AuthLayout } from "@/components/auth/AuthLayout";
+import { FIELD_UNDERLINE_ERROR } from "@/components/forms/fieldStyles";
+import { PhoneWaInput } from "@/components/forms/PhoneWaInput";
 import { cn } from "@/lib/utils";
 import {
   LICENSE_NUMBER_ERROR,
   LICENSE_NUMBER_PATTERN,
   normalizeLicenseNumber,
 } from "@/lib/utils/licenseNumber";
+import { PHONE_WA_HELP, phoneWaField } from "@/lib/utils/phoneWa";
 
 // Claim del panel de identidad (voz DESIGN §10: directo, sin marketing). Fácil de cambiar.
 const CLAIM = "Sumá tu inmobiliaria al mapa de tu ciudad.";
@@ -51,9 +54,9 @@ const schema = z
     email: z.string().email("Email inválido"),
     password: z.string().min(8, "Mínimo 8 caracteres"),
     confirmPassword: z.string().min(1, "Confirmá la contraseña"),
-    phoneWa: z
-      .string()
-      .regex(/^\d{10,}$/, "Solo números, mínimo 10 dígitos (ej: 5493854000000)"),
+    // La persona escribe característica y número; lo que viaja a la action es
+    // el número COMPLETO. Mismo criterio que la action (lib/utils/phoneWa).
+    phoneWa: phoneWaField(),
   })
   .superRefine((d, ctx) => {
     if (d.password !== d.confirmPassword) {
@@ -89,6 +92,8 @@ function Field({
   );
 }
 
+// Campos de la familia SUBRAYADO (ver components/forms/fieldStyles). El error
+// colorea solo el borde inferior: no convierte el campo en caja.
 export function RegisterForm({ cities }: { cities: CityOption[] }) {
   const [serverError, setServerError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -100,7 +105,7 @@ export function RegisterForm({ cities }: { cities: CityOption[] }) {
     formState: { errors },
   } = useForm<RegisterFormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { cityId: "" },
+    defaultValues: { cityId: "", phoneWa: "" },
   });
 
   const onSubmit = async (data: RegisterFormValues) => {
@@ -145,7 +150,7 @@ export function RegisterForm({ cities }: { cities: CityOption[] }) {
             autoComplete="organization"
             placeholder="Inmobiliaria López"
             {...register("agencyName")}
-            className={cn(errors.agencyName && "border-error")}
+            className={cn(errors.agencyName && FIELD_UNDERLINE_ERROR)}
           />
         </Field>
 
@@ -162,7 +167,7 @@ export function RegisterForm({ cities }: { cities: CityOption[] }) {
             inputMode="text"
             placeholder="1234"
             {...register("licenseNumber")}
-            className={cn(errors.licenseNumber && "border-error")}
+            className={cn(errors.licenseNumber && FIELD_UNDERLINE_ERROR)}
           />
           <p className="font-sans text-xs text-graphite">
             El número con el que figura tu inmobiliaria en el colegio de
@@ -177,7 +182,7 @@ export function RegisterForm({ cities }: { cities: CityOption[] }) {
             autoComplete="name"
             placeholder="Juan Pérez"
             {...register("fullName")}
-            className={cn(errors.fullName && "border-error")}
+            className={cn(errors.fullName && FIELD_UNDERLINE_ERROR)}
           />
         </Field>
 
@@ -190,7 +195,7 @@ export function RegisterForm({ cities }: { cities: CityOption[] }) {
                 <SelectTrigger
                   id="cityId"
                   aria-invalid={!!errors.cityId}
-                  className="w-full"
+                  className={cn("w-full", errors.cityId && FIELD_UNDERLINE_ERROR)}
                 >
                   <SelectValue placeholder="Elegí tu ciudad" />
                 </SelectTrigger>
@@ -213,7 +218,7 @@ export function RegisterForm({ cities }: { cities: CityOption[] }) {
             autoComplete="email"
             placeholder="tu@email.com"
             {...register("email")}
-            className={cn(errors.email && "border-error")}
+            className={cn(errors.email && FIELD_UNDERLINE_ERROR)}
           />
         </Field>
 
@@ -224,7 +229,7 @@ export function RegisterForm({ cities }: { cities: CityOption[] }) {
             autoComplete="new-password"
             placeholder="••••••••"
             {...register("password")}
-            className={cn(errors.password && "border-error")}
+            className={cn(errors.password && FIELD_UNDERLINE_ERROR)}
           />
         </Field>
 
@@ -239,23 +244,34 @@ export function RegisterForm({ cities }: { cities: CityOption[] }) {
             autoComplete="new-password"
             placeholder="••••••••"
             {...register("confirmPassword")}
-            className={cn(errors.confirmPassword && "border-error")}
+            className={cn(errors.confirmPassword && FIELD_UNDERLINE_ERROR)}
           />
         </Field>
 
-        <Field
-          id="phoneWa"
-          label="WhatsApp (sin + ni espacios)"
-          error={errors.phoneWa?.message}
-        >
-          <Input
-            id="phoneWa"
-            type="tel"
-            autoComplete="tel"
-            placeholder="5493854000000"
-            {...register("phoneWa")}
-            className={cn(errors.phoneWa && "border-error")}
+        {/* ⚠ Controller y NO watch(): el campo es controlado (limpia lo que se
+            pega) y `watch()` dispara el warning react-hooks/incompatible-library
+            del React Compiler (CLAUDE.md → ESLint). */}
+        <Field id="phoneWa" label="WhatsApp" error={errors.phoneWa?.message}>
+          <Controller
+            control={control}
+            name="phoneWa"
+            render={({ field, fieldState }) => (
+              <PhoneWaInput
+                id="phoneWa"
+                name={field.name}
+                value={field.value ?? ""}
+                onChange={field.onChange}
+                onBlur={field.onBlur}
+                inputRef={field.ref}
+                variant="underline"
+                invalid={!!fieldState.error}
+                describedBy="phoneWa_help"
+              />
+            )}
           />
+          <p id="phoneWa_help" className="font-sans text-xs text-graphite">
+            {PHONE_WA_HELP}
+          </p>
         </Field>
 
         {serverError && (
