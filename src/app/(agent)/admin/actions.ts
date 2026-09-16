@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { translateFormatCheckError } from "@/lib/utils/dbFormatErrors";
 import { getPlanUsage } from "@/lib/utils/getPlanUsage";
 import { NAME_REJECTION_PREFIX } from "@/lib/utils/getLatestRejectionNote";
 import { redirect } from "next/navigation";
@@ -358,7 +359,13 @@ function translateApprovalWriteError(
     return `No se pudo aprobar: ya hay otra inmobiliaria aprobada en la misma ciudad con ${which}. Revisá cuál de las dos corresponde antes de aprobar esta.`;
   }
 
-  return "No se pudo actualizar la agencia. Intentá de nuevo.";
+  // Un CHECK de formato (teléfono, logo) se evalúa en cualquier UPDATE de la
+  // fila aunque no toque esa columna. Si llegara, se nombra por lo que es y
+  // nunca como choque de matrícula (que exige 23505 + el nombre del índice).
+  return (
+    translateFormatCheckError(dbError) ??
+    "No se pudo actualizar la agencia. Intentá de nuevo."
+  );
 }
 
 // Registra una decisión del dueño en agency_reviews.

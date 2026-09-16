@@ -3,6 +3,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { PHONE_WA_ERROR, resolvePhoneWaForSave } from "@/lib/utils/phoneWa";
+import { isStoragePublicUrl } from "@/lib/utils/storagePublicUrl";
+import { translateFormatCheckError } from "@/lib/utils/dbFormatErrors";
 
 type ActionResult = { error: string } | undefined;
 
@@ -16,6 +18,17 @@ export async function updateProfileAction(data: {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "No autenticado" };
+
+  // ⚠ LA FOTO TAMBIÉN: `avatar_url` llega del navegador. Vale null (sin foto) o
+  // una URL del Storage del proyecto, lo mismo que exige el CHECK
+  // agents_avatar_url_storage de la base. `undefined` = no se tocó la foto.
+  if (
+    data.avatar_url !== undefined &&
+    data.avatar_url !== null &&
+    !isStoragePublicUrl(data.avatar_url)
+  ) {
+    return { error: "La foto de perfil no es válida. Volvé a subirla." };
+  }
 
   // ⚠ EL TELÉFONO SE VALIDA ACÁ. Esta action escribía lo que le llegara, sin
   // mirar nada: el formulario validaba, pero una action se invoca sin pasar por
@@ -58,7 +71,13 @@ export async function updateProfileAction(data: {
     .update(updatePayload)
     .eq("id", user.id);
 
-  if (error) return { error: "No se pudo actualizar el perfil. Intentá de nuevo." };
+  if (error) {
+    return {
+      error:
+        translateFormatCheckError(error) ??
+        "No se pudo actualizar el perfil. Intentá de nuevo.",
+    };
+  }
 
   revalidatePath("/dashboard/perfil");
   revalidatePath("/dashboard", "layout");

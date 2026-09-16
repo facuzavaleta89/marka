@@ -113,6 +113,21 @@
 --     propia hacia otra agencia. Ver la sección ROW LEVEL SECURITY.
 --     Se intentó además revocar la escritura sobre spatial_ref_sys y NO tuvo
 --     efecto: ver la nota al final de esa sección.
+--   * Blindaje de columnas: YA MIGRADO (16 sep 2026, aplicado a mano en el SQL
+--     Editor; transcripto acá con pg_constraint y pg_get_functiondef, y probado
+--     con ataques simulados en transacciones deshechas). Cuatro piezas:
+--       - protect_views_count() + trg_protect_views_count (BEFORE INSERT OR
+--         UPDATE ON properties): las sesiones (anon / authenticated) no pueden
+--         escribir views_count; increment_views() y service role sí.
+--       - CHECK property_images_url_storage, agents_avatar_url_storage y
+--         agencies_logo_url_storage: las URLs de archivos tienen que apuntar al
+--         Storage público del proyecto.
+--       - CHECK agents_phone_wa_format y agencies_phone_wa_format: mismo formato
+--         que valida src/lib/utils/phoneWa.ts para un valor nuevo.
+--       - Datos: dos teléfonos de prueba sin el 9 de celular ('543853000299',
+--         uno en agents y otro en agencies) se corrigieron a '5493853000299'
+--         ANTES de agregar los CHECK, que si no no se habrían podido validar.
+--     Ver la sección "BLINDAJE DE COLUMNAS", con las trampas de cada pieza.
 --   * ⚠ DISCREPANCIA CONOCIDA Y NO RESUELTA en UNA clave foránea
 --     (properties.agent_id: NOT NULL + ON DELETE CASCADE, cuando el modelo
 --     escrito pretendía nullable + SET NULL): ver la nota en esa tabla. Este
@@ -174,6 +189,8 @@ CREATE TABLE agencies (
   -- Obligatorio: toda agencia tiene un WhatsApp de contacto. Se setea en el
   -- registro (hereda el del admin que la crea) y se edita en Preferencias (solo
   -- el admin de agencia). Mismo formato que agents.phone_wa ("5491112345678").
+  -- ⚠ CHECK agencies_phone_wa_format y agencies_logo_url_storage (16 sep 2026):
+  -- se agregan por ALTER en la sección "BLINDAJE DE COLUMNAS", con sus trampas.
   phone_wa    TEXT NOT NULL,
   -- ── Legitimidad de la agencia (28 ago 2026, YA MIGRADO por ALTER) ──────
   -- Número de matrícula del colegio de corredores inmobiliarios.
@@ -313,6 +330,8 @@ CREATE TABLE agents (
   role          TEXT NOT NULL DEFAULT 'agent'
                 CHECK (role IN ('admin', 'agent')),
   full_name     TEXT NOT NULL,
+  -- ⚠ CHECK agents_phone_wa_format y agents_avatar_url_storage (16 sep 2026):
+  -- se agregan por ALTER en la sección "BLINDAJE DE COLUMNAS", con sus trampas.
   phone_wa      TEXT NOT NULL,   -- ej: "5491112345678" (sin +, sin espacios)
   -- Email denormalizado de auth.users (Fase 3, agregada por ALTER + backfill).
   -- Copia de lectura para mostrar en la UI; la fuente de verdad del login es
@@ -576,6 +595,8 @@ CREATE TABLE properties (
 CREATE TABLE property_images (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   property_id   UUID NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+  -- ⚠ CHECK property_images_url_storage (16 sep 2026): se agrega por ALTER en la
+  -- sección "BLINDAJE DE COLUMNAS", con sus trampas.
   url           TEXT NOT NULL,
   is_cover      BOOLEAN NOT NULL DEFAULT false,
   sort_order    INT NOT NULL DEFAULT 0,
@@ -1337,6 +1358,104 @@ $function$;
 -- defecto del esquema; se dejan explícitos porque la app DEPENDE de que `anon`
 -- pueda ejecutarla (mismo criterio que auth_agency_id).
 GRANT EXECUTE ON FUNCTION increment_views(uuid) TO anon, authenticated, service_role;
+
+-- ─── BLINDAJE DE COLUMNAS (16 sep 2026) ──────────────────────
+-- Cuatro reglas que antes vivían SOLO en el código de la app. Con la policy
+-- "Agent manages own properties" (y el UPDATE por columnas de agents) un agente
+-- podía escribirlas con su sesión llamando a la API directo, sin pasar por las
+-- server actions. Transcripto con pg_constraint y pg_get_functiondef.
+
+-- ─── FUNCIÓN + TRIGGER: protección del contador de visitas ───
+-- Solo increment_views() (o el service role) escribe views_count.
+--
+-- ⚠ protect_views_count() NO PUEDE SER SECURITY DEFINER. Decide mirando
+-- current_user, y dentro de una función SECURITY DEFINER current_user es SU
+-- DUEÑO (documentación de PostgreSQL: "It also changes during the execution of
+-- functions with the attribute SECURITY DEFINER"). Siendo DEFINER vería
+-- siempre 'postgres' y no bloquearía a nadie. Justamente por ese mecanismo pasa
+-- increment_views(): es SECURITY DEFINER con dueño postgres, así que el UPDATE
+-- que hace llega a este trigger con current_user = 'postgres'.
+--
+-- ⚠ ESTE TRIGGER Y LA GUARDA DE updated_at USAN MECANISMOS DISTINTOS, A
+-- PROPÓSITO. La guarda (update_updated_at, arriba) reconoce a increment_views()
+-- por la variable marka.skip_updated_at. Esa variable NO SIRVE COMO PERMISO:
+-- cualquier sesión puede ponerla con set_config() en su propia transacción
+-- (probado: un agente con la variable en 'on' escribía el contador). Para la
+-- guarda alcanza —lo peor que logra quien la pone es no mover su propio
+-- updated_at—; para proteger el contador hace falta el rol. No "unificar".
+--
+-- El ERRCODE es 42501 (insufficient_privilege), no 23514: no se confunde con
+-- los tres gates de publicación. La app lo traduce en
+-- src/lib/utils/dbFormatErrors.ts por el TEXTO del mensaje (42501 también es el
+-- código de una violación de RLS).
+CREATE OR REPLACE FUNCTION public.protect_views_count()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+begin
+  -- ⚠ NO es SECURITY DEFINER, a propósito: necesita ver con qué rol corre la
+  -- escritura. Las sesiones (anon / authenticated) no pueden tocar el
+  -- contador; increment_views sí, porque es SECURITY DEFINER y dentro de ella
+  -- current_user es su dueño. El service role también pasa.
+  if current_user in ('anon', 'authenticated') then
+    if tg_op = 'INSERT' and coalesce(new.views_count, 0) <> 0 then
+      raise exception 'El contador de visitas no se puede escribir directamente'
+        using errcode = '42501';
+    end if;
+    if tg_op = 'UPDATE' and new.views_count is distinct from old.views_count then
+      raise exception 'El contador de visitas no se puede escribir directamente'
+        using errcode = '42501';
+    end if;
+  end if;
+  return new;
+end;
+$function$;
+
+-- Orden alfabético entre los triggers BEFORE de properties: corre después de
+-- trg_properties_updated_at. No importa: ninguno de los dos depende del otro.
+CREATE TRIGGER trg_protect_views_count
+  BEFORE INSERT OR UPDATE ON public.properties
+  FOR EACH ROW EXECUTE FUNCTION public.protect_views_count();
+
+-- ─── CHECK: URLs de archivos en el Storage público del proyecto ─
+--
+-- ⚠ LOS TRES LLEVAN ESCRITO EL HOST DEL PROYECTO DE SUPABASE. Migrar a otro
+-- proyecto exige cambiarlos con un ALTER (DROP CONSTRAINT + ADD CONSTRAINT) Y
+-- cambiar a la vez la validación de la app, src/lib/utils/storagePublicUrl.ts,
+-- que arma el mismo prefijo desde NEXT_PUBLIC_SUPABASE_URL. Si cambia uno solo,
+-- la app deja pasar URLs que la base rechaza (o al revés).
+--
+-- ⚠ UN CHECK SE EVALÚA EN CUALQUIER INSERT/UPDATE DE LA FILA, AUNQUE NO TOQUE
+-- ESA COLUMNA. Un dato viejo inválido bloquea TODA edición de su fila: un
+-- agente con un avatar_url externo no podría cambiar ni su nombre. Antes de
+-- agregar un CHECK hay que medir las filas que lo violan y corregirlas (se hizo:
+-- 0 filas fuera del prefijo el 16 sep 2026).
+--
+-- property_images.url es NOT NULL: el `url IS NOT NULL` explícito no es
+-- redundante con la columna, es la regla de la casa (un CHECK que evalúa a NULL
+-- se considera satisfecho).
+ALTER TABLE public.property_images ADD CONSTRAINT property_images_url_storage
+  CHECK (url IS NOT NULL AND starts_with(url, 'https://mrvkurpampyucoonwgmy.supabase.co/storage/v1/object/public/property-images/'));
+ALTER TABLE public.agents ADD CONSTRAINT agents_avatar_url_storage
+  CHECK (avatar_url IS NULL OR starts_with(avatar_url, 'https://mrvkurpampyucoonwgmy.supabase.co/storage/v1/object/public/property-images/'));
+ALTER TABLE public.agencies ADD CONSTRAINT agencies_logo_url_storage
+  CHECK (logo_url IS NULL OR starts_with(logo_url, 'https://mrvkurpampyucoonwgmy.supabase.co/storage/v1/object/public/property-images/'));
+
+-- ─── CHECK: formato del teléfono de WhatsApp ─────────────────
+-- Mismo formato que src/lib/utils/phoneWa.ts exige a un valor NUEVO: "549" +
+-- característica que empieza con 1, 2 o 3 + 9 dígitos (13 dígitos en total).
+--
+-- ⚠ Misma trampa que las URLs: se evalúa en cualquier UPDATE de la fila. Antes de
+-- agregarlos se corrigieron los dos teléfonos de prueba que no cumplían.
+--
+-- ⚠ SI ALGÚN DÍA SE ACEPTAN LÍNEAS FIJAS (sin el 9), hay que aflojar estos dos
+-- CHECK con un ALTER además de cambiar phoneWa.ts: si no, el formulario acepta
+-- el número y la base lo rechaza.
+ALTER TABLE public.agents ADD CONSTRAINT agents_phone_wa_format
+  CHECK (phone_wa ~ '^549[1-3][0-9]{9}$');
+ALTER TABLE public.agencies ADD CONSTRAINT agencies_phone_wa_format
+  CHECK (phone_wa ~ '^549[1-3][0-9]{9}$');
 
 -- ─── ROW LEVEL SECURITY ───────────────────────────────────────
 
