@@ -128,6 +128,21 @@
 --         uno en agents y otro en agencies) se corrigieron a '5493853000299'
 --         ANTES de agregar los CHECK, que si no no se habrían podido validar.
 --     Ver la sección "BLINDAJE DE COLUMNAS", con las trampas de cada pieza.
+--   * Cupo de destacadas por agencia: YA MIGRADO (16 sep 2026, aplicado a mano en
+--     el SQL Editor; transcripto acá con information_schema, pg_constraint y
+--     pg_get_functiondef, y probado con ataques simulados). Piezas:
+--       - subscriptions.featured_limit (INT NOT NULL DEFAULT 0), con backfill:
+--         profesional 3, premium 10, el resto y las dadas de baja 0. has_featured
+--         se recalculó como featured_limit > 0.
+--       - CHECK subscriptions_featured_limit_nonnegative (>= 0) y
+--         subscriptions_featured_coherence (has_featured = featured_limit > 0).
+--       - enforce_featured_quota() + trg_featured_quota (BEFORE INSERT OR UPDATE
+--         ON properties): vendida/alquilada apaga la estrella; encender respeta
+--         el cupo (SQLSTATE propio MKF01).
+--       - clear_featured_on_zero_quota() + trg_clear_featured_on_zero_quota
+--         (AFTER UPDATE OF featured_limit ON subscriptions): cupo a 0 apaga todas
+--         las destacadas de la agencia.
+--     Ver la sección "CUPO DE DESTACADAS", con las trampas de cada pieza.
 --   * ⚠ DISCREPANCIA CONOCIDA Y NO RESUELTA en UNA clave foránea
 --     (properties.agent_id: NOT NULL + ON DELETE CASCADE, cuando el modelo
 --     escrito pretendía nullable + SET NULL): ver la nota en esa tabla. Este
@@ -297,7 +312,10 @@ CREATE TABLE subscriptions (
   -- el código lee estos booleanos, NO el nombre del plan). Agregadas por ALTER
   -- en la migración de planes, por eso van al final del orden de columnas.
   has_white_label BOOLEAN NOT NULL DEFAULT false, -- profesional + premium
-  has_featured    BOOLEAN NOT NULL DEFAULT false, -- premium (destacados)
+  -- ⚠ has_featured NO es independiente: el CHECK subscriptions_featured_coherence
+  -- (sección "CUPO DE DESTACADAS") obliga a has_featured = (featured_limit > 0).
+  -- Toda escritura que ponga uno tiene que poner el otro.
+  has_featured    BOOLEAN NOT NULL DEFAULT false,
   has_metrics     BOOLEAN NOT NULL DEFAULT false, -- premium (métricas)
   -- Plan pago PEDIDO esperando activación manual (Fase 3, agregada por ALTER).
   -- null = no hay upgrade pendiente. 'plan' sigue siendo el que rige; pending_plan
@@ -307,7 +325,14 @@ CREATE TABLE subscriptions (
   -- Fecha desde la que rige el plan pago activo actual; null si no hay plan pago
   -- activo (free, o pago en pending). La setea la activación del admin (no un
   -- trigger): se actualiza en cada activación/cambio/renovación de plan pago.
-  activated_at    TIMESTAMPTZ
+  activated_at    TIMESTAMPTZ,
+  -- Cupo de propiedades destacadas del plan que rige (16 sep 2026, agregada por
+  -- ALTER; por eso va última). Lo escriben las acciones de /admin desde el
+  -- catálogo PLANS (featuredLimit: free 0, inicial 0, profesional 3, premium 10)
+  -- y el registro con el de free. El DEFAULT 0 es lo que deja que
+  -- ensure_agency_subscription() —que inserta solo agency_id— siga cumpliendo el
+  -- CHECK de coherencia con has_featured = false.
+  featured_limit  INT NOT NULL DEFAULT 0
 );
 -- Nota: la escritura de subscriptions la hace solo el backend con service role.
 -- La activación de un plan pago (status pending → active) la hace el admin de
@@ -1456,6 +1481,129 @@ ALTER TABLE public.agents ADD CONSTRAINT agents_phone_wa_format
   CHECK (phone_wa ~ '^549[1-3][0-9]{9}$');
 ALTER TABLE public.agencies ADD CONSTRAINT agencies_phone_wa_format
   CHECK (phone_wa ~ '^549[1-3][0-9]{9}$');
+
+-- ─── CUPO DE DESTACADAS (16 sep 2026) ────────────────────────
+-- Antes destacar era un booleano por agencia (has_featured) gateado SOLO en las
+-- server actions, que descartaban en silencio un is_featured = true. Ahora es un
+-- cupo por plan (subscriptions.featured_limit) que hace cumplir la base.
+-- Transcripto con pg_constraint y pg_get_functiondef.
+
+-- ─── CHECK: cupo no negativo y coherencia con has_featured ───
+--
+-- ⚠ TODA ESCRITURA DE subscriptions QUE PONGA has_featured TIENE QUE PONER
+-- featured_limit (y al revés). has_featured se conserva porque el gating de
+-- features se hace por booleanos, nunca por el nombre del plan, pero ya no es
+-- independiente: con uno solo, este CHECK rechaza el UPDATE (23514). Las
+-- acciones de /admin y el registro escriben los dos desde el catálogo.
+ALTER TABLE public.subscriptions ADD CONSTRAINT subscriptions_featured_limit_nonnegative
+  CHECK (featured_limit >= 0);
+ALTER TABLE public.subscriptions ADD CONSTRAINT subscriptions_featured_coherence
+  CHECK (has_featured = (featured_limit > 0));
+
+-- ─── FUNCIÓN + TRIGGER: cupo al encender y apagado al cerrar ──
+--
+-- ⚠ VENDIDA O ALQUILADA APAGA LA ESTRELLA ACÁ, EN LA BASE. Cualquier camino que
+-- cambie el status —el menú del listado, el select de estado del formulario de
+-- edición, o uno futuro— lo hereda sin escribir nada. Pausar no la apaga.
+--
+-- ⚠ SOLO SE CONTROLA EL ENCENDIDO (INSERT con true, o UPDATE false → true).
+-- Apagar, o editar una que ya estaba encendida, siempre pasa: una agencia cuyo
+-- cupo bajó sin llegar a 0 conserva las que sobran y las puede seguir editando.
+--
+-- ⚠ EL RECHAZO USA UN SQLSTATE PROPIO, MKF01, y un texto sin "Límite",
+-- "suscripción" ni "no está aprobada". Un traductor que mire solo 23514 no lo ve
+-- (y uno que buscara esas palabras lo confundiría con otro gate):
+-- translatePropertyWriteError tiene una rama propia por el código.
+--
+-- ⚠ SECURITY DEFINER, al revés que los tres gates de publicación: cuenta las
+-- destacadas de TODA la agencia y lee su cupo sin depender de la RLS de quien
+-- escribe. El conteo del código (getFeaturedUsage) tiene que ser el mismo: todas
+-- las destacadas de la agencia, de cualquier status y agente.
+--
+-- Orden alfabético entre los BEFORE de properties: trg_check_agency_approved →
+-- trg_check_agency_subscription → trg_check_property_limit → trg_featured_quota
+-- → trg_properties_updated_at → trg_protect_views_count.
+CREATE OR REPLACE FUNCTION public.enforce_featured_quota()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_limit int;
+  v_used  int;
+begin
+  -- ⚠ SECURITY DEFINER a propósito: cuenta las destacadas de TODA la agencia y
+  -- lee su cupo sin depender de la RLS de quien escribe (misma trampa que los
+  -- gates de publicación, que leen subscriptions con los permisos del usuario).
+
+  -- Vendida o alquilada: la estrella se apaga y libera el cupo. Pausar no.
+  if new.status in ('sold', 'rented') then
+    new.is_featured := false;
+    return new;
+  end if;
+
+  -- Solo se controla el ENCENDIDO. Apagar, o editar una que ya estaba
+  -- encendida, siempre pasa: así una agencia que baja de cupo conserva las que
+  -- sobran y puede seguir editándolas.
+  if new.is_featured and (tg_op = 'INSERT' or not old.is_featured) then
+    select featured_limit into v_limit
+    from subscriptions
+    where agency_id = new.agency_id;
+
+    select count(*) into v_used
+    from properties
+    where agency_id = new.agency_id
+      and is_featured
+      and id is distinct from new.id;
+
+    if v_used >= coalesce(v_limit, 0) then
+      -- Código propio y texto sin "Límite", "suscripción" ni "no está
+      -- aprobada": ningún traductor de errores existente lo confunde.
+      raise exception 'Cupo de destacadas completo para esta agencia (máximo: %)',
+        coalesce(v_limit, 0)
+        using errcode = 'MKF01';
+    end if;
+  end if;
+
+  return new;
+end;
+$function$;
+
+CREATE TRIGGER trg_featured_quota
+  BEFORE INSERT OR UPDATE ON public.properties
+  FOR EACH ROW EXECUTE FUNCTION public.enforce_featured_quota();
+
+-- ─── FUNCIÓN + TRIGGER: cupo a 0 apaga todas las destacadas ──
+-- Dar de baja (featured_limit 0) o bajar a un plan sin destacadas apaga todas las
+-- de la agencia. Si el cupo baja sin llegar a 0, las que sobran quedan. No
+-- vuelven solas si el cupo sube de nuevo (reactivar no las enciende).
+-- El UPDATE sobre properties dispara los triggers de esa tabla: sella updated_at
+-- (la estrella se ve en la ficha pública, así que es un cambio real) y pasa por
+-- trg_protect_views_count sin tocar el contador.
+CREATE OR REPLACE FUNCTION public.clear_featured_on_zero_quota()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+begin
+  -- Cuando el cupo pasa a 0 (baja a inicial, dar de baja) se apagan todas las
+  -- destacadas de la agencia. Si baja sin llegar a 0, las que sobran quedan.
+  -- No vuelven solas si el cupo sube de nuevo: la agencia las marca otra vez.
+  if new.featured_limit = 0 and old.featured_limit > 0 then
+    update properties
+      set is_featured = false
+    where agency_id = new.agency_id
+      and is_featured;
+  end if;
+  return new;
+end;
+$function$;
+
+CREATE TRIGGER trg_clear_featured_on_zero_quota
+  AFTER UPDATE OF featured_limit ON public.subscriptions
+  FOR EACH ROW EXECUTE FUNCTION public.clear_featured_on_zero_quota();
 
 -- ─── ROW LEVEL SECURITY ───────────────────────────────────────
 

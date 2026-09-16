@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireAgentSession } from "@/lib/utils/resolveAgentSession";
 import { PropertyForm } from "@/components/properties/PropertyForm";
+import { getFeaturedUsage } from "@/lib/utils/getFeaturedUsage";
 import type { Property, PropertyImage } from "@/types";
 
 export default async function EditarPropiedadPage({
@@ -58,11 +59,16 @@ export default async function EditarPropiedadPage({
     agencyAgents = (members ?? []) as { id: string; full_name: string }[];
   }
 
-  const { data: agency } = await supabase
-    .from("agencies")
-    .select("city_id")
-    .eq("id", property.agency_id)
-    .single();
+  // Cupo de destacadas de la agencia DE LA PROPIEDAD (no la de quien edita):
+  // el cupo es por agencia y un admin puede editar propiedades de su equipo.
+  const [{ data: agency }, featuredUsage] = await Promise.all([
+    supabase
+      .from("agencies")
+      .select("city_id")
+      .eq("id", property.agency_id)
+      .single(),
+    getFeaturedUsage(supabase, property.agency_id),
+  ]);
 
   const { data: city } = agency
     ? await supabase
@@ -111,6 +117,7 @@ export default async function EditarPropiedadPage({
         cityId={property.city_id}
         cityCenter={cityCenter}
         agencyAgents={agencyAgents}
+        featuredUsage={featuredUsage}
       />
     </div>
   );

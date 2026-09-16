@@ -290,7 +290,15 @@ export interface Subscription {
   pending_plan: SubscriptionPlan | null;
   status: SubscriptionStatus;
   property_limit: number;            // del plan que rige. free=1, inicial=20, profesional=60, premium=200
-  has_featured: boolean;             // puede marcar propiedades como destacadas
+  // Cupo de propiedades destacadas del plan que rige (free=0, inicial=0,
+  // profesional=3, premium=10). NOT NULL, default 0. El cupo lo hace cumplir la
+  // base (trigger trg_featured_quota) y, si pasa a 0, la base apaga todas las
+  // destacadas de la agencia (trg_clear_featured_on_zero_quota).
+  featured_limit: number;
+  // Puede marcar propiedades como destacadas. La base OBLIGA a que coincida con
+  // featured_limit > 0 (CHECK subscriptions_featured_coherence): toda escritura
+  // que ponga uno tiene que poner el otro.
+  has_featured: boolean;
   has_white_label: boolean;          // habilita la vista white-label
   has_metrics: boolean;              // métricas avanzadas de propiedades y leads
   current_period_end: string | null;
@@ -558,10 +566,12 @@ export type PropertyUpdate = Partial<PropertyInsert> & { id: string };
 // ─── Helpers de plan ──────────────────────────────────────────
 
 // Catálogo de planes para la UI (pricing, badges, mensajes de upgrade).
-// Es la fuente de verdad de NOMBRE / PRECIO / LÍMITE de cada plan.
-// Los flags (featured/whiteLabel/metrics) describen qué INCLUYE cada plan en
-// las tarjetas de precios; el gating en runtime se hace con los booleanos de la
-// suscripción (has_featured / has_white_label / has_metrics), no con estos.
+// Es la fuente de verdad de NOMBRE / PRECIO / LÍMITES de cada plan.
+// `featuredLimit` y los flags (whiteLabel/metrics) describen qué INCLUYE cada
+// plan en las tarjetas de precios y son lo que las acciones de /admin COPIAN a
+// la suscripción al activar o cambiar de plan (featured_limit y has_featured =
+// featuredLimit > 0). El gating en runtime se hace con los valores de la
+// suscripción (featured_limit / has_white_label / has_metrics), no con estos.
 // ⚠ PLANS.free cumple DOS funciones que conviene no confundir: su 'name' es una
 // etiqueta de estado ("Gratis", lo que ve una agencia que todavía no paga), y
 // sus valores numéricos (propertyLimit: 1 + los tres flags en false) son los que
@@ -572,7 +582,9 @@ export interface PlanInfo {
   name: string;            // nombre visible
   propertyLimit: number;
   priceLabel: string;      // placeholder editable
-  featured: boolean;
+  // Cupo de propiedades destacadas. 0 = el plan no incluye destacadas (el
+  // booleano has_featured de la suscripción se deriva de acá: featuredLimit > 0).
+  featuredLimit: number;
   whiteLabel: boolean;
   metrics: boolean;
 }
@@ -581,22 +593,22 @@ export const PLANS: Record<SubscriptionPlan, PlanInfo> = {
   free: {
     id: "free", name: "Gratis",
     propertyLimit: 1, priceLabel: "Gratis",
-    featured: false, whiteLabel: false, metrics: false,
+    featuredLimit: 0, whiteLabel: false, metrics: false,
   },
   inicial: {
     id: "inicial", name: "Inicial",
     propertyLimit: 20, priceLabel: "$30.000",
-    featured: false, whiteLabel: false, metrics: false,
+    featuredLimit: 0, whiteLabel: false, metrics: false,
   },
   profesional: {
     id: "profesional", name: "Profesional",
     propertyLimit: 60, priceLabel: "$65.000",
-    featured: false, whiteLabel: true, metrics: false,
+    featuredLimit: 3, whiteLabel: true, metrics: false,
   },
   premium: {
     id: "premium", name: "Premium",
     propertyLimit: 200, priceLabel: "$140.000",
-    featured: true, whiteLabel: true, metrics: true,
+    featuredLimit: 10, whiteLabel: true, metrics: true,
   },
 };
 
@@ -618,6 +630,16 @@ export const PAID_PLANS = PLAN_ORDER.filter(
   (id): id is Exclude<SubscriptionPlan, "free"> => id !== "free"
 );
 
+// Uso del cupo de destacadas de UNA agencia (ver getFeaturedUsage).
+// `used` cuenta TODAS las destacadas de la agencia —cualquier status, cualquier
+// agente—, igual que el trigger trg_featured_quota. Puede superar a `limit` si
+// el cupo bajó sin llegar a 0: las que sobran quedan encendidas.
+export interface FeaturedUsage {
+  limit: number;
+  used: number;
+  available: number;     // Math.max(0, limit - used)
+}
+
 // Estado de uso del plan, para mostrar en el dashboard y bloquear el alta.
 // Incluye los entitlements efectivos leídos de la suscripción (no del nombre del plan).
 export interface PlanUsage {
@@ -635,7 +657,8 @@ export interface PlanUsage {
   available: number;     // Math.max(0, limit - used). Saneado: NUNCA negativo (0 si used > limit)
   over: number;          // Math.max(0, used - limit). 0 si dentro del límite; > 0 si se excedió (ej. tras downgrade)
   canCreate: boolean;    // used < limit
-  hasFeatured: boolean;     // = subscription.has_featured
+  hasFeatured: boolean;     // = subscription.has_featured (= featuredLimit > 0, lo obliga la base)
+  featuredLimit: number;    // = subscription.featured_limit (sin fila → 0)
   hasWhiteLabel: boolean;   // = subscription.has_white_label
   hasMetrics: boolean;      // = subscription.has_metrics
 }

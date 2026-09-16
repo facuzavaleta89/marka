@@ -95,7 +95,10 @@ export async function activatePlanAction(input: {
       pending_plan: null,
       status: "active",
       property_limit: planInfo.propertyLimit,
-      has_featured: planInfo.featured,
+      // featured_limit y has_featured SIEMPRE juntos: la base obliga a que
+      // has_featured = (featured_limit > 0) (CHECK subscriptions_featured_coherence).
+      featured_limit: planInfo.featuredLimit,
+      has_featured: planInfo.featuredLimit > 0,
       has_white_label: planInfo.whiteLabel,
       has_metrics: planInfo.metrics,
       activated_at: new Date().toISOString(),
@@ -820,6 +823,11 @@ export async function cancelSubscriptionAction(input: {
     .from("subscriptions")
     .update({
       status: "canceled",
+      // Cupo de destacadas a 0 junto con has_featured (CHECK de coherencia). Al
+      // pasar a 0, la base apaga todas las destacadas de la agencia
+      // (trg_clear_featured_on_zero_quota); reactivar repone el cupo pero NO
+      // vuelve a encenderlas.
+      featured_limit: 0,
       has_featured: false,
       has_white_label: false,
       has_metrics: false,
@@ -876,7 +884,8 @@ export async function restoreSubscriptionAction(input: {
     .from("subscriptions")
     .update({
       status: "active",
-      has_featured: planInfo.featured,
+      featured_limit: planInfo.featuredLimit,
+      has_featured: planInfo.featuredLimit > 0,
       has_white_label: planInfo.whiteLabel,
       has_metrics: planInfo.metrics,
     })
@@ -1245,7 +1254,10 @@ export async function changePlanAction(input: {
     .update({
       plan: targetPlan,
       property_limit: planInfo.propertyLimit,
-      has_featured: planInfo.featured,
+      // Sin bloqueo por destacadas: si el cupo baja sin llegar a 0, las que
+      // sobran quedan; si llega a 0, la base las apaga todas.
+      featured_limit: planInfo.featuredLimit,
+      has_featured: planInfo.featuredLimit > 0,
       has_white_label: planInfo.whiteLabel,
       has_metrics: planInfo.metrics,
       // activated_at responde "desde cuándo rige lo que rige". Después de un

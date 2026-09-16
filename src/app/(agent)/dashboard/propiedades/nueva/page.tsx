@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAgentSession } from "@/lib/utils/resolveAgentSession";
 import { PropertyForm } from "@/components/properties/PropertyForm";
 import { getPlanUsage } from "@/lib/utils/getPlanUsage";
+import { getFeaturedUsage } from "@/lib/utils/getFeaturedUsage";
 import { getPublishBlock } from "@/lib/utils/getPublishBlock";
 import type { RentRequirement } from "@/types";
 
@@ -25,6 +26,9 @@ export default async function NuevaPropiedadPage() {
   if (getPublishBlock(planUsage, agency.approval_status)) {
     redirect("/dashboard/propiedades");
   }
+
+  // Cupo de destacadas de la agencia, para la casilla "Marcar como destacada".
+  const featuredUsage = await getFeaturedUsage(supabase, agent.agency_id);
 
   // Si es admin de agencia, traemos los agentes de la agencia para el selector
   // "Agente asignado" (ordenados por nombre). Si es agente normal, no se pasa →
@@ -112,6 +116,7 @@ export default async function NuevaPropiedadPage() {
         cityCenter={cityCenter}
         agencyAgents={agencyAgents}
         initialRentRequirements={initialRentRequirements}
+        featuredUsage={featuredUsage}
       />
     </div>
   );

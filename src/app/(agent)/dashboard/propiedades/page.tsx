@@ -5,6 +5,11 @@ import { PlanBadge } from "@/components/dashboard/PlanBadge";
 import { NewPropertyButton } from "@/components/dashboard/NewPropertyButton";
 import { PropertiesTable, type PropertyRow } from "@/components/dashboard/PropertiesTable";
 import { getPlanUsage } from "@/lib/utils/getPlanUsage";
+import { getFeaturedUsage } from "@/lib/utils/getFeaturedUsage";
+import {
+  FEATURED_QUOTA_AGENCY_NOTE,
+  featuredUsageLabel,
+} from "@/lib/utils/labels";
 import { getPublishBlock } from "@/lib/utils/getPublishBlock";
 
 // PostgREST devuelve el conteo embebido como `[{ count: N }]` (una relación
@@ -28,9 +33,10 @@ export default async function PropiedadesPage() {
 
   // Las NUEVE columnas de operación/precio: la tabla muestra todas las
   // operaciones activas con su precio (o "A convenir" si no tiene). Más
-  // `views_count`, que vive en la misma fila y no cuesta nada traer.
+  // `views_count`, que vive en la misma fila y no cuesta nada traer, e
+  // `is_featured`, para la estrella de las que ocupan el cupo de destacadas.
   const baseSelect =
-    "id, title, property_type, for_sale, sale_price, sale_currency, for_rent, rent_price, rent_currency, for_temp_rent, temp_rent_price, temp_rent_currency, status, views_count, images:property_images(url, is_cover, sort_order)";
+    "id, title, property_type, for_sale, sale_price, sale_currency, for_rent, rent_price, rent_currency, for_temp_rent, temp_rent_price, temp_rent_currency, status, views_count, is_featured, images:property_images(url, is_cover, sort_order)";
   const adminSelect = `${baseSelect}, agent:agents(full_name)`;
 
   const propertiesQuery = isAgencyAdmin
@@ -76,12 +82,20 @@ export default async function PropiedadesPage() {
       isAgencyAdmin ? agent.agency_id : userId
     );
 
-  const [{ data: properties }, planUsage, { data: leadCounts, error: leadCountsError }] =
-    await Promise.all([
-      propertiesQuery,
-      getPlanUsage(supabase, agent.agency_id),
-      leadCountsQuery,
-    ]);
+  // Cupo de destacadas: SIEMPRE de la AGENCIA, también para un agente común (el
+  // cupo es por agencia). Con la sesión, la RLS le deja leer todas las
+  // propiedades de su agencia, así que el conteo es el de toda la inmobiliaria.
+  const [
+    { data: properties },
+    planUsage,
+    { data: leadCounts, error: leadCountsError },
+    featuredUsage,
+  ] = await Promise.all([
+    propertiesQuery,
+    getPlanUsage(supabase, agent.agency_id),
+    leadCountsQuery,
+    getFeaturedUsage(supabase, agent.agency_id),
+  ]);
 
   // Si la consulta de conteo falla, cada propiedad queda con `null` y la tabla
   // muestra "—". Un 0 diría "nadie escribió", que sería inventar el dato.
@@ -117,6 +131,7 @@ export default async function PropiedadesPage() {
       temp_rent_currency: p.temp_rent_currency,
       status: p.status,
       views_count: p.views_count,
+      is_featured: p.is_featured,
       images: p.images,
       agent_name: agentName,
       // Sin error, una propiedad AUSENTE del conteo tiene 0 consultas (p. ej.
@@ -141,6 +156,17 @@ export default async function PropiedadesPage() {
           <div className="mt-2">
             <PlanBadge planUsage={planUsage} />
           </div>
+          {/* Uso del cupo de destacadas, solo si el plan lo incluye. ⚠ Un
+              agente común ve en este listado SOLO sus propiedades, pero el
+              contador cuenta las de toda la agencia: sin la aclaración, "2 de 3"
+              con una sola estrella a la vista parecería un error. El admin ve
+              todas, así que no la necesita. */}
+          {featuredUsage.limit > 0 && (
+            <p className="mt-2 font-sans text-xs text-graphite">
+              {featuredUsageLabel(featuredUsage.used, featuredUsage.limit)}
+              {!isAgencyAdmin && ` · ${FEATURED_QUOTA_AGENCY_NOTE}`}
+            </p>
+          )}
         </div>
 
         <div className="shrink-0">

@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import { generateSlug } from "@/lib/utils/generateSlug";
-import { getPlanUsage } from "@/lib/utils/getPlanUsage";
+import { getFeaturedUsage } from "@/lib/utils/getFeaturedUsage";
 import { resolveAgentSession } from "@/lib/utils/resolveAgentSession";
 import {
   PROPERTY_IMAGES_BUCKET,
@@ -12,7 +12,10 @@ import {
 } from "@/lib/utils/storagePath";
 import { isStoragePublicUrl } from "@/lib/utils/storagePublicUrl";
 import { translateFormatCheckError } from "@/lib/utils/dbFormatErrors";
-import { RENT_REQUIREMENT_LABELS } from "@/lib/utils/labels";
+import {
+  RENT_REQUIREMENT_LABELS,
+  FEATURED_QUOTA_FULL_MESSAGE,
+} from "@/lib/utils/labels";
 import {
   RENT_REQUIREMENTS_OTHER_MAX,
   RENT_REQUIREMENT_OTHER_MAX_LEN,
@@ -26,6 +29,22 @@ type ActionResult = { error: string } | undefined;
 // (no hacemos rollback: la propiedad ya existe y el agente puede reintentar).
 const PARTIAL_IMAGES_MSG =
   "La propiedad se guardó pero algunas imágenes no se guardaron. Podés agregarlas desde Editar.";
+
+// ¿Encender una destacada más superaría el cupo de la agencia?
+//
+// Anticipa en la action el rechazo de la base (trg_featured_quota, MKF01) para
+// devolver el mensaje ANTES de escribir nada: en la edición las imágenes se
+// borran después del update, y un error a mitad de camino deja el pedido a
+// medias. Cuenta exactamente como el trigger (getFeaturedUsage). La base sigue
+// siendo la barrera real: dos pedidos simultáneos pueden pasar este chequeo y
+// uno rebota ahí, traducido por translatePropertyWriteError.
+async function featuredQuotaBlocks(
+  supabase: SupabaseClient,
+  agencyId: string
+): Promise<boolean> {
+  const usage = await getFeaturedUsage(supabase, agencyId);
+  return usage.used >= usage.limit;
+}
 
 // Mensaje cuando alguna URL de imagen recibida no es del Storage del proyecto.
 const INVALID_IMAGE_URL_MSG =
@@ -123,7 +142,7 @@ async function resolveAssignedAgent(
 // es la única defensa cuando se usa service role.
 //
 // Devuelve también `db`: el client con el que cada action debe ESCRIBIR
-// (normal para owner, admin para admin). Las lecturas auxiliares (getPlanUsage,
+// (normal para owner, admin para admin). Las lecturas auxiliares (getFeaturedUsage,
 // agency_id) pueden seguir con el client normal: un admin es miembro de su
 // agencia y la RLS de lectura por agencia ya lo cubre.
 async function authorizePropertyAccess(id: string): Promise<{
@@ -353,16 +372,20 @@ export async function deletePropertyAction(id: string): Promise<ActionResult> {
   }
 }
 
-// Traduce el error de la base a un mensaje propio. Sobre `properties` hay DOS
-// triggers BEFORE INSERT que rechazan el alta y TODOS usan el mismo SQLSTATE
-// (23514, check_violation), así que el código NO alcanza para distinguirlos: hay
-// que mirar el mensaje.
-//   - trg_check_agency_approved     → "La agencia no está aprobada para publicar…"
-//   - trg_check_agency_subscription → "La suscripción de la agencia no está activa…"
-//   - trg_check_property_limit      → "Límite de propiedades alcanzado…"
-// El orden de los chequeos ES el orden en que disparan los triggers (Postgres
-// los corre alfabéticamente por nombre) y también el orden de prioridad de
-// getPublishBlock: aprobación → suscripción → cupo. Decirle "alcanzaste el
+// Traduce el error de la base a un mensaje propio. Sobre `properties` hay SEIS
+// triggers BEFORE (medidos con pg_trigger el 16 sep 2026). Postgres los dispara
+// en ORDEN ALFABÉTICO de nombre, y el primero que falla es el mensaje que llega:
+//   1. trg_check_agency_approved     INSERT          23514 "La agencia no está aprobada para publicar…"
+//   2. trg_check_agency_subscription INSERT          23514 "La suscripción de la agencia no está activa…"
+//   3. trg_check_property_limit      INSERT o UPDATE 23514 "Límite de propiedades alcanzado…"
+//   4. trg_featured_quota            INSERT o UPDATE MKF01 "Cupo de destacadas completo…" (y apaga la
+//                                                   estrella de vendidas/alquiladas)
+//   5. trg_properties_updated_at     UPDATE          no rechaza (sella updated_at)
+//   6. trg_protect_views_count       INSERT o UPDATE 42501 "El contador de visitas no se puede…"
+// Los tres primeros comparten SQLSTATE (23514, check_violation), así que el
+// código NO alcanza para distinguirlos: hay que mirar el mensaje. Su orden es
+// también el orden de prioridad de getPublishBlock: aprobación → suscripción →
+// cupo. Decirle "alcanzaste el
 // límite de tu plan" a alguien que no fue aprobado, o a alguien dado de baja, es
 // falso en los dos casos y lo manda a pagar un plan que no le destraba nada.
 //
@@ -390,6 +413,13 @@ function translatePropertyWriteError(
   // que si no los reportaría como límite de plan.
   const formatError = translateFormatCheckError(dbError);
   if (formatError) return formatError;
+  // Cupo de destacadas (trg_featured_quota). SQLSTATE propio, MKF01, y un texto
+  // sin "Límite", "suscripción" ni "no está aprobada": ninguna rama de arriba lo
+  // captura, pero tiene que ir ANTES del cajón de sastre por si alguna vez el
+  // texto cambia.
+  if (dbError.code === "MKF01") {
+    return FEATURED_QUOTA_FULL_MESSAGE;
+  }
   if (dbError.code === "23514" || dbError.message.includes("Límite")) {
     return limitMessage;
   }
@@ -501,6 +531,15 @@ export async function createPropertyAction(
   // Antes de cualquier escritura (ver hasInvalidImageUrl).
   if (hasInvalidImageUrl(data.images)) return { error: INVALID_IMAGE_URL_MSG };
 
+  // Cupo de destacadas, ANTES de cualquier escritura. El alta nace 'active', así
+  // que pedir la estrella la ENCIENDE. Ver featuredQuotaBlocks.
+  if (
+    data.is_featured === true &&
+    (await featuredQuotaBlocks(supabase, agent.agency_id))
+  ) {
+    return { error: FEATURED_QUOTA_FULL_MESSAGE };
+  }
+
   const { data: agency } = await supabase
     .from("agencies")
     .select("city_id")
@@ -516,11 +555,6 @@ export async function createPropertyAction(
   if (!city) return { error: "Ciudad no encontrada" };
 
   const slug = generateSlug(data.title);
-
-  // Destacar es un entitlement de la suscripción (has_featured): si la agencia
-  // no lo tiene, se ignora el valor que mandó el form.
-  const planUsage = await getPlanUsage(supabase, agent.agency_id);
-  const isFeatured = data.is_featured && planUsage.hasFeatured;
 
   // Reasignación al crear (solo admin): si pidió asignar a otro agente de su
   // agencia y validó, la propiedad nace con ese agent_id. Si no, queda a nombre
@@ -580,7 +614,9 @@ export async function createPropertyAction(
     location_source: normalizeLocationSource(data.location_source),
     amenities: data.amenities,
     year_built: data.year_built ?? null,
-    is_featured: isFeatured,
+    // El valor que mandó el formulario. El cupo ya se verificó arriba y la base
+    // lo vuelve a controlar (trg_featured_quota).
+    is_featured: data.is_featured === true,
   });
 
   if (insertError) {
@@ -629,31 +665,41 @@ export async function updatePropertyAction(
   // imágenes (ver hasInvalidImageUrl).
   if (hasInvalidImageUrl(data.images)) return { error: INVALID_IMAGE_URL_MSG };
 
-  // Destacar es un entitlement de la suscripción (has_featured): si la agencia
-  // no lo tiene, se ignora el valor que mandó el form. La lectura va con el
-  // client normal: un admin es miembro de su agencia y la RLS de lectura por
-  // agencia ya le permite leer esta propiedad y su suscripción.
+  // Estado actual de la fila: la agencia (para el cupo y la reasignación) y si
+  // YA está destacada. La lectura va con el client normal: un admin es miembro
+  // de su agencia y la RLS de lectura por agencia ya le permite leerla.
   const { data: prop } = await supabase
     .from("properties")
-    .select("agency_id")
+    .select("agency_id, is_featured")
     .eq("id", id)
     .single();
-  const planUsage = prop ? await getPlanUsage(supabase, prop.agency_id) : null;
-  const isFeatured = data.is_featured && (planUsage?.hasFeatured ?? false);
+  if (!prop) return { error: "Propiedad no encontrada" };
+
+  // Cupo de destacadas, ANTES de cualquier escritura (antes del update y del
+  // delete de imágenes). Solo se verifica si el pedido ENCIENDE la estrella:
+  // hoy apagada y llega encendida. Editar una que ya está destacada pasa
+  // siempre, aunque el cupo esté lleno o haya bajado. Y no se verifica si se
+  // guarda como vendida o alquilada: la base le apaga la estrella.
+  const turnsOnFeatured =
+    data.is_featured === true &&
+    prop.is_featured !== true &&
+    data.status !== "sold" &&
+    data.status !== "rented";
+  if (turnsOnFeatured && (await featuredQuotaBlocks(supabase, prop.agency_id))) {
+    return { error: FEATURED_QUOTA_FULL_MESSAGE };
+  }
 
   // Reasignación de agente (solo admin). Validamos contra la agencia de la
   // PROPIEDAD (prop.agency_id), que authorizePropertyAccess ya confirmó que es
   // la del caller. role y user salen del server.
   const session = await resolveAgentSession();
   const caller = session.status === "ok" ? session.agent : null;
-  const resolvedAgentId = prop
-    ? await resolveAssignedAgent(
-        supabase,
-        caller?.role,
-        prop.agency_id,
-        data.assigned_agent_id
-      )
-    : null;
+  const resolvedAgentId = await resolveAssignedAgent(
+    supabase,
+    caller?.role,
+    prop.agency_id,
+    data.assigned_agent_id
+  );
 
   // Cliente de escritura: si se reasigna a OTRO agente (distinto del que llama)
   // estando en mode "owner" (un admin editando SU propia propiedad), el client
@@ -696,7 +742,8 @@ export async function updatePropertyAction(
       location_source: normalizeLocationSource(data.location_source),
       amenities: data.amenities,
       year_built: data.year_built ?? null,
-      is_featured: isFeatured,
+      // El valor que mandó el formulario (ver el chequeo de cupo arriba).
+      is_featured: data.is_featured === true,
       // agent_id SOLO se incluye si hubo una reasignación válida (admin +
       // destino de la agencia). Si no, no se toca (queda el agente actual).
       ...(resolvedAgentId !== null ? { agent_id: resolvedAgentId } : {}),

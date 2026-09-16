@@ -75,7 +75,8 @@ export async function selectPlanAction(
       pending_plan: plan,
       status: "pending",
       property_limit: PLANS.free.propertyLimit,
-      has_featured: PLANS.free.featured,
+      featured_limit: PLANS.free.featuredLimit,
+      has_featured: PLANS.free.featuredLimit > 0,
       has_white_label: PLANS.free.whiteLabel,
       has_metrics: PLANS.free.metrics,
     })

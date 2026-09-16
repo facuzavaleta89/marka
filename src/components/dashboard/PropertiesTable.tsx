@@ -35,6 +35,7 @@ import {
   PROPERTY_TYPE_LABELS,
   OPERATION_TYPE_LABELS,
   PROPERTY_STATUS_LABELS,
+  FEATURED_PROPERTY_LABEL,
 } from "@/lib/utils/labels";
 import {
   pausePropertyAction,
@@ -70,6 +71,7 @@ export type PropertyRow = Pick<
   | "temp_rent_currency"
   | "status"
   | "views_count"
+  | "is_featured"
 > & {
   images: CoverImage[] | null;
   // Consultas recibidas por ESTA propiedad (todas, de cualquier agente). `null`
@@ -105,6 +107,19 @@ const STATUS_CLASSNAME: Record<PropertyStatus, string> = {
 };
 
 // ─── Sub-componentes ──────────────────────────────────────────
+
+// Estrella de propiedad destacada, junto al título. Mismo signo y mismo color
+// que el pin destacado del mapa y el "★ Destacada" del detalle: la agencia
+// reconoce acá las que ocupan su cupo. El texto accesible va aparte (sr-only)
+// porque la estrella sola no le dice nada a un lector de pantalla.
+function FeaturedMark() {
+  return (
+    <span className="mr-1 text-terracota" title={FEATURED_PROPERTY_LABEL}>
+      <span aria-hidden="true">★</span>
+      <span className="sr-only">{FEATURED_PROPERTY_LABEL}</span>
+    </span>
+  );
+}
 
 function StatusBadge({ status }: { status: PropertyStatus }) {
   return (
@@ -255,6 +270,7 @@ export function PropertiesTable({
                   {/* Título */}
                   <td className="px-4 py-3 max-w-[200px]">
                     <span className="font-sans text-sm font-medium text-black line-clamp-2">
+                      {p.is_featured && <FeaturedMark />}
                       {p.title}
                     </span>
                   </td>
@@ -349,6 +365,7 @@ export function PropertiesTable({
                 <Thumbnail images={p.images} title={p.title} />
                 <div className="flex-1 min-w-0">
                   <p className="font-sans text-sm font-medium text-black truncate">
+                    {p.is_featured && <FeaturedMark />}
                     {p.title}
                   </p>
                   <p className="font-sans text-xs text-graphite mt-0.5">
