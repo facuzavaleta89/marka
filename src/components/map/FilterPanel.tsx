@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { useMapFilters, selectActiveFiltersCount } from "@/store/mapFiltersStore";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
+import { useSheetDragToClose } from "@/lib/hooks/useSheetDragToClose";
 import type { PropertyType, Amenity, OperationType } from "@/types";
 import {
   PROPERTY_TYPE_LABELS,
@@ -38,14 +39,6 @@ const FILTER_AMENITIES: Amenity[] = [
   "jardin",
   "terraza",
 ];
-
-// Arrastre para cerrar la hoja (mobile). Por debajo de DRAG_SLOP_PX de
-// movimiento el gesto es un TOQUE y no mueve nada: es lo que deja funcionar la
-// ✕, que vive en la misma zona que se arrastra. DRAG_CLOSE_PX es el mismo
-// umbral que usa la hoja del detalle de propiedad (PropertyModal), para que las
-// dos franjas, que son idénticas a la vista, respondan igual al tacto.
-const DRAG_SLOP_PX = 8;
-const DRAG_CLOSE_PX = 120;
 
 // ─── Sub-componentes internos ─────────────────────────────────
 
@@ -188,119 +181,14 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [mobile, isOpen, onClose]);
 
-  // Arrastre hacia abajo para cerrar.
-  //
-  // ⚠ SE ESCUCHA SOLO EN LA ZONA QUE NO SCROLLEA: la franja y el encabezado.
-  // NUNCA en la hoja entera. Arrastrar para cerrar y scrollear el contenido son
-  // dos gestos verticales; si el arrastre se escuchara en el cuerpo, un intento
-  // de volver al principio de la lista cerraría el panel. La hoja del detalle de
-  // propiedad (PropertyModal) escucha la hoja entera sin mirar el scroll: de ahí
-  // se tomó el mecanismo (desplazamiento en vivo + umbral), NO el alcance. La
-  // garantía es estructural: los manejadores se montan en la franja y en el
-  // encabezado, y el cuerpo scrolleable no es descendiente de ninguno de los dos.
-  //
-  // ⚠ LA HOJA SE MUEVE CON LA PROPIEDAD CSS `translate`, NO CON `transform`.
-  // Tailwind v4 escribe `translate-y-0` / `translate-y-full` como `translate`
-  // (medido: `transform` da `none` con la hoja abierta y cerrada). Escribir
-  // `transform` en línea SUMARÍA un segundo desplazamiento en vez de reemplazar
-  // el de la clase. El estilo en línea de abajo pisa la misma propiedad.
-  //
-  // El desplazamiento se escribe directo en el DOM y no en un estado de React:
-  // un setState por `pointermove` re-renderizaría el panel entero —todos los
-  // filtros— en cada píxel del gesto.
-  const sheetRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{
-    pointerId: number;
-    startY: number;
-    dy: number;
-    dragging: boolean;
-  } | null>(null);
-  // Un arrastre que empezó sobre la ✕ no tiene que terminar en un click sobre
-  // ella. Se limpia en cada `pointerdown`, así que nunca se come el click de un
-  // toque posterior.
-  const suppressClickRef = useRef(false);
-
-  const setSheetOffset = (dy: number | null) => {
-    const el = sheetRef.current;
-    if (!el) return;
-    if (dy === null) {
-      // Al soltar se devuelve el control a la clase: su `transition` anima la
-      // vuelta a `translate-y-0` o, si se cerró, la salida a `translate-y-full`
-      // desde donde quedó el dedo.
-      el.style.translate = "";
-      el.style.transition = "";
-    } else {
-      el.style.translate = `0 ${dy}px`;
-      el.style.transition = "none";
-    }
-  };
-
-  const handleDragStart = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!e.isPrimary || (e.pointerType === "mouse" && e.button !== 0)) return;
-    suppressClickRef.current = false;
-    dragRef.current = {
-      pointerId: e.pointerId,
-      startY: e.clientY,
-      dy: 0,
-      dragging: false,
-    };
-    // Capturar de entrada, salvo que el gesto empiece sobre un botón: capturar
-    // redirige el `pointerup` a esta zona, el click dejaría de caer en la ✕ y el
-    // botón no cerraría con un toque. Sobre un botón se captura recién cuando el
-    // movimiento pasa a ser arrastre.
-    if (!(e.target as Element).closest("button")) {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    }
-  };
-
-  const handleDragMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current;
-    if (!drag || e.pointerId !== drag.pointerId) return;
-    const delta = e.clientY - drag.startY;
-    if (!drag.dragging) {
-      // Toque vs. arrastre: hasta DRAG_SLOP_PX de movimiento es un toque (el
-      // temblor natural de un dedo no mueve la hoja ni anula el click).
-      if (Math.abs(delta) < DRAG_SLOP_PX) return;
-      drag.dragging = true;
-      if (!e.currentTarget.hasPointerCapture(e.pointerId)) {
-        e.currentTarget.setPointerCapture(e.pointerId);
-      }
-    }
-    // Solo hacia abajo: hacia arriba la hoja ya está en su tope.
-    drag.dy = Math.max(0, delta);
-    setSheetOffset(drag.dy);
-  };
-
-  const handleDragEnd = (e: React.PointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current;
-    if (!drag || e.pointerId !== drag.pointerId) return;
-    dragRef.current = null;
-    if (!drag.dragging) return; // fue un toque: el click sigue su curso
-    suppressClickRef.current = true;
-    setSheetOffset(null);
-    // `pointercancel` (el sistema se llevó el gesto) vuelve la hoja a su lugar
-    // sin cerrarla.
-    if (e.type === "pointerup" && drag.dy > DRAG_CLOSE_PX) onClose?.();
-  };
-
-  const handleDragClickCapture = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!suppressClickRef.current) return;
-    suppressClickRef.current = false;
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  // `touch-none` en las dos zonas: sin eso el navegador puede reclamar el gesto
-  // táctil para sí (desplazamiento, recarga al tirar hacia abajo) y cancelarlo
-  // con `pointercancel` a mitad de camino. Esas zonas no scrollean, así que no
-  // se pierde nada.
-  const dragZoneProps = {
-    onPointerDown: handleDragStart,
-    onPointerMove: handleDragMove,
-    onPointerUp: handleDragEnd,
-    onPointerCancel: handleDragEnd,
-    onClickCapture: handleDragClickCapture,
-  };
+  // Arrastre hacia abajo para cerrar: el mecanismo vive en useSheetDragToClose,
+  // compartido con la hoja del detalle de propiedad. Acá se monta en las dos
+  // zonas que no scrollean: la franja y el encabezado. El cuerpo con los filtros
+  // es HERMANO del encabezado, no descendiente, así que un gesto sobre la lista
+  // nunca llega a los manejadores. La instancia de escritorio también llama al
+  // hook (las reglas de los hooks no dejan llamarlo condicional), pero nunca
+  // monta ni la ref ni las zonas.
+  const { sheetRef, dragZoneProps } = useSheetDragToClose(() => onClose?.());
 
   const commitPrice = (field: "price_min" | "price_max", raw: string) => {
     const n = raw === "" ? null : parseFloat(raw);
@@ -584,10 +472,13 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
   // ── Modo mobile: bottom sheet ─────────────────────────────────
   return (
     <>
-      {/* Overlay */}
+      {/* Overlay.
+          `md:hidden`, igual que la hoja: si la ventana se agranda a escritorio
+          con la hoja abierta, ni el velo ni la hoja quedan encima del panel
+          lateral. */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/30 z-[600]"
+          className="md:hidden fixed inset-0 bg-black/30 z-[600]"
           onClick={onClose}
           aria-hidden="true"
         />
@@ -595,8 +486,10 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
       <div
         ref={sheetRef}
         className={cn(
-          "fixed bottom-0 inset-x-0 z-[610] bg-paper rounded-t-xl shadow-xl transition-transform duration-220 ease-out",
-          "h-[85vh] flex flex-col",
+          "md:hidden fixed bottom-0 inset-x-0 z-[610] bg-paper rounded-t-xl shadow-xl transition-transform duration-220 ease-out",
+          // Mismo alto que la hoja del detalle, en `dvh`: sigue a la barra del
+          // navegador del celular en vez de medirse contra el viewport grande.
+          "h-[85dvh] flex flex-col",
           isOpen ? "translate-y-0" : "translate-y-full"
         )}
       >

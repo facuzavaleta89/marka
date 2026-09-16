@@ -8,6 +8,10 @@ import {
 } from "lucide-react";
 import { useMapFilters } from "@/store/mapFiltersStore";
 import { useFavorites } from "@/lib/hooks/useFavorites";
+import {
+  useSheetDragToClose,
+  type SheetDragZoneProps,
+} from "@/lib/hooks/useSheetDragToClose";
 import { createClient } from "@/lib/supabase/client";
 import { generateWaUrl } from "@/lib/utils/waMessage";
 import { formatPrice } from "@/lib/utils/formatPrice";
@@ -70,7 +74,7 @@ function ImageCarousel({
         />
       ))}
 
-      {/* Gradiente inferior sutil para legibilidad de dots/contador */}
+      {/* Gradiente inferior sutil para legibilidad del contador y del enlace a la ficha */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/35 to-transparent" />
 
       {images.length > 1 && (
@@ -92,22 +96,12 @@ function ImageCarousel({
             <ChevronRight size={18} />
           </button>
 
-          {/* Dots finos sobre el gradiente */}
-          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5">
-            {images.map((_, i) => (
-              <button
-                key={i}
-                onClick={() => setIdx(i)}
-                aria-label={`Ver foto ${i + 1}`}
-                className={cn(
-                  "h-1 rounded-full transition-all duration-200",
-                  i === idx
-                    ? "w-5 bg-paper"
-                    : "w-1.5 bg-paper/50 hover:bg-paper/80"
-                )}
-              />
-            ))}
-          </div>
+          {/* ⚠ SIN PUNTOS, A PROPÓSITO. Había uno por foto, centrados abajo, y
+              con muchas fotos crecían hasta quedar debajo de "Ver ficha
+              completa": el enlace los tapaba y se llevaba sus toques (medido:
+              con 10 fotos tapaba 2 puntos a 390px y 5 a 320px). Además eran
+              botones de 4px de alto, imposibles de acertar con un dedo. Las
+              flechas y el contador ya dicen dónde se está y dejan moverse. */}
 
           {/* Contador discreto, sin caja */}
           <span className="absolute bottom-2.5 right-3 font-sans text-[11px] tabular-nums text-paper/90">
@@ -171,9 +165,14 @@ function ModalSkeleton() {
 function ModalContent({
   property,
   onClose,
+  dragZoneProps,
 }: {
   property: Property;
   onClose: () => void;
+  // Solo la instancia de la hoja de celular lo recibe: convierte el bloque de
+  // la foto en zona de arrastre para cerrar. ModalContent está montado DOS
+  // veces a la vez (drawer de escritorio y hoja), y el drawer no se arrastra.
+  dragZoneProps?: SheetDragZoneProps;
 }) {
   const { isFavorite, toggleFavorite } = useFavorites();
   const [expanded, setExpanded] = useState(false);
@@ -268,8 +267,16 @@ function ModalContent({
     // hay hermano y las dos formas miden lo mismo. Misma causa y mismo arreglo
     // que el contenido de FilterPanel.
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* Imágenes + controles flotantes */}
-      <div className="relative">
+      {/* Imágenes + controles flotantes.
+          En la hoja de celular este bloque es, junto con la franja, la zona
+          desde la que se arrastra para cerrar: no scrollea, y es lo que el dedo
+          encuentra primero. Los toques sobre sus botones y el enlace siguen
+          funcionando porque el hook difiere la captura sobre elementos
+          interactivos. `touch-none` solo en esa instancia. */}
+      <div
+        {...dragZoneProps}
+        className={cn("relative", dragZoneProps && "touch-none")}
+      >
         <ImageCarousel
           images={images}
           heightClass="h-[220px] md:h-[260px]"
@@ -284,7 +291,7 @@ function ModalContent({
         {/* Favorito y compartir, apareados a la derecha.
             ⚠ EL DE COMPARTIR VA ACÁ, SOBRE LA FOTO, Y NO EN LA ZONA INFERIOR.
             Esa zona es `shrink-0` dentro de un contenedor de alto FIJO en
-            celular (`h-[82vh]`), así que todo lo que se le agrega se lo resta al
+            celular (`h-[85dvh]`), así que todo lo que se le agrega se lo resta al
             área que scrollea — que después del bloque "quién publica" quedó en
             unos 177px en un teléfono chico. Otra fila de 44px la dejaría en
             menos de dos párrafos. Acá, en cambio, los botones son `absolute`
@@ -323,7 +330,7 @@ function ModalContent({
 
             ⚠ Y NO VA EN LA ZONA INFERIOR, aunque sea el lugar "natural" de un
             CTA. Esa zona es `shrink-0` dentro de un sheet de alto FIJO
-            (`h-[82vh]`), así que cada píxel que se le agrega se lo resta al área
+            (`h-[85dvh]`), así que cada píxel que se le agrega se lo resta al área
             que scrollea — que en un teléfono chico ya está en ~177px. Un botón
             de 44px más su separación de 10px la dejaría en ~123px: menos de dos
             párrafos, para una ficha que tiene descripción, comodidades y
@@ -331,8 +338,10 @@ function ModalContent({
 
             Acá, sobre la foto, cuesta CERO alto (es `absolute`) y se ve sin
             scrollear, que es lo que necesita una puerta. La esquina inferior
-            izquierda estaba libre: los dots del carrusel van centrados y el
-            contador abajo a la derecha. Se apoya en el gradiente que el carrusel
+            izquierda está libre: el contador va abajo a la derecha y el
+            carrusel ya no tiene puntos (con muchas fotos quedaban debajo de
+            este enlace, que los tapaba y se llevaba sus toques; ver
+            ImageCarousel). Se apoya en el gradiente que el carrusel
             ya dibuja para legibilidad, y usa el mismo tratamiento
             `paper/85 + backdrop-blur` que los otros tres botones flotantes. */}
         <Link
@@ -662,11 +671,27 @@ export function PropertyModal() {
   const [loading, setLoading] = useState(false);
   const isOpen = selectedPropertyId !== null;
 
-  // Swipe down to close (mobile)
-  const touchStartY = useRef<number>(0);
-  const [dragY, setDragY] = useState(0);
-
   const close = () => setSelectedProperty(null);
+
+  // Arrastre hacia abajo para cerrar la hoja de celular: el mismo mecanismo que
+  // la hoja de filtros (useSheetDragToClose). Antes se escuchaba la hoja entera
+  // —cuerpo scrolleable incluido— y volver al principio del texto cerraba la
+  // ficha. Ahora las zonas son la franja y el bloque de la foto.
+  // Si la hoja se cierra por otro camino (✕, velo, Escape) no queda estilo en
+  // línea: el hook solo escribe mientras dura un arrastre y lo limpia al soltar.
+  const { sheetRef, dragZoneProps } = useSheetDragToClose(close);
+
+  // Escape cierra mientras hay una propiedad seleccionada, en la hoja y en el
+  // drawer de escritorio. Un solo listener acá y NO en ModalContent, que está
+  // montado dos veces a la vez: ahí serían dos. Mismo patrón que FilterPanel.
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSelectedProperty(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isOpen, setSelectedProperty]);
 
   useEffect(() => {
     let cancelled = false;
@@ -675,7 +700,6 @@ export function PropertyModal() {
       // setState dentro del flujo async (no en el cuerpo del efecto)
       if (!selectedPropertyId) {
         setProperty(null);
-        setDragY(0);
         return;
       }
 
@@ -739,18 +763,6 @@ export function PropertyModal() {
     };
   }, [selectedPropertyId]);
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartY.current = e.touches[0].clientY;
-  };
-  const handleTouchMove = (e: React.TouchEvent) => {
-    const diff = Math.max(0, e.touches[0].clientY - touchStartY.current);
-    setDragY(diff);
-  };
-  const handleTouchEnd = () => {
-    if (dragY > 120) close();
-    else setDragY(0);
-  };
-
   return (
     <>
       {/* ── Desktop: right drawer ── */}
@@ -778,26 +790,32 @@ export function PropertyModal() {
           />
         )}
         <div
+          ref={sheetRef}
           className={cn(
             "md:hidden fixed bottom-0 inset-x-0 z-[610] bg-paper rounded-t-xl shadow-xl",
-            "h-[82vh] flex flex-col",
+            // Mismo alto que la hoja de filtros, en `dvh`.
+            "h-[85dvh] flex flex-col",
             "transition-transform duration-[220ms] ease-out",
             isOpen ? "translate-y-0" : "translate-y-full"
           )}
-          style={dragY > 0 ? { transform: `translateY(${dragY}px)`, transition: "none" } : undefined}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
         >
-          {/* Handle de arrastre */}
-          <div className="flex justify-center pt-3 pb-1 shrink-0">
+          {/* Handle de arrastre — junto con el bloque de la foto, la zona desde
+              la que se cierra la hoja arrastrando hacia abajo. */}
+          <div
+            {...dragZoneProps}
+            className="flex justify-center pt-3 pb-1 shrink-0 touch-none"
+          >
             <div className="w-10 h-1 bg-stone rounded-full" />
           </div>
 
           {loading ? (
             <ModalSkeleton />
           ) : property ? (
-            <ModalContent property={property} onClose={close} />
+            <ModalContent
+              property={property}
+              onClose={close}
+              dragZoneProps={dragZoneProps}
+            />
           ) : null}
         </div>
       </>
