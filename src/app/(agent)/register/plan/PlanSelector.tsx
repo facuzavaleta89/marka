@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { AuthLayout } from "@/components/auth/AuthLayout";
 import { cn } from "@/lib/utils";
 import { PAID_PLANS, PLANS, type PlanInfo, type SubscriptionPlan } from "@/types";
+import { featuredQuotaFeatureLabel } from "@/lib/utils/labels";
 import { selectPlanAction } from "./actions";
 
 // Claim del panel de identidad (voz DESIGN §10: directo, sin marketing).
@@ -29,7 +30,8 @@ function planFeatures(p: PlanInfo): string[] {
       ? "1 propiedad activa"
       : `Hasta ${p.propertyLimit} propiedades activas`,
   ];
-  if (p.featured) features.push("Destacados en el mapa");
+  const featured = featuredQuotaFeatureLabel(p.featuredLimit);
+  if (featured) features.push(featured);
   if (p.whiteLabel) features.push("Vista white-label propia");
   if (p.metrics) features.push("Métricas de vistas y leads");
   return features;

@@ -12,6 +12,7 @@ type SubscriptionRow = {
   plan: SubscriptionPlan;
   status: SubscriptionStatus;
   property_limit: number;
+  featured_limit: number;
   has_featured: boolean;
   has_white_label: boolean;
   has_metrics: boolean;
@@ -33,7 +34,7 @@ export async function getPlanUsage(
   const [{ data: sub }, { count }] = await Promise.all([
     supabase
       .from("subscriptions")
-      .select("plan, status, property_limit, has_featured, has_white_label, has_metrics")
+      .select("plan, status, property_limit, featured_limit, has_featured, has_white_label, has_metrics")
       .eq("agency_id", agencyId)
       .single(),
 
@@ -90,7 +91,10 @@ export async function getPlanUsage(
     available,
     over,
     canCreate: used < limit,
-    hasFeatured: subscription?.has_featured ?? PLANS.free.featured,
+    hasFeatured: subscription?.has_featured ?? PLANS.free.featuredLimit > 0,
+    // Sin fila no hay cupo de destacadas: 0, como el `coalesce(v_limit, 0)` del
+    // trigger trg_featured_quota.
+    featuredLimit: subscription?.featured_limit ?? 0,
     hasWhiteLabel: subscription?.has_white_label ?? PLANS.free.whiteLabel,
     hasMetrics: subscription?.has_metrics ?? PLANS.free.metrics,
   };

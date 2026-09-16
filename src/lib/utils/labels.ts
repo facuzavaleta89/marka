@@ -113,3 +113,43 @@ export const GEOCODE_STATUS_MESSAGES: Record<GeocodeStatus, string> = {
   unavailable:
     "El buscador de direcciones no está disponible en este momento. Podés colocar el pin a mano, como siempre.",
 };
+
+// ─── Destacadas: textos del cupo por plan ─────────────────────
+//
+// Un solo lugar para cómo se nombra el feature de destacadas en las pantallas
+// de planes (registro, suscripción, /admin) y en el formulario de propiedad.
+// El feature se describe por su CUPO (featuredLimit / featured_limit), nunca
+// por el nombre del plan.
+
+// Texto del feature en una lista de lo que incluye un plan. Con cupo 0 el plan
+// no incluye destacadas: devuelve null y no se lista.
+export function featuredQuotaFeatureLabel(limit: number): string | null {
+  if (limit <= 0) return null;
+  return limit === 1
+    ? "1 propiedad destacada"
+    : `Hasta ${limit} propiedades destacadas`;
+}
+
+// Contador de uso del cupo: "Destacadas: 2 de 3".
+export function featuredUsageLabel(used: number, limit: number): string {
+  return `Destacadas: ${used} de ${limit}`;
+}
+
+// Aclaración del contador para un agente común: su listado muestra solo sus
+// propiedades, pero el cupo se comparte con toda la inmobiliaria.
+export const FEATURED_QUOTA_AGENCY_NOTE = "el cupo es de toda la inmobiliaria";
+
+// Texto accesible del indicador de propiedad destacada (la estrella del listado).
+export const FEATURED_PROPERTY_LABEL = "Destacada";
+
+// Cupo completo: la agencia ya tiene encendidas todas las destacadas de su plan.
+export const FEATURED_QUOTA_FULL_MESSAGE =
+  "Ya usaste todas las destacadas de tu plan.";
+
+// Cómo destrabar el cupo completo desde el formulario de una propiedad.
+export const FEATURED_QUOTA_FULL_HINT =
+  "Para destacar esta propiedad, quitale la estrella a otra.";
+
+// Vendida o alquilada: la base apaga la estrella (enforce_featured_quota).
+export const FEATURED_CLOSED_STATUS_MESSAGE =
+  "Las propiedades vendidas o alquiladas no se destacan";

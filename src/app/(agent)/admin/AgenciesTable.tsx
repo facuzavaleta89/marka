@@ -51,6 +51,7 @@ import {
 import {
   APPROVAL_STATUS_LABELS,
   SUBSCRIPTION_STATUS_LABELS,
+  featuredQuotaFeatureLabel,
 } from "@/lib/utils/labels";
 import {
   activatePlanAction,
@@ -1761,11 +1762,45 @@ function DeleteAgencyPanel({
 // explícita es el botón final, que nombra el plan destino, y arriba de él se
 // listan las consecuencias concretas (límite nuevo, funciones que gana y que
 // pierde) para que nadie lo toque sin saber qué cambia.
+// Las destacadas NO van en esta lista: son un CUPO, no un booleano, y su cambio
+// se muestra aparte (ver FeaturedQuotaChange, abajo).
 const ENTITLEMENTS = [
-  { key: "featured", label: "Propiedades destacadas" },
   { key: "whiteLabel", label: "Sitio propio (white-label)" },
   { key: "metrics", label: "Métricas" },
 ] as const;
+
+// Cambio del cupo de destacadas entre el plan actual y el destino.
+//   · igual            → no se lista;
+//   · de 0 a N         → "Gana: hasta N propiedades destacadas";
+//   · de N a 0         → "Pierde: propiedades destacadas", avisando que la base
+//                        apaga todas las que tenga encendidas;
+//   · de N a M (ambos > 0) → "Destacadas: N → M". Si baja, las que sobran quedan
+//                        encendidas pero no puede encender nuevas hasta estar
+//                        por debajo del cupo.
+function FeaturedQuotaChange({ before, after }: { before: number; after: number }) {
+  if (before === after) return null;
+  if (before === 0) {
+    return (
+      <li className="text-success">
+        Gana: {featuredQuotaFeatureLabel(after)?.toLowerCase()}
+      </li>
+    );
+  }
+  if (after === 0) {
+    return (
+      <li className="text-error">
+        Pierde: propiedades destacadas. Las que tenga destacadas se apagan.
+      </li>
+    );
+  }
+  return (
+    <li className={after > before ? "text-success" : "text-error"}>
+      Destacadas: {before} → {after}
+      {after < before &&
+        ". Si tiene más destacadas que el cupo nuevo, quedan, pero no puede destacar otras hasta estar por debajo."}
+    </li>
+  );
+}
 
 function ChangePlanPanel({
   row,
@@ -1922,6 +1957,10 @@ function ChangePlanPanel({
               </strong>{" "}
               (hoy usa {used}).
             </li>
+            <FeaturedQuotaChange
+              before={PLANS[currentPlan].featuredLimit}
+              after={targetInfo.featuredLimit}
+            />
             {ENTITLEMENTS.map(({ key, label }) => {
               const before = PLANS[currentPlan][key];
               const after = targetInfo[key];

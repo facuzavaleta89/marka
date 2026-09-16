@@ -208,7 +208,7 @@ En el cambio de plan el campo viene **precargado** con el valor vigente, justame
 - **Bajar de plan existe, pero SOLO desde el panel del dueño** (`changePlanAction`, ver "Panel de plataforma"): se aplica directo sobre `plan`. Lo que sigue sin ser expresable es una **SOLICITUD de bajada del cliente**: el CHECK de `pending_plan` solo admite planes pagos y el andamio `plan`/`pending_plan` solo modela subidas. **Es deliberado y así debe quedar**: el autoservicio de bajada habilitaría pagar un mes de plan grande, cargar muchas propiedades y bajar al más barato conservándolas visibles. Ver PENDIENTES.md.
 - El límite se valida **en la DB** (trigger `check_property_limit`). El frontend lo anticipa pero la DB es la fuente de verdad.
 - El conteo de propiedades usa **siempre `agency_id`**, nunca `agent_id`. Usar el helper `getPlanUsage` de `@/lib/utils/getPlanUsage`.
-- `is_featured` solo puede ser `true` si la suscripción tiene `has_featured` (hoy: premium). Las server actions lo fuerzan a `false` silenciosamente si la agencia no lo tiene. **El gating se hace por el booleano `has_featured` (vía `planUsage.hasFeatured`), NUNCA comparando el nombre del plan (`=== "premium"`).**
+- **Destacadas: un CUPO por plan, que hace cumplir la BASE** (16 sep 2026). `subscriptions.featured_limit` (free 0, inicial 0, profesional 3, premium 10, desde `PLANS[plan].featuredLimit`) y el trigger `trg_featured_quota` rechaza ENCENDER una destacada con el cupo lleno (SQLSTATE `MKF01`); apagar o editar una ya encendida siempre pasa. `has_featured` se conserva (el gating de features es por booleanos, **NUNCA por el nombre del plan**) y la base lo obliga a valer `featured_limit > 0`. ⚠ **Acá decía que `is_featured` solo podía ser `true` con `has_featured` ("hoy: premium") y que las server actions lo forzaban a `false` en silencio: las dos cosas dejaron de ser ciertas.** Las actions ya no descartan nada: verifican el cupo con `getFeaturedUsage` antes de escribir y devuelven *"Ya usaste todas las destacadas de tu plan."*. Cupo a 0 apaga todas las destacadas de la agencia (`trg_clear_featured_on_zero_quota`); si baja sin llegar a 0, las que sobran quedan. Vendida o alquilada apaga la estrella en la base. Ver "Base de Datos" → "Cupo de destacadas".
 - La creación de `agencies`, el insert de `agents` y la escritura de `subscriptions` en el registro se hacen **con service role** (`admin.ts`), nunca con el client normal.
 
 #### ⚠ UN PEDIDO DE PLAN ABIERTO SE DETECTA POR `pending_plan`, NUNCA POR `status`
@@ -2396,6 +2396,22 @@ La guarda reconoce a `increment_views()` por la variable `marka.skip_updated_at`
 
 `resolvePhoneWaForSave` (`phoneWa.ts`) preserva sin validar un valor igual al guardado; con el CHECK en la base, un valor guardado siempre cumple el formato. Pero si algún día se aceptan **líneas fijas** (hoy el formato exige el `549` de celular), no alcanza con cambiar `phoneWa.ts`: hay que aflojar `agents_phone_wa_format` y `agencies_phone_wa_format` con un ALTER, o el formulario acepta un número que la base rechaza.
 
+##### Cupo de destacadas (16 sep 2026)
+
+`subscriptions.featured_limit` (INT NOT NULL DEFAULT 0) con los CHECK `subscriptions_featured_limit_nonnegative` y `subscriptions_featured_coherence`, `enforce_featured_quota()` + `trg_featured_quota` (BEFORE INSERT OR UPDATE ON `properties`, SECURITY DEFINER) y `clear_featured_on_zero_quota()` + `trg_clear_featured_on_zero_quota` (AFTER UPDATE OF `featured_limit` ON `subscriptions`). Transcripto en el archivo de schema → "CUPO DE DESTACADAS". En el código: `getFeaturedUsage` (`lib/utils/`) cuenta como el trigger —todas las destacadas de la agencia, de cualquier status y agente— y las actions de propiedades lo usan antes de escribir.
+
+##### ⚠ TRAMPA 8 — Toda escritura de `subscriptions` que ponga `has_featured` tiene que poner `featured_limit`
+
+El CHECK `subscriptions_featured_coherence` obliga a `has_featured = (featured_limit > 0)`. Un UPDATE que escriba solo `has_featured: true` —el patrón de antes— rebota con 23514, y las acciones de `/admin` lo muestran como un error genérico. Las seis escrituras de hoy (activar, dar de baja, reactivar, cambiar de plan, registro y selección de plan) escriben los dos desde `PLANS[plan].featuredLimit`. El DEFAULT 0 es lo que deja que `ensure_agency_subscription()`, que inserta solo `agency_id`, siga cumpliendo el CHECK.
+
+##### ⚠ TRAMPA 9 — El rechazo de cupo usa el SQLSTATE propio `MKF01`
+
+Y un texto sin "Límite", "suscripción" ni "no está aprobada". **Un traductor que mire solo 23514 no lo ve**, y uno que busque esas palabras lo confundiría con otro gate. `translatePropertyWriteError` tiene una rama propia por `code === "MKF01"`, antes del cajón de sastre. Cambiar el código o sumarle una de esas palabras al texto lo manda a otra rama sin ningún error.
+
+##### ⚠ TRAMPA 10 — Vendida o alquilada apaga la estrella en la base
+
+`enforce_featured_quota()` pone `is_featured := false` cuando el status es `sold` o `rented`. Cualquier camino que cambie el status —el menú del listado, el select "Estado" del formulario de edición, o uno futuro— lo hereda sin escribir nada. Pausar no la apaga.
+
 **Query principal:**
 ```sql
 SELECT ... FROM properties
@@ -2405,7 +2421,7 @@ WHERE city_id = $1 AND status = 'active'
 
 **Amenities** JSONB: filtrar con `.contains("amenities", JSON.stringify([...]))` (genera `@>`). ⚠ **No tiene barrera de dominio en ninguna capa** (zod `z.array(z.string())`, la action escribe sin filtrar, la columna no tiene CHECK): lo que se cuele ahí se renderiza en el modal público. Es deuda anotada — el molde para arreglarlo es el de los requisitos de alquiler. Ver PENDIENTES.md.
 
-**Triggers de `properties` (los TRES gates de publicación, ver "Bloqueo de publicación"), en el orden alfabético en que Postgres los dispara:** `trg_check_agency_approved` (BEFORE INSERT → agencia aprobada), `trg_check_agency_subscription` (BEFORE INSERT → suscripción no `canceled`/`past_due`) y `trg_check_property_limit` (BEFORE INSERT OR UPDATE → cupo del plan; sin fila de suscripción el límite es 0). Los tres lanzan SQLSTATE **23514**, así que **ese orden decide qué mensaje ve el agente**. (Hay además dos `trg_*_updated_at` sobre `properties` y `subscriptions` —ver la guarda, abajo— y, desde el 16 sep 2026, `trg_protect_views_count` sobre `properties`, que lanza **42501** y no 23514: ver "Blindaje de columnas", arriba.)
+**Triggers de `properties` (los TRES gates de publicación, ver "Bloqueo de publicación"), en el orden alfabético en que Postgres los dispara:** `trg_check_agency_approved` (BEFORE INSERT → agencia aprobada), `trg_check_agency_subscription` (BEFORE INSERT → suscripción no `canceled`/`past_due`) y `trg_check_property_limit` (BEFORE INSERT OR UPDATE → cupo del plan; sin fila de suscripción el límite es 0). Los tres lanzan SQLSTATE **23514**, así que **ese orden decide qué mensaje ve el agente**. (Hay además dos `trg_*_updated_at` sobre `properties` y `subscriptions` —ver la guarda, abajo— y, desde el 16 sep 2026, `trg_protect_views_count` sobre `properties`, que lanza **42501** y no 23514: ver "Blindaje de columnas", arriba; y `trg_featured_quota`, que lanza **MKF01**: ver "Cupo de destacadas", abajo.) **Orden alfabético actual de los BEFORE de `properties` (medido el 16 sep 2026):** `trg_check_agency_approved` → `trg_check_agency_subscription` → `trg_check_property_limit` → `trg_featured_quota` → `trg_properties_updated_at` → `trg_protect_views_count`.
 
 #### ⚠ La guarda de `updated_at` ante el contador de visitas — dos funciones ACOPLADAS
 
@@ -2482,7 +2498,7 @@ npm run storage:huerfanos:borrar   # ⚠ destructivo. Ver "Auditoría y limpieza
 | cityStore (Zustand) | Una sola instancia compartida; evita desincronización del selector con el mapa |
 | getPlanUsage por agency_id | Coincide con el trigger; correcto en agencias multi-agente |
 | Admin client para registro | La sesión no está disponible en server justo tras signUp. ⚠ **Con la configuración medida el 16 sep 2026 esto no es literal** (la autoconfirmación está activa y `signUp` devuelve sesión en el acto); el motivo que hoy sostiene la decisión es que `agents` **no tiene permiso ni policy de INSERT** para usuarios. Ver "Permisos de escritura del usuario" |
-| is_featured gateado por `has_featured` en server action | El trigger solo valida cantidad, no features; el gating lee el booleano de la suscripción, no el nombre del plan |
+| El cupo de destacadas lo hace cumplir la base (`trg_featured_quota`), no la server action | Antes el gate vivía solo en las actions y descartaba en silencio; un agente podía encender destacadas llamando a la API directo. La action anticipa el rechazo para no escribir a medias, pero la barrera es el trigger |
 | Debounce 400ms + diff por ids | Evita ráfaga de queries y recreación de markers al panear |
 | Tiles OSM (no CARTO/tonal) | Mejor contraste con los pines terracota; CARTO lavaba el mapa |
 | Pin terracota (no blanco) | Contraste sobre el mapa; activo en negro para distinguir selección |

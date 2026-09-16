@@ -2,14 +2,16 @@ import { requireAgentSession } from "@/lib/utils/resolveAgentSession";
 import { createClient } from "@/lib/supabase/server";
 import { SubscriptionContent } from "@/components/dashboard/SubscriptionContent";
 import { getPlanUsage } from "@/lib/utils/getPlanUsage";
+import { getFeaturedUsage } from "@/lib/utils/getFeaturedUsage";
 
 export default async function SuscripcionPage() {
   const supabase = await createClient();
 
   const { agent } = await requireAgentSession();
 
-  const [planUsage, { data: subscription }] = await Promise.all([
+  const [planUsage, featuredUsage, { data: subscription }] = await Promise.all([
     getPlanUsage(supabase, agent.agency_id),
+    getFeaturedUsage(supabase, agent.agency_id),
     supabase
       .from("subscriptions")
       .select("status, pending_plan, current_period_end")
@@ -25,6 +27,7 @@ export default async function SuscripcionPage() {
         status={subscription?.status ?? "active"}
         pendingPlan={subscription?.pending_plan ?? null}
         currentPeriodEnd={subscription?.current_period_end ?? null}
+        featuredUsage={featuredUsage}
       />
     </div>
   );

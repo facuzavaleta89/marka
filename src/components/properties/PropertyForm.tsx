@@ -4,7 +4,13 @@ import { useState, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { Check, Plus, X } from "lucide-react";
-import { useForm, Controller, type Control, type Resolver } from "react-hook-form";
+import {
+  useForm,
+  useWatch,
+  Controller,
+  type Control,
+  type Resolver,
+} from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Input } from "@/components/ui/input";
@@ -26,7 +32,14 @@ import {
 } from "@/app/(agent)/dashboard/propiedades/actions";
 import { cn } from "@/lib/utils";
 import { FIELD_BOX, FIELD_BOX_ERROR } from "@/components/forms/fieldStyles";
-import { AMENITY_LABELS, RENT_REQUIREMENT_LABELS } from "@/lib/utils/labels";
+import {
+  AMENITY_LABELS,
+  RENT_REQUIREMENT_LABELS,
+  FEATURED_CLOSED_STATUS_MESSAGE,
+  FEATURED_QUOTA_FULL_HINT,
+  FEATURED_QUOTA_FULL_MESSAGE,
+  featuredUsageLabel,
+} from "@/lib/utils/labels";
 import { roundCoords, type Coords } from "@/lib/utils/coords";
 import type { LocationChangeCause } from "./LocationPicker";
 import {
@@ -34,6 +47,7 @@ import {
   RENT_REQUIREMENT_OTHER_MAX_LEN,
 } from "@/types";
 import type {
+  FeaturedUsage,
   Property,
   PropertyImage,
   Amenity,
@@ -259,6 +273,11 @@ interface PropertyFormProps {
     rent_requirements: RentRequirement[];
     rent_requirements_other: string[];
   };
+  // Uso del cupo de destacadas de la agencia DE LA PROPIEDAD (en edición,
+  // property.agency_id; no la de quien edita). `used` ya incluye a esta
+  // propiedad si está destacada. Si no viene o `limit` es 0, la casilla
+  // "Marcar como destacada" no se muestra.
+  featuredUsage?: Pick<FeaturedUsage, "limit" | "used">;
 }
 
 // ─── Sub-componentes ──────────────────────────────────────────
@@ -279,6 +298,78 @@ function Section({
         <div className="flex-1 h-px bg-stone" />
       </div>
       {children}
+    </div>
+  );
+}
+
+// ─── Destacada: casilla con cupo ──────────────────────────────
+//
+// Componente propio y no un render suelto porque lee el estado elegido con
+// `useWatch` (un hook), y así el único `watch()` del formulario sigue siendo el
+// del warning de lint conocido.
+//
+// Casos:
+//   · sin cupo (limit 0 o sin dato)        → no se muestra;
+//   · con cupo libre                        → casilla + "Destacadas: X de Y";
+//   · cupo lleno y la propiedad NO destacada al abrir → deshabilitada + aviso;
+//   · cupo lleno y la propiedad YA destacada → habilitada (se puede editar o
+//     apagar; la base solo controla el ENCENDIDO);
+//   · estado vendida o alquilada            → deshabilitada y desmarcada: la base
+//     apaga la estrella al guardar (enforce_featured_quota).
+// Nada se descarta en silencio: el servidor verifica el cupo y devuelve un
+// error si no alcanza.
+function FeaturedField({
+  control,
+  featuredUsage,
+  initiallyFeatured,
+}: {
+  control: Control<FormValues>;
+  featuredUsage?: Pick<FeaturedUsage, "limit" | "used">;
+  initiallyFeatured: boolean;
+}) {
+  const status = useWatch({ control, name: "status" });
+
+  if (!featuredUsage || featuredUsage.limit <= 0) return null;
+
+  const closed = status === "sold" || status === "rented";
+  const quotaFull =
+    !initiallyFeatured && featuredUsage.used >= featuredUsage.limit;
+  const disabled = closed || quotaFull;
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-2">
+        <Controller
+          name="is_featured"
+          control={control}
+          render={({ field }) => (
+            <Checkbox
+              id="is_featured"
+              checked={closed ? false : field.value === true}
+              disabled={disabled}
+              onCheckedChange={(v) => field.onChange(v === true)}
+            />
+          )}
+        />
+        <Label
+          htmlFor="is_featured"
+          className="font-sans text-sm text-black cursor-pointer"
+        >
+          Marcar como destacada
+        </Label>
+      </div>
+      <p className="font-sans text-xs text-graphite">
+        {featuredUsageLabel(featuredUsage.used, featuredUsage.limit)}
+      </p>
+      {closed ? (
+        <p className="font-sans text-xs text-graphite">
+          {FEATURED_CLOSED_STATUS_MESSAGE}
+        </p>
+      ) : quotaFull ? (
+        <p className="font-sans text-xs text-graphite">
+          {FEATURED_QUOTA_FULL_MESSAGE} {FEATURED_QUOTA_FULL_HINT}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -696,6 +787,7 @@ export function PropertyForm({
   cityCenter,
   agencyAgents,
   initialRentRequirements,
+  featuredUsage,
 }: PropertyFormProps) {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
@@ -1031,7 +1123,18 @@ export function PropertyForm({
               name="status"
               control={control}
               render={({ field }) => (
-                <Select value={field.value} onValueChange={field.onChange}>
+                <Select
+                  value={field.value}
+                  onValueChange={(value) => {
+                    field.onChange(value);
+                    // Vendida o alquilada no se destaca: se desmarca acá para
+                    // que lo que viaja coincida con lo que se ve (la base igual
+                    // apaga la estrella al guardar).
+                    if (value === "sold" || value === "rented") {
+                      setValue("is_featured", false);
+                    }
+                  }}
+                >
                   <SelectTrigger className={cn(FIELD_BOX, "w-full")}>
                     <SelectValue placeholder="Estado" />
                   </SelectTrigger>
@@ -1265,25 +1368,11 @@ export function PropertyForm({
           </Field>
         </FieldRow>
 
-        <div className="flex items-center gap-2">
-          <Controller
-            name="is_featured"
-            control={control}
-            render={({ field }) => (
-              <Checkbox
-                id="is_featured"
-                checked={field.value}
-                onCheckedChange={field.onChange}
-              />
-            )}
-          />
-          <Label
-            htmlFor="is_featured"
-            className="font-sans text-sm text-black cursor-pointer"
-          >
-            Marcar como destacada
-          </Label>
-        </div>
+        <FeaturedField
+          control={control}
+          featuredUsage={featuredUsage}
+          initiallyFeatured={mode === "edit" && initialData?.is_featured === true}
+        />
       </Section>
 
       {/* ── Error del servidor ── */}

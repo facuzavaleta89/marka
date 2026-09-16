@@ -17,12 +17,17 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import type {
+  FeaturedUsage,
   PlanInfo,
   PlanUsage,
   SubscriptionPlan,
   SubscriptionStatus,
 } from "@/types";
 import { PLANS, PLAN_ORDER } from "@/types";
+import {
+  featuredQuotaFeatureLabel,
+  featuredUsageLabel,
+} from "@/lib/utils/labels";
 import { requestPlanUpgradeAction } from "@/app/(agent)/dashboard/suscripcion/actions";
 
 interface SubscriptionContentProps {
@@ -32,6 +37,8 @@ interface SubscriptionContentProps {
   // Plan pago pedido esperando activación; null si no hay nada pendiente.
   pendingPlan: SubscriptionPlan | null;
   currentPeriodEnd: string | null;
+  // Uso del cupo de destacadas de la agencia (getFeaturedUsage).
+  featuredUsage: FeaturedUsage;
 }
 
 // Lista de features visible de un plan, derivada del catálogo PLANS.
@@ -43,7 +50,8 @@ function featuresFor(p: PlanInfo): string[] {
     "Acceso al mapa de la ciudad",
     "Leads por WhatsApp",
   ];
-  if (p.featured) features.push("Propiedades destacadas en el mapa");
+  const featured = featuredQuotaFeatureLabel(p.featuredLimit);
+  if (featured) features.push(featured);
   if (p.whiteLabel) features.push("Vista white-label propia");
   if (p.metrics) features.push("Métricas de vistas y leads");
   return features;
@@ -182,6 +190,7 @@ export function SubscriptionContent({
   status,
   pendingPlan,
   currentPeriodEnd,
+  featuredUsage,
 }: SubscriptionContentProps) {
   const router = useRouter();
   const [toRequest, setToRequest] = useState<PlanInfo | null>(null);
@@ -190,6 +199,12 @@ export function SubscriptionContent({
 
   const { plan, used, limit } = planUsage;
   const usagePercent = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
+  // Mismo patrón que la barra de propiedades, para el cupo de destacadas. Con
+  // cupo 0 no se muestra (el plan no incluye destacadas).
+  const featuredPercent =
+    featuredUsage.limit > 0
+      ? Math.min(100, (featuredUsage.used / featuredUsage.limit) * 100)
+      : 0;
 
   // Hay un upgrade pedido esperando activación manual del admin. El plan que
   // rige (`plan`) NO cambia mientras tanto; `pendingPlan` es solo el pedido.
@@ -312,6 +327,19 @@ export function SubscriptionContent({
               style={{ width: `${usagePercent}%` }}
             />
           </div>
+          {featuredUsage.limit > 0 && (
+            <>
+              <p className="font-sans text-sm text-graphite mt-4 mb-3">
+                {featuredUsageLabel(featuredUsage.used, featuredUsage.limit)}
+              </p>
+              <div className="w-full h-2 bg-mist rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-terracota rounded-full transition-all duration-[220ms]"
+                  style={{ width: `${featuredPercent}%` }}
+                />
+              </div>
+            </>
+          )}
         </div>
 
         {/* Banner de error. SIN margen propio: el contenedor de arriba lleva
