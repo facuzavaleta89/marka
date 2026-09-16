@@ -45,6 +45,15 @@ function PublicHeader({ cityPicker }: { cityPicker: React.ReactNode }) {
 
       {cityPicker}
 
+      {/* TEMPORAL — rama descartable. Acceso a la sonda de zona segura desde la
+          app instalada, que no tiene barra de direcciones. */}
+      <Link
+        href="/sonda-zona-segura"
+        className="shrink-0 font-sans text-sm font-medium text-terracota underline"
+      >
+        Sonda
+      </Link>
+
       <PublicHeaderAuth variant="marketplace" />
     </header>
   );
