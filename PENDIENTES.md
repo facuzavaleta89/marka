@@ -2,7 +2,7 @@
 
 > Lista viva de pendientes, deuda técnica y decisiones de producto abiertas.
 > Se actualiza a medida que se cierran piezas o aparecen cosas nuevas.
-> Última actualización: 14 sep 2026 (**CONTADOR DE VISITAS CERRADO**, tres tandas: visitas y consultas por propiedad en el listado del panel, el conteo desde tres lugares con deduplicación por visitante y disparo por interacción en la ficha pública, y la guarda de la base que impide que una visita mueva la fecha que el mapa del sitio informa a los buscadores. **Seis ítems nuevos abiertos**, los seis verificados (los cuatro que salieron del cierre más las dos tarjetas de `/dashboard` con ventanas distintas y los dos documentos que quedaron desfasados). **Cifras re-medidas**: 14 consultas, 17 visitas en 8 propiedades). Antes: 13 sep 2026 (**GRUPO DEL SITIO DE MARCA CERRADO**, cuatro tandas: direcciones reservadas + dirección editable, el sitio apagado le habla a su dueño, el cambio de nombre completo con dos formas de rechazo, y **el campo que faltaba** — las tres primeras tandas se habían construido sin punta en la interfaz, de donde salió la regla de método de recorrer de punta a punta. Cerró además las dos sub-piezas de white-label que llevaban meses en pausa. **Cifras re-medidas**: la base pasó de 4 agencias a 3). Antes: 12 sep 2026 (**GRUPO DE COHERENCIA DEL PANEL CERRADO**, cinco tandas: era chico —un cartel, un banner y una ruta— y **destapó el bug más caro medido hasta ahora**, que pedir un plan mayor sacaba a la agencia del mapa. Cuatro ítems nuevos abiertos, los cuatro aparecidos midiendo, y **todas las cifras de datos de prueba re-medidas**: la base se limpió y pasó de 10 agencias a 4). Y antes: grupo de captación y difusión cerrado el 10 sep; C2 y D2 el 8 sep; BLOQUE B entero el 3 sep; A1 y A2 hechas → el BLOQUE A está completo.
+> Última actualización: 15 sep 2026 (**GRUPO DE PULIDO VISUAL CERRADO**, seis tandas: dos relevamientos y cuatro de implementación — las hojas que suben desde abajo, los campos de formulario y el teléfono con prefijo, cuatro defectos de forma que rompían algo, y la unificación de formas. **Y la tanda de documentación que volcó las inconsistencias acumuladas**: de las 58 que seguían anotadas, **42 quedan abiertas** y encabezadas por una de **seguridad** — ver la sección nueva arriba de todo. Baseline re-medido: el warning de lint está en `PropertyForm.tsx:814`, no en `:808`). Antes: 14 sep 2026 (**CONTADOR DE VISITAS CERRADO**, tres tandas: visitas y consultas por propiedad en el listado del panel, el conteo desde tres lugares con deduplicación por visitante y disparo por interacción en la ficha pública, y la guarda de la base que impide que una visita mueva la fecha que el mapa del sitio informa a los buscadores. **Seis ítems nuevos abiertos**, los seis verificados (los cuatro que salieron del cierre más las dos tarjetas de `/dashboard` con ventanas distintas y los dos documentos que quedaron desfasados). **Cifras re-medidas**: 14 consultas, 17 visitas en 8 propiedades). Antes: 13 sep 2026 (**GRUPO DEL SITIO DE MARCA CERRADO**, cuatro tandas: direcciones reservadas + dirección editable, el sitio apagado le habla a su dueño, el cambio de nombre completo con dos formas de rechazo, y **el campo que faltaba** — las tres primeras tandas se habían construido sin punta en la interfaz, de donde salió la regla de método de recorrer de punta a punta. Cerró además las dos sub-piezas de white-label que llevaban meses en pausa. **Cifras re-medidas**: la base pasó de 4 agencias a 3). Antes: 12 sep 2026 (**GRUPO DE COHERENCIA DEL PANEL CERRADO**, cinco tandas: era chico —un cartel, un banner y una ruta— y **destapó el bug más caro medido hasta ahora**, que pedir un plan mayor sacaba a la agencia del mapa. Cuatro ítems nuevos abiertos, los cuatro aparecidos midiendo, y **todas las cifras de datos de prueba re-medidas**: la base se limpió y pasó de 10 agencias a 4). Y antes: grupo de captación y difusión cerrado el 10 sep; C2 y D2 el 8 sep; BLOQUE B entero el 3 sep; A1 y A2 hechas → el BLOQUE A está completo.
 
 ---
 
@@ -41,6 +41,194 @@ No es una lista de tareas: es el marco que decide el orden de todo lo de abajo.
 
 
 Consecuencias directas sobre el orden: la **autosugerencia de ubicación** subía (sirve antes de que carguen, no después) y **ya está hecha** (D1, 31 ago 2026); **C2** sube (hace que la publicidad de octubre se acumule en lugar de evaporarse); el **panel admin de ida y vuelta** tenía que existir antes de octubre y **ya está** (1 sep 2026: cancelar solicitud, vencimiento, baja/reactivación, eliminación y cambio de plan).
+
+---
+
+## ⚠ INCONSISTENCIAS ACUMULADAS — 42 abiertas (volcadas el 15 sep 2026)
+
+> **De dónde salen.** A lo largo de las seis tandas del grupo de pulido se fueron anotando sin arreglar,
+> en informes que se sobrescriben. **Acá quedan por escrito por primera vez.** Al relevamiento de formas
+> seguían abiertas **46**; las dos últimas tandas sumaron **12**, o sea **58**. Hoy quedan **42**:
+>
+> | | |
+> |---|---|
+> | **13 se resolvieron** en tandas posteriores a su anotación | radios, alturas de botón, contraste de las casillas, botones del alta, filtros de admin, forma de diálogos y menús, y los dos documentos desactualizados |
+> | **2 se descartaron al verificarlas** | ver "Las que se verificaron y NO existen", abajo |
+> | **1 dejó de ser inconsistencia y pasó a ser regla** | los ítems de menú en mayúsculas (ver `CLAUDE.md` → "Rótulo corto en mayúsculas, frase en minúsculas") |
+>
+> ⚠ **Cada una se verificó contra el código actual antes de escribirla**, con su archivo y su línea de hoy.
+> Las líneas se corrieron mucho durante el grupo: si no coinciden, buscar por contenido.
+
+**El criterio de orden, y por qué es ése.** El marco es el calendario: entran inmobiliarias reales en
+septiembre y publicidad en octubre. Así que **no ordena el costo de arreglarlo sino a quién le pasa algo
+si se deja**:
+
+- **P0 — antes de que entre el primer cliente que no controlamos.** Puede comprometer los datos de una
+  agencia frente a otra. Es una sola.
+- **P1 — la primera semana.** Una inmobiliaria o un visitante lo ve y **cambia lo que hace o lo que
+  carga**. Acá entra lo que produce datos mal cargados, aunque el arreglo sea una clase de color: ver
+  `CLAUDE.md` → "Un defecto visual sobre un control no es visual".
+- **P2 — accesibilidad y coherencia visible.** No bloquea a nadie, pero deja afuera a alguien o da una
+  imagen despareja.
+- **P3 — deuda interna, documentación y cosmético.** No lo nota nadie de afuera; se paga en tiempo
+  nuestro más adelante.
+
+Dentro de cada nivel, primero lo que ven más personas.
+
+---
+
+### 🔴 P0 — Seguridad
+
+#### 1. ⚠⚠ UN AGENTE LOGUEADO PUEDE CAMBIARSE EL ROL Y LA AGENCIA CON LA CLAVE PÚBLICA
+
+**Es lo más urgente que queda abierto en todo el proyecto.** Medido contra la base el 15 sep 2026.
+
+**Qué permite, exactamente.** Tres cosas que se dan a la vez:
+
+| # | Medido | Valor |
+|---|---|---|
+| 1 | La policy de escritura de `agents` | `Agent manages own profile` · `UPDATE` · `USING (id = auth.uid())` · **`WITH CHECK` en NULL** |
+| 2 | Permisos de tabla | `authenticated=arwdDxtm` — **UPDATE sobre la tabla entera**, y **cero ACL por columna** (las nueve columnas tienen `attacl` nulo), así que el permiso alcanza a todas |
+| 3 | Triggers sobre `agents` | **ninguno** (la consulta devuelve vacío) |
+
+⚠ **Sin `WITH CHECK`, PostgreSQL usa el `USING` también para la fila NUEVA.** Y la condición es sobre
+`id`, que no cambia — así que **se cumple con cualquier `role` y cualquier `agency_id` nuevos**. Un
+`PATCH /rest/v1/agents?id=eq.<su propio id>` con `{"role":"admin"}` o `{"agency_id":"<otra agencia>"}`,
+con la **clave pública** (la que viaja en el bundle de JavaScript) y su **propio** token de sesión,
+no lo frena nada.
+
+⚠ **Hace falta una sesión válida, y eso acota quién puede: un agente de una inmobiliaria que nosotros
+dimos de alta, no un visitante anónimo.** `anon` también tiene el permiso de tabla, pero la policy exige
+`auth.uid()`, que para un anónimo es nulo. **No es consuelo: el modelo es multi-tenant y el vecino de
+tabla es la competencia de la misma ciudad.**
+
+**Qué habilita cambiarse esas dos columnas** — y es lo que lo vuelve P0, porque el panel **autoriza por
+ellas**, leídas de la base:
+
+| Con `role: 'admin'` | Camino | Escribe con |
+|---|---|---|
+| Gestionar **todas** las propiedades de la agencia (editar, borrar, cambiar estado, reasignar) | `authorizePropertyAccess`, modo admin (`propiedades/actions.ts:107-153`) | **SERVICE ROLE** (`:148`) |
+| Crear agentes (usuarios de Auth reales) | `createAgentAction` (`equipo/actions.ts:47`) | **SERVICE ROLE** |
+| Borrar agentes y **reasignarse sus propiedades** | `deleteAgentAction` (`equipo/actions.ts:129`) | **SERVICE ROLE** |
+| Leer las consultas de toda la agencia | policy `Admin reads agency leads` | RLS |
+
+**Y cambiándose además `agency_id`, todo eso apunta a OTRA agencia.** O sea: leer las consultas de la
+competencia —nombre, teléfono y qué propiedad miraron— y gestionar sus propiedades, por caminos que
+saltean la RLS porque confían en esas dos columnas.
+
+⚠ **`resolveAgentSession` no protege:** es justamente el que lee `role` y `agency_id` de la fila y los
+reparte al resto. Está bien escrito —los saca del servidor, nunca del cliente— pero **la fila ya está
+manipulada**.
+
+**Qué haría falta para cerrarla.** La forma corta es **permisos por columna**, y está verificada como
+segura: el **único** `UPDATE` a `agents` con el client de sesión es `updateProfileAction`, que escribe
+`full_name`, `phone_wa` y `avatar_url` (`perfil/actions.ts:45-58`). Todos los demás caminos usan
+**service role, que no pasa por los permisos de columna**, así que no se ven afectados.
+
+```sql
+-- Cambio de schema: lo ejecuta el dueño en el SQL Editor (el MCP es de solo lectura).
+REVOKE UPDATE ON public.agents FROM authenticated, anon;
+GRANT  UPDATE (full_name, phone_wa, avatar_url) ON public.agents TO authenticated;
+```
+
+⚠ **Un `WITH CHECK` en la policy NO alcanza por sí solo**: una expresión de policy **no puede
+referirse a la fila vieja**, así que no hay forma de escribir "que `role` siga valiendo lo mismo". La
+alternativa equivalente es un **trigger `BEFORE UPDATE`** que fuerce `NEW.role := OLD.role` y
+`NEW.agency_id := OLD.agency_id` salvo para service role — más código, misma garantía, y con el
+precedente de los otros triggers del proyecto.
+
+**Por qué es lo más urgente:** las otras 41 se pagan en imagen, en accesibilidad o en tiempo nuestro.
+**Ésta se paga con los datos de un cliente frente a otro**, no deja rastro en ninguna pantalla, y el
+calendario dice que en septiembre entran inmobiliarias reales y en octubre se abre el registro a
+cualquiera. Hoy las 3 agencias de la base son de prueba: **es literalmente el momento más barato de
+cerrarla.**
+
+---
+
+### 🟠 P1 — La primera semana
+
+> Lo que una inmobiliaria o un visitante ve y **cambia lo que hace o lo que carga**.
+
+**Datos mal cargados** (la familia de la lección del grupo):
+
+| # | Qué | Dónde | Riesgo de dejarla |
+|---|---|---|---|
+| 2 | **La tarjeta de operación se ve tocable entera, pero solo responden la casilla y el texto.** El `Label` no ocupa el ancho del contenedor, así que tocar el relleno de `p-4` no marca nada | `PropertyForm.tsx:352-373` | Es **el mismo control** cuyo defecto de contraste ya produjo el agujero de datos: la tarjeta invita a tocar y no pasa nada, así que la operación queda sin marcar |
+| 3 | **Al enfocar una casilla con el teclado, su borde se ACLARA**: el componente mantiene `focus-visible:border-ring` y `--ring` (`globals.css:101`) es más claro que el `graphite/80` nuevo | `ui/checkbox.tsx:26` | Pierde contraste **justo en el foco**, que es cuando se la está por marcar. Deshace a medias lo que arregló la tanda de las casillas |
+
+**Funcional y de producto:**
+
+| # | Qué | Dónde | Riesgo de dejarla |
+|---|---|---|---|
+| 4 | **El detalle de propiedad se cierra al arrastrar hacia abajo desde el CUERPO, sin mirar el scroll** | `PropertyModal.tsx:788-790` | Un visitante que vuelve al principio del texto **pierde la ficha**. Es la única hoja que no sigue la regla de acotar el gesto (ver `CLAUDE.md`) |
+| 5 | **En celular, el contenido del panel pasa por debajo del botón de menú al scrollear.** El `pt-14` libera la posición inicial del título, pero el botón es `fixed` y el `main` es el que scrollea | `Sidebar.tsx:187` + `dashboard/layout.tsx:57` y `admin/layout.tsx:65` | El panel se ve roto en el teléfono de cada inmobiliaria. Lo resolvería de raíz una barra superior en el flujo |
+| 6 | **`agencies.phone_wa` se exige en el alta y se edita en Preferencias, pero NADIE lo usa para contactar**: los dos caminos de WhatsApp arman la URL con `agents.phone_wa` | `preferencias/page.tsx:37` y `AgencyPhoneForm.tsx:23,52` vs `PropertyContact.tsx:42,59` y `PropertyModal.tsx:198,220` | Una inmobiliaria cambia "su WhatsApp" y **las consultas siguen llegando al número del agente**. Es una decisión de producto (¿fallback? ¿se saca el campo?), no un bug de código |
+| 7 | **El aviso de "revisá este número" dice que "el enlace de WhatsApp puede no llegar a destino" también en el teléfono de la AGENCIA**, cuyo número no arma ningún enlace | `PhoneWaInput.tsx` (`PhoneWaReviewNotice`) usado en `AgencyPhoneForm.tsx:99` | El texto es cierto en perfil y **exagerado** ahí. Sale gratis: depende del ítem 6 |
+| 8 | **Una línea fija no se puede cargar**: el campo antepone siempre `549` y un `543854000000` se guarda con el 9 agregado (verificado) | `phoneWa.ts:139-150` | Una inmobiliaria que atienda WhatsApp Business desde una línea fija **no puede cargar su número**, y el campo se lo "corrige" mientras escribe. Decisión de producto tomada a conciencia; lo que falta es saber si alguna fundadora está en ese caso |
+
+---
+
+### 🟡 P2 — Accesibilidad y coherencia visible
+
+**Accesibilidad** (nadie de afuera la reporta, y deja gente afuera):
+
+| # | Qué | Dónde | Riesgo |
+|---|---|---|---|
+| 9 | Las hojas **no son diálogos accesibles**: sin `role="dialog"`, sin `aria-modal`, sin captura de foco, y **cerradas siguen montadas y tabulables** (sin `inert`/`aria-hidden`). ⚠ Incluye que **el detalle no cierra con Escape** (la de filtros sí, desde el 15 sep) | `FilterPanel.tsx:604-623`, `PropertyModal.tsx:757-803` | Navegación con teclado confusa; se tabula hacia controles que están fuera de pantalla |
+| 10 | Al cerrar la hoja de filtros **el foco no vuelve a ningún lado**: el botón que la abrió se desmonta mientras está abierta | `page.tsx:170-181`, `AgencyMapView.tsx:143-154` | El foco queda perdido fuera de pantalla. **Lo introdujo la tanda de las hojas** al ocultar los FABs |
+| 11 | **IDs duplicados**: el panel se monta dos veces y hay dos de cada `amenity-*` y `only-featured`; el `htmlFor` apunta al primero, que es el del panel de escritorio | `FilterPanel.tsx:533`, `:554`, montado en `page.tsx:131` y `:155` | Las casillas de la hoja de celular **quedan sin nombre accesible** |
+| 12 | La ✕ de la hoja de filtros **sin `aria-label` ni `type="button"`** (la del detalle sí los tiene) | `FilterPanel.tsx:380-382` | Un lector de pantalla anuncia "botón" sin nombre |
+| 13 | **`aria-invalid` solo en dos campos** de toda la app: el selector de ciudad del registro y el teléfono | `RegisterForm.tsx:197`, `PhoneWaInput.tsx:121` | Un lector de pantalla **no anuncia** que un campo está en error |
+| 14 | El **anillo de foco** de la familia caja está al **20 %** y la familia subrayado **no tiene anillo**; `DESIGN.md` pide sólido para todos | `fieldStyles.ts:35`, `:66`, `:71-72` | Foco poco visible al navegar con teclado |
+| 15 | **`viewportFit: "cover"` no está declarado**, así que `env(safe-area-inset-*)` **vale 0 en todos los dispositivos** y la regla de zona segura de DESIGN §13 está escrita, aplicada y sin efecto | `src/app/layout.tsx:65-67` | Los FABs y las hojas pueden quedar bajo la barra de gestos en teléfonos con notch. **Es una línea** |
+
+**Coherencia visible:**
+
+| # | Qué | Dónde | Riesgo |
+|---|---|---|---|
+| 16 | **El color del estado MARCADO de las casillas sigue sobrescrito a mano en 8 lugares** (`CHECKBOX_TERRACOTA` ×2 archivos + el literal repetido 4 veces) | `FilterPanel.tsx:19,536,559`; `admin/AgenciesTable.tsx:72,855,879`; `PropertyForm.tsx:366,652,1219,1265` | **Una casilla nueva sin el override se marca en casi negro**, porque el componente marca en `bg-primary`. Es el molde exacto de las duplicaciones que el proyecto ya se cobró |
+| 17 | **Cuatro cajas de campo escritas a mano** fuera de la definición única, todas con `focus:` en vez de `focus-visible:` | `FilterPanel.tsx:129`, `PropertyContact.tsx:126`, `PropertyModal.tsx:616`, `ShareButton.tsx:217` | Se desincronizan de `fieldStyles.ts`, que existe justamente para eso |
+| 18 | **Las etiquetas de formulario son 12px SemiBold en MAYÚSCULAS** y `DESIGN.md` pide 13px Medium. ⚠ **Las mayúsculas ya NO son la inconsistencia** (son regla: rótulo corto); lo que no coincide es **el tamaño y el peso** | `ui/label.tsx:16` | Formularios levemente más "gritados" que el diseño documentado. Hay que decidir cuál de los dos se mueve |
+| 19 | **Campos de autenticación con fondo transparente**; DESIGN pide blanco | `ui/input.tsx:11` | O se corrige el código o se corrige el documento: hoy se contradicen |
+| 20 | **"Amenities" en el filtro y en el formulario, "Comodidades" en la ficha pública** | `FilterPanel.tsx:522`, `PropertyForm.tsx:1211`, `propiedades/[slug]/page.tsx:314` | El mismo concepto con dos nombres en dos pantallas públicas, uno en inglés |
+| 21 | **`ModalContent` se monta DOS veces** por apertura (panel de escritorio + hoja de celular), con estado separado | `PropertyModal.tsx:764-768`, `:797-801` | El doble de DOM y de trabajo; dos estados que pueden divergir. Es lo que produjo la medición falsa de `alto: 0` al medir la copia oculta |
+| 22 | **El área de toque extendida de "Ver ficha completa" puede solaparse con los puntos del carrusel** | `PropertyModal.tsx:342` vs `:96` | Medido a 390 px no se tocan, pero en una pantalla más angosta el toque puede caer en el botón equivocado |
+| 23 | Guardar un teléfono **preservado sin tocarlo** igual dice "Teléfono de la agencia actualizado" | `preferencias/actions.ts:71-79`, `AgencyPhoneForm.tsx:118-122` | El mensaje sugiere que algo se guardó cuando no cambió nada, **justo al lado del aviso de revisión** |
+| 24 | El **teléfono en variante subrayado mide 41 px** y los demás campos 40: el contenedor suma su borde al alto del input | `fieldStyles.ts:71` + `ui/input.tsx:11` | Un píxel; se ve al apilar campos |
+
+---
+
+### ⚪ P3 — Deuda interna, documentación y cosmético
+
+| # | Qué | Dónde | Riesgo |
+|---|---|---|---|
+| 25 | **Los dos FABs y el montaje del panel están duplicados carácter por carácter** entre la home y el sitio de marca | `page.tsx:129-203`, `AgencyMapView.tsx:129-176` | Todo arreglo hay que hacerlo dos veces, y es el patrón que el proyecto ya se cobró tres veces (`AgenciesTable`, `AgentCell`, el encabezado público) |
+| 26 | El detalle mueve la hoja con **`transform`** mientras su clase usa **`translate`**: se **suman** en vez de reemplazarse (la de filtros ya usa `translate`) | `PropertyModal.tsx:785` vs `:787` | Salto visual al cerrar por gesto |
+| 27 | **Hoja y velo de filtros sin `md:hidden`** (los del detalle lo tienen) | `FilterPanel.tsx:598-611` | Abrir la hoja en celular y agrandar la ventana deja la hoja encima del panel lateral |
+| 28 | **Dos hojas hermanas con dos altos** (`85vh` y `82vh`), y ninguna en `dvh` | `FilterPanel.tsx:608`, `PropertyModal.tsx:783` | Sin motivo escrito; `vh` es el viewport grande del celular |
+| 29 | **`top-14` fijo** en el panel lateral del detalle, acoplado por un número repetido al `h-14` de los dos encabezados | `PropertyModal.tsx:759` | Si un encabezado cambia de alto, el panel queda encima o deja un hueco, **sin ningún error** |
+| 30 | **Los FABs desaparecen de golpe** mientras la hoja sube en 220 ms | `page.tsx:170` | Estético; las dos hojas son coherentes entre sí |
+| 31 | **Dos contenedores con scroll anidados** en el panel de filtros de escritorio | `page.tsx:130` + `FilterPanel.tsx:386` | — |
+| 32 | **`commitPrice` y `commitArea` son idénticas**, y `parseFloat` acepta `"12abc"` → 12 y negativos | `FilterPanel.tsx:312-320` | Filtros con valores raros, sin aviso |
+| 33 | **Estado local de los inputs por instancia** del panel: lo tipeado y no confirmado no se comparte | `FilterPanel.tsx:152-155` | Invisible hoy (nunca se ven las dos instancias a la vez) |
+| 34 | Dentro de la familia caja, **el error se muestra de tres formas**: el formulario de propiedades colorea el campo, el teléfono colorea el contenedor, y perfil/equipo/identidad solo ponen texto rojo debajo | `PropertyForm.tsx:971` vs `ProfileForm.tsx:266-268`, `TeamContent.tsx:467-469`, `AgencyIdentityForm.tsx:200-202` | El error es menos evidente en tres pantallas |
+| 35 | **`lg` quedó con la misma altura que `default`** (44) y **`icon-lg` igual que `icon`**; los dos con **cero usos** | `ui/button.tsx:30,37,38,41` | Tamaños redundantes en una escala que acaba de definirse. O se les da un rol o se sacan |
+| 36 | **Cuatro componentes del preset sin un solo consumidor**: `Badge`, `Card`, `Slider` y `Dialog`. Los dos primeros siguen en `rounded-none`, fuera de la regla de formas | `ui/badge.tsx:8`, `ui/card.tsx:15,28`, `ui/slider.tsx`, `ui/dialog.tsx` | Alguien los usa creyendo que siguen el diseño, y entran rectos sin que nada avise |
+| 37 | **Sin CHECK de formato en `agents.phone_wa` ni `agencies.phone_wa`** | base | Toda la garantía vive en el código. ⚠ **Mejoró mucho**: hoy los cuatro caminos validan en el servidor (verificado), así que es defensa en profundidad y no un agujero |
+| 38 | **`leads.contact_phone` es una columna muerta**: ningún camino la escribe | `types/index.ts:447` + la migración | Confusión para quien lea el modelo |
+| 39 | Comentario que dice que los botones de operación **"comparten una fila de 320px"** — es el ancho del panel de escritorio; en la hoja de un teléfono de 320 px la fila tiene 280 | `FilterPanel.tsx:27-29` | Un número escrito que no describe el caso que importa |
+| 40 | **Indentación irregular** en el formulario de inicio de sesión (hijos a 12 espacios, `</Button>` desalineado) | `LoginForm.tsx:69-124` | Cosmético, previo al grupo |
+| 41 | **Indentación irregular** en el bloque de filtros del panel de plataforma (el `.map` al mismo nivel que su contenedor) | `admin/AgenciesTable.tsx:842-843`, `:866-867` | Cosmético; **lo introdujo la tanda de los cuatro defectos** |
+| 42 | **El usuario de solo lectura del MCP no puede ejecutar `agency_is_publicly_visible`** (`42501`) ni ve permisos en `information_schema.role_table_grants` / `column_privileges` (devuelven vacío) | herramienta | ⚠ **Quien audite permisos por MCP con `information_schema` va a concluir que NO HAY NINGUNO.** Hay que usar `pg_class.relacl` / `pg_attribute.attacl` o `has_*_privilege`. Fue exactamente así como se midió el ítem 1 |
+
+---
+
+### Las que se verificaron y NO existen (no se escriben como deuda)
+
+| Qué decía la anotación | Qué se midió |
+|---|---|
+| **La quita del "15" podría fallar con una característica de 4 dígitos terminada en "15"** (`phoneWa.ts`) | **No se reproduce.** Se probaron **todas** las características de 3 y 4 dígitos que empiezan en 1-3 (100 a 9999) con el 15 intercalado: el patrón colapsa al mismo resultado sin importar cuál de las dos ocurrencias matchee el bucle. **Cero casos erróneos.** La anotación decía "no verificado"; ahora está verificado y descartado |
+| **`ui/button.tsx` ganó `relative` y eso cambia el bloque contenedor de cualquier hijo `absolute` dentro de un botón** | **No hay ningún caso real**: barrido de todos los usos de `<Button>` en `src/`, cero hijos posicionados en absoluto. El riesgo era teórico y sigue siéndolo; queda escrito en `CLAUDE.md` junto al porqué del `relative`, que es donde sirve |
 
 ---
 
@@ -181,7 +369,7 @@ Consecuencias directas sobre el orden: la **autosugerencia de ubicación** subí
 
   **Cabo que ató:** el ítem decía *"cuando llegue C2, la página por propiedad hereda esto resuelto"*. Se cumplió: la página muestra el mismo bloque con las mismas reglas, una talla más grande.
 
-- [ ] **D3 · Filtros mobile: fila fija + panel (híbrido).** La intención es correcta (un desplegable es fricción; en mobile no se abre lo que no se ve), pero poner *todos* los filtros fijos se come media pantalla de mapa, que es lo que el visitante vino a ver — sería cambiar una fricción por otra peor. **Forma propuesta:** una tira fina fija arriba con los 2-3 filtros del 80% de los casos (operación venta/alquiler + tipo de propiedad) como chips tocables, y el resto (precio, ambientes, amenities) en el panel desplegable actual con su contador de filtros activos. ⚠ **Ojo al diseñarlo: desde B3 el filtro de operación es de selección MÚLTIPLE** (marcar Venta y Alquiler muestra las que tengan cualquiera de las dos), así que los chips tienen que comportarse como interruptores independientes y no como una tira de opciones excluyentes. Prioridad media, tanda corta, no bloquea nada.
+- [ ] **D3 · Filtros mobile: fila fija + panel (híbrido).** La intención es correcta (un desplegable es fricción; en mobile no se abre lo que no se ve), pero poner *todos* los filtros fijos se come media pantalla de mapa, que es lo que el visitante vino a ver — sería cambiar una fricción por otra peor. **Forma propuesta:** una tira fina fija arriba con los 2-3 filtros del 80% de los casos (operación venta/alquiler + tipo de propiedad) como chips tocables, y el resto (precio, ambientes, amenities) en la **hoja que sube desde abajo** (que es lo que hay hoy, no un desplegable) con su contador de filtros activos. ⚠ Esa hoja se rehízo el 15 sep 2026 —cierra con ✕, velo, Escape y arrastre desde la franja— así que **D3 parte de una base que ya funciona**: lo que agrega es la tira fija, no el panel. ⚠ **Ojo al diseñarlo: desde B3 el filtro de operación es de selección MÚLTIPLE** (marcar Venta y Alquiler muestra las que tengan cualquiera de las dos), así que los chips tienen que comportarse como interruptores independientes y no como una tira de opciones excluyentes. Prioridad media, tanda corta, no bloquea nada.
 
 ---
 
@@ -212,6 +400,84 @@ Consecuencias directas sobre el orden: la **autosugerencia de ubicación** subí
   - Nota de namespace: si a futuro se quiere URL de ciudad (SEO/compartir), va con **prefijo** (`/ciudad/[slug]`), nunca en el root — el root es de las agencias. La extensión de `generateUniqueAgencySlug` para chequear también `cities` se descartó: al salir las ciudades del root, no hay colisión posible.
 
 ---
+
+## Pulido visual — grupo CERRADO (15 sep 2026, seis tandas)
+
+> **El disparador fue el dueño probando la aplicación antes de mostrársela a inmobiliarias**, o sea el
+> primer recorrido completo con ojos de cliente. Dos relevamientos de solo lectura y cuatro tandas de
+> implementación. **Hilo común: la app funcionaba y no se veía terminada** — y en un caso, lo que
+> parecía estética estaba rompiendo los datos.
+
+### Las cuatro piezas
+
+1. **Las hojas que suben desde abajo.** El contenido se desbordaba **exactamente 20 px** por debajo del
+   borde de la pantalla —dejando **4 px del botón "Consultar por WhatsApp" fuera**—, los botones
+   flotantes tapaban el final y eran tocables **sobre el velo**, la franja gris prometía un gesto de
+   arrastre que no existía en la hoja de filtros, y ninguna cerraba con Escape. Causa única del
+   desborde: **un contenedor `h-full` con un hermano arriba**, en tres archivos. Ver `CLAUDE.md` →
+   "Las hojas que suben desde abajo".
+2. **Los campos de formulario y el teléfono.** El texto quedaba pegado al borde en perfil, preferencias
+   y equipo **por una causa que no era la obvia**: `tailwind-merge` eliminaba las clases del subrayado
+   al recibir un color de borde de cuatro lados, produciendo **una caja que no estaba escrita en ningún
+   archivo**. Se resolvió con una definición única (`src/components/forms/fieldStyles.ts`). En la misma
+   tanda, el teléfono pasó a tener **prefijo argentino fijo y visible**, con normalización de todas las
+   formas en que se dicta un celular y la regla de **no corregir nunca un número guardado**.
+3. **Cuatro defectos de forma que rompían algo.** Casillas con borde **invisible** (≈1,00:1), las tres
+   opciones de operación con estructura distinta según el estado, el botón de menú **tapando el título**
+   de todas las páginas del panel en celular, y los filtros de administración desordenados.
+4. **La unificación de formas.** Los radios pasaron a valores fijos (4/6/8, que era lo que `DESIGN.md`
+   decía y el código nunca cumplió), el botón dejó de ser recto y de ir en mayúsculas y llegó al mínimo
+   táctil de 44 px, los diálogos, menús y desplegables entraron en la regla, y se definió una **escala
+   de tres alturas**. Más un título **"Precio"** en el bloque de precios de las dos pantallas públicas.
+
+### ⚠ La lección, y no es sobre estética
+
+**Las casillas invisibles producían DATOS MAL CARGADOS.** Una inmobiliaria carga una casa que también
+alquila, no ve que la opción se puede marcar, y la publica **solo en venta**: la propiedad queda fuera
+de los filtros de alquiler y **la consulta que nunca llega no aparece en ningún lado**. No hay error, no
+hay registro, y después **no hay forma de distinguirla** de una que efectivamente solo se vende.
+
+**Lo que se reportó como un problema visual estaba rompiendo el negocio.** Quedó escrito como patrón en
+`CLAUDE.md` → "Método de Diagnóstico": *cuando un defecto visual está sobre un **control**, la pregunta
+no es si se ve mal sino qué dato produce y qué pasa si no se usa*. Por eso en la lista de arriba las
+casillas están en **P1**, junto a lo funcional, **aunque el arreglo fuera una clase de color**: el costo
+de arreglar algo no dice nada sobre su prioridad.
+
+### Lo que se DESCARTÓ, con su motivo
+
+| Se descartó | Por qué |
+|---|---|
+| **Cambiar el alto de las hojas** para que el contenido entrara | El desborde no era falta de espacio sino un contenedor que no podía achicarse. Cambiar el alto habría tapado el síntoma y dejado la causa en los otros dos archivos |
+| **Subir el z-index de la hoja** por encima de los botones flotantes | Los dejaría debajo pero **igual visibles y tocables** sobre el velo. Ocultarlos es además lo que libera el último renglón del contenido |
+| **Extraer una hoja compartida** entre filtros y detalle | Las dos difieren en algo que no es cosmético: **desde dónde se puede arrastrar**. Extraerlas tal cual trasplanta el defecto del detalle; corregirlo al extraer **le saca un gesto a quien ya lo usa**. Es una pieza propia, con su decisión de producto |
+| **Usar una biblioteca de diálogos** para las hojas | Daría Escape, foco y portal —cierra cuatro ítems de accesibilidad— pero **no da el gesto**, que era el problema reportado, y cambia el comportamiento de dos pantallas públicas a la vez |
+| **Un selector de país en el teléfono** | La plataforma es para inmobiliarias argentinas y el campo existe para armar un enlace de WhatsApp. Un selector agrega un paso a todos para un caso que no existe |
+| **Corregir en silencio los números guardados sin el 9** | Editar el nombre de un perfil no puede cambiarle el teléfono a alguien sin que lo pida. Se muestran tal cual, con un aviso de revisión |
+| **Una variante del componente `Input` para el campo con caja** | La misma caja tiene que vestir **contenedores que no son un input** (los campos con prefijo). Por eso son constantes |
+| **Derivar los radios de `--radius`** con multiplicadores, como estaban | Es lo que produjo un desvío de 2 px **en toda la app a la vez**, sin ningún síntoma. Ahora son tres valores fijos |
+| **Bajar los ítems de menú a minúsculas** junto con los botones | Rótulo corto en mayúsculas, frase en minúsculas: son dos casos distintos de la misma regla. Ver `CLAUDE.md` |
+| **Tocar las etiquetas de formulario** | Vienen del preset y son rótulos, así que entran en la regla de arriba. Lo que no coincide con `DESIGN.md` es el tamaño; quedó anotado (ítem 18) |
+
+### Lo que se MIDIÓ al cerrar
+
+- **Radios, en el CSS compilado, antes → después:** `rounded-sm` 6 → **4**, `rounded-md` 8 → **6**,
+  `rounded-lg` 10 → **8**, `rounded-t-xl` **14 sin cambios** (la excepción de las hojas).
+- **Botón del alta:** de 40 px, radio 0, 12 px en MAYÚSCULAS → **44 px, radio 6, 14 px en minúsculas**.
+- **Área de toque:** "Ver ficha completa" **dibuja 28 px y toca 44**.
+- **Desborde de las hojas:** 20 px → **0** en las dos, con el botón de contacto entero.
+- **Contraste del borde de las casillas:** ≈**1,00:1** → **4,31–5,07:1** (WCAG 1.4.11 pide 3:1).
+- **Cuerpo scrolleable** tras el arreglo: filtros **489,94** px (sin filtros) y **414,94** (con), detalle
+  **177,44** px. ⚠ El área **bajó** 20 px y es lo correcto: antes esos píxeles estaban fuera de pantalla.
+- **Baseline sin moverse en las seis tandas:** 0 errores de TS, 0 de lint con el warning conocido,
+  build verde, 22 rutas.
+
+### Lo que quedó ABIERTO
+
+**Las 42 inconsistencias de la sección de arriba**, encabezadas por la de seguridad — que **no es de este
+grupo**: apareció midiendo la base durante el relevamiento de los campos y se dejó aparte a propósito,
+porque es una tanda propia. De las demás, tres las **introdujo** este grupo y están marcadas como tales
+(el foco que no vuelve al cerrar la hoja, la indentación de los filtros de admin, y los dos tamaños de
+botón que quedaron redundantes).
 
 ## Sitio de marca — grupo CERRADO (12–13 sep 2026, cuatro tandas)
 
@@ -372,7 +638,7 @@ Consecuencias directas sobre el orden: la **autosugerencia de ubicación** subí
 
 - [ ] **"Vistas totales" y "Leads este mes" están lado a lado en `/dashboard` con ventanas distintas (anotado el 14 sep 2026).** Medido en `dashboard/page.tsx`: las consultas se cuentan con `.gte("created_at", thirtyDaysAgo)` y la tarjeta dice *"Últimos 30 días"*; las visitas son la suma de `views_count`, **acumulada desde siempre y sin filtro de estado** (entran pausadas, vendidas y alquiladas). Puestas juntas invitan a una comparación que no es válida. En el **listado** de propiedades las dos son acumuladas, así que ahí sí se comparan bien. `views_count` no guarda fechas, así que una ventana de visitas exigiría otra tabla.
 
-- [ ] **Dos documentos quedaron desfasados por el cierre, y esta tanda no podía tocarlos (anotado el 14 sep 2026).** (1) El comentario del archivo de migración sobre el primer intento de la guarda dice **"HIPÓTESIS NO VERIFICADA"**: ya está confirmada por la documentación de Postgres y por la guarda funcionando. Corregirlo la próxima vez que se toque ese archivo. (2) `DESIGN.md` §7 ("PropertiesTable") **no describe las columnas "Visitas" y "Consultas"** ni la línea "N visitas · M consultas" de las tarjetas de celular.
+- [ ] **Dos documentos quedaron desfasados por el cierre, y esta tanda no podía tocarlos (anotado el 14 sep 2026).** (1) El comentario del archivo de migración sobre el primer intento de la guarda dice **"HIPÓTESIS NO VERIFICADA"**: ya está confirmada por la documentación de Postgres y por la guarda funcionando. Corregirlo la próxima vez que se toque ese archivo. ~~(2) `DESIGN.md` §7 ("PropertiesTable") no describe las columnas "Visitas" y "Consultas"~~ — **RESUELTO el 15 sep 2026**: §7 ya las describe, con la regla de que un conteo que no se pudo leer se muestra "—" y nunca 0.
 
 - [ ] **Hay un event trigger `ensure_rls` en la base que no está documentado en ningún lado del repo.** Medido el 3 sep 2026: `ensure_rls` (evento `ddl_command_end`, función `public.rls_auto_enable()`, SECURITY DEFINER, `search_path = pg_catalog`) **habilita RLS automáticamente en toda tabla nueva** de los command tags `CREATE TABLE` / `CREATE TABLE AS` / `SELECT INTO`, restringido al esquema `public`. Falla en silencio (loguea y sigue) si no puede.
   **Consecuencia práctica, y es la que importa: una tabla nueva nace con RLS activada y SIN policies, o sea invisible para todos** —incluido el dueño desde el cliente normal— **hasta que se le escriban**. Quien cree una tabla y la vea vacía desde la app va a buscar el problema en la query, no en una policy que no existe.
@@ -387,7 +653,7 @@ Consecuencias directas sobre el orden: la **autosugerencia de ubicación** subí
   **Queda abierto porque la regla es la que importa, no la revisión:** *escapar en el punto de salida, no en el de entrada, y verificar cada punto de salida nuevo*. Los dos puntos de salida existentes están verificados; el próximo hay que verificarlo también.
 
 
-- [x] **~~3 errores de lint preexistentes~~ (`ClusterLayer.tsx` x2 y `StatsCard.tsx`) — YA NO EXISTEN.** Medido el 27 ago 2026 contra el repo: `npm run lint` da **0 errores**. Se arreglaron en algún momento y el ítem quedó sin tachar, contradiciendo a `CLAUDE.md`. **Baseline real y vigente: 0 errores de TS, 0 errores de lint, 1 warning** (`react-hooks/incompatible-library` por el `watch()` de react-hook-form en `PropertyForm.tsx`), build verde. *Lección: los números de la documentación se relevan, no se asumen.* **Baseline vigente re-medido el 14 sep 2026 (sin cambios desde el 8 sep, incluido el cierre del contador de visitas, que no sumó rutas): `npx tsc --noEmit` 0 errores (exit 0) / `npm run lint` 0 errores y 1 warning (`PropertyForm.tsx:808`, exit 0) / `npx next build` verde (exit 0) con 22 rutas.** ⚠ **Las rutas pasaron de 19 a 22 y es la ÚNICA vez que el número se movió** en todo el proyecto: las tres nuevas son `/propiedades/[slug]`, `/sitemap.xml` y `/robots.txt` — las dos últimas son **archivos de convención de Next**, que cuentan como ruta igual que `/apple-icon.png`. Los errores y el warning no se movieron nunca. ⚠ **El warning cambió de llamada, no de cantidad**: apuntaba a `watch("currency")` (línea 269) y hoy apunta a `watch("amenities")` (línea 808). La regla señala **la primera `watch()` del componente**, y al desaparecer el campo de moneda el señalamiento se corrió a la siguiente. Por eso los campos nuevos del BLOQUE B se hicieron con `Controller`: con `watch()` el warning se habría multiplicado. ⚠ **Y el grupo del sitio de marca (12–13 sep) lo confirmó dos veces más**: tanto la vista previa en vivo de la dirección como el aviso que aparece al tipear un nombre distinto **necesitan el valor del campo en vivo** —el caso típico de `watch()`— y los dos se hicieron con `Controller`. Con `watch()` cada uno habría sumado su propio warning y roto el baseline.
+- [x] **~~3 errores de lint preexistentes~~ (`ClusterLayer.tsx` x2 y `StatsCard.tsx`) — YA NO EXISTEN.** Medido el 27 ago 2026 contra el repo: `npm run lint` da **0 errores**. Se arreglaron en algún momento y el ítem quedó sin tachar, contradiciendo a `CLAUDE.md`. **Baseline real y vigente: 0 errores de TS, 0 errores de lint, 1 warning** (`react-hooks/incompatible-library` por el `watch()` de react-hook-form en `PropertyForm.tsx`), build verde. *Lección: los números de la documentación se relevan, no se asumen.* **Baseline vigente re-medido el 14 sep 2026 (sin cambios desde el 8 sep, incluido el cierre del contador de visitas, que no sumó rutas): `npx tsc --noEmit` 0 errores (exit 0) / `npm run lint` 0 errores y 1 warning (`PropertyForm.tsx:814`, exit 0) / `npx next build` verde (exit 0) con 22 rutas.** ⚠ **Re-medido el 15 sep 2026: idéntico, salvo el número de línea del warning, que pasó a `:814`.** ⚠ **Las rutas pasaron de 19 a 22 y es la ÚNICA vez que el número se movió** en todo el proyecto: las tres nuevas son `/propiedades/[slug]`, `/sitemap.xml` y `/robots.txt` — las dos últimas son **archivos de convención de Next**, que cuentan como ruta igual que `/apple-icon.png`. Los errores y el warning no se movieron nunca. ⚠ **El warning cambió de llamada, no de cantidad**: apuntaba a `watch("currency")` (línea 269) y hoy apunta a `watch("amenities")` (línea 814). La regla señala **la primera `watch()` del componente**, y al desaparecer el campo de moneda el señalamiento se corrió a la siguiente. Por eso los campos nuevos del BLOQUE B se hicieron con `Controller`: con `watch()` el warning se habría multiplicado. ⚠ **Y el grupo del sitio de marca (12–13 sep) lo confirmó dos veces más**: tanto la vista previa en vivo de la dirección como el aviso que aparece al tipear un nombre distinto **necesitan el valor del campo en vivo** —el caso típico de `watch()`— y los dos se hicieron con `Controller`. Con `watch()` cada uno habría sumado su propio warning y roto el baseline.
 
 - [ ] **⚠ DOS pantallas más dependen del scroll del documento, que está bloqueado.** Abierto el 8 sep 2026, al corregir el mismo defecto en la página pública de la propiedad. `globals.css` fija `html, body { overflow: hidden }` a propósito (arregla el header del mapa en celulares), así que **una pantalla que se pase del viewport se vuelve inalcanzable** — no aparece una barra rota: simplemente no hay forma de llegar. Verificado en el código, las dos:
 
@@ -645,7 +911,7 @@ Consecuencias directas sobre el orden: la **autosugerencia de ubicación** subí
   **La salida evaluada y no tomada: acortar el texto del inicio de sesión** de *"Iniciar sesión"* (86,1 px) a *"Ingresar"* (53,2 px) — que es lo que decía antes de C3, y lo que sigue diciendo la variante del sitio de marca. Eso deja la puerta en 63,4 px y el selector con **170,5 contra 148,7: 21,8 px de sobra**, y baja el umbral por debajo de 320 px. **Se paga con la ambigüedad que "Iniciar sesión" vino a resolver**, que era medio motivo de existir de C3: "Ingresar" no dice para quién es. Es una decisión de producto, no de layout, y por eso quedó sin tomar.
   ⚠ **Contexto para no sobredimensionarlo:** con el reparto anterior de C3 —cuando el que quedaba en pantalla chica era el llamado— ese umbral estaba en **451 px**, o sea que **ningún teléfono** mostraba el nombre entero. La situación mejoró 75 px; lo que queda es el último píxel.
 
-- [ ] **Tamaños de botones** — revisión pareja en toda la app (DESIGN §6 fija 44px de alto estándar; hay pantallas con `h-9`, `h-10` y `h-11` conviviendo, sobre todo en el panel `/admin` y en las tablas). ⚠ **Sumar a la lista el llamado del encabezado público** (`h-9`): es una desviación **consciente** de los 44 px, porque en un encabezado de 56 px un botón de 44 deja 6 px arriba y abajo y lee como un bloque que lo ocupa entero. Está anotada en DESIGN §11; al hacer la pasada pareja hay que decidir si la excepción se confirma o se unifica.
+- [x] **~~Tamaños de botones~~ — HECHO (15 sep 2026).** Hay una escala de tres alturas (44 / 36 / 28) documentada en `DESIGN.md` §6 y en el propio `ui/button.tsx`, y todo botón por debajo de 44 px lleva área de toque extendida. Quedaba pendiente: la revisión pareja que este ítem pedía. ⚠ **Sumar a la lista el llamado del encabezado público** (`h-9`): es una desviación **consciente** de los 44 px, porque en un encabezado de 56 px un botón de 44 deja 6 px arriba y abajo y lee como un bloque que lo ocupa entero. Está anotada en DESIGN §11; al hacer la pasada pareja hay que decidir si la excepción se confirma o se unifica.
 - [ ] Ir sumando acá lo estético que aparezca mientras tanto, en vez de resolverlo suelto.
 
 ---
