@@ -1,255 +1,112 @@
-# Tanda: unificación de formas
+# Tanda de documentación — cierre del grupo de pulido visual
 
-> **Modo ejecución.** Se modificaron 14 archivos de `src/`. No se ejecutó ningún comando de git. No se tocó la base. `CLAUDE.md` y `PENDIENTES.md` no se tocaron.
+> **Modo ejecución, solo documentación.** Se modificaron **tres archivos `.md`** y ni una línea de `src/`, `scripts/` o la migración. No se ejecutó ningún comando de git. No se ejecutó SQL de escritura (el MCP es de solo lectura y toda medición fue con `SELECT`).
 >
-> **Cómo se midió:** los píxeles de cada clase de radio salen del **CSS compilado del build**, antes y después. Las pantallas públicas (inicio de sesión, registro, home, filtros, detalle de propiedad, ficha pública) se midieron **en el navegador** con Chrome headless. Los diálogos, los menús y los desplegables exigen sesión: se reprodujeron con **las clases reales del componente** sobre la misma hoja de estilos. Servidor y Chrome apagados al terminar.
+> **Cómo trabajé.** No documenté desde el prompt: **los informes de las seis tandas seguían en el transcripto de la sesión** aunque `respuesta.md` se haya sobrescrito, así que los recuperé enteros (siete versiones) y de ahí salió la lista cruda de inconsistencias. **Después verifiqué cada una contra el código de hoy**, porque varias se habían resuelto de paso. Donde el prompt y la medición no coincidieron, gana la medición y está reportado en la sección 5.
 
 ---
 
-## 1. Archivos modificados
+## 1. Qué cambió en cada archivo
 
-| Archivo | Qué cambió |
+### `CLAUDE.md` (+30.629 bytes)
+
+**Agregado — cinco piezas nuevas:**
+
+| Sección nueva | Qué contiene |
 |---|---|
-| `src/app/globals.css` | Los radios del tema pasan a valores fijos en píxeles: 4 / 6 / 8. `--radius-xl` queda en 14 px, documentado como la excepción de las hojas |
-| `src/components/ui/button.tsx` | Deja de ser recto y de ir en mayúsculas: 6 px, minúsculas, 14 px de texto. Escala de altos 44 / 36 / 28 y área de toque en el tamaño chico |
-| `src/components/ui/alert-dialog.tsx` | Caja del diálogo y del ícono a 8 px; el título deja las mayúsculas |
-| `src/components/ui/dialog.tsx` | Ídem (sin uso hoy, misma familia) |
-| `src/components/ui/dropdown-menu.tsx` | Menú y submenú a 8 px; los cuatro tipos de ítem a 6 px |
-| `src/components/ui/select.tsx` | Desplegable a 8 px; ítem a 6 px. El disparador subrayado no se tocó |
-| `src/components/ui/checkbox.tsx` | Radio a 4 px (marca chica). **El color del borde no se tocó** |
-| `src/components/map/FilterPanel.tsx` | Los cuatro grupos de botones a 36 px; "Limpiar filtros" a 44 |
-| `src/components/properties/PropertyList.tsx` | "Limpiar filtros" del estado vacío: 40 → 44 px |
-| `src/components/properties/LocationPicker.tsx` | "Centrar" sobre el mapa: 32 → 28 px + área de toque de 44 |
-| `src/components/map/PropertyModal.tsx` | "Ver ficha completa" a 28 px + área de toque de 44 · **título "Precio"** |
-| `src/app/(public)/propiedades/[slug]/page.tsx` | **Título "Precio"** |
-| `src/app/(agent)/admin/AgenciesTable.tsx` · `src/components/dashboard/PropertiesTable.tsx` · `src/components/dashboard/TeamContent.tsx` | Los botones de solo ícono de las tablas: 30 → 36 px |
+| **`## Formas, alturas y tipografía de los controles`** | La regla completa: **la forma la decide QUÉ ES el elemento**, con la tabla de cinco familias (marca chica 4 / tocable 6 / contenedor 8 / circular / sin caja), la advertencia de que venir del preset no exime, el porqué de que los tres valores sean fijos y no derivados, y **las seis excepciones deliberadas con su motivo**. Después: la **escala de altos** (44/36/28 + íconos) con la regla de que todo lo que baje de 44 px lleva área de toque extendida. Y la regla **rótulo corto en mayúsculas, frase en minúsculas**, escrita como regla y no como excepción |
+| **`### Las hojas que suben desde abajo`** | Las dos hojas, la tabla de **cómo se cierra cada una** (y que el detalle **no** tiene Escape), el porqué de que el gesto sea **estructural y no una condición sobre `scrollTop`**, las cuatro piezas finas del gesto, y **el presupuesto de alto medido** de las dos |
+| **`### El campo con caja`** | Las dos familias, la definición única y **por qué son constantes y no una variante del componente** (la caja tiene que vestir contenedores que no son un input) |
+| **`### El campo de teléfono`** | Prefijo fijo, qué se guarda contra qué se muestra, qué limpia al pegar (con la tabla de las tres formas reales), por qué al tipear solo se filtran dígitos, la regla de **no corregir nunca** un número guardado, y la limitación aceptada de las líneas fijas |
+| **`### ⚠⚠ UN DEFECTO "VISUAL" SOBRE UN CONTROL NO ES VISUAL`** | La lección del grupo, en **Método de Diagnóstico**, junto a los otros patrones |
+
+**Las tres trampas**, dentro de la sección de las hojas:
+
+1. **Un contenedor `h-full` con un hermano arriba desborda** — con el diagrama del `min-height: auto`, los tres archivos donde apareció, y que **en escritorio no se nota**.
+2. **Los botones flotantes se pintan encima de la hoja** — con el porqué de que subir el z-index no alcance.
+3. **Arrastrar y scrollear son dos gestos verticales en el mismo lugar** — resuelto por estructura.
+
+Y una cuarta, dentro del campo con caja: **`tailwind-merge` elimina las clases del subrayado al recibir un color de borde de cuatro lados**, con el diagrama de qué clase se come a cuál y la regla general para cualquier componente del preset.
+
+**Corregido:**
+
+- El warning del baseline decía **`PropertyForm.tsx:808`** en dos lugares (`:25` y la sección ESLint) → **`:814`**, medido.
+- Se agregó que **el número de línea NO es parte del baseline** (fue `:269`, `:808`, `:804`, `:814`): lo que se verifica es *un solo warning, de esa regla, sobre `watch()`*.
+- El árbol de carpetas **no listaba `src/components/forms/`** (los dos archivos) ni **`src/lib/utils/phoneWa.ts`**.
+- La línea de `FilterPanel.tsx` en el árbol no decía que **se monta dos veces** ni que en celular es una hoja.
+- La convención de WhatsApp describía el formato guardado y nada del prefijo.
+
+### `DESIGN.md` (+13.899 bytes)
+
+**Agregado:** la tabla de formas completa (con casillas, menús, desplegables y diálogos, que no estaban), la escala de altos, el tratamiento tipográfico del botón, la regla de rótulo contra frase, las excepciones deliberadas, las **dos familias de campo** con la definición única y el campo con prefijo, y el **título "Precio"** en los dos diagramas.
+
+**Corregido — cinco afirmaciones falsas** (detalle en la sección 3): el `tailwind.config.ts` que no existe, el layout móvil con chips y un FAB, los FABs que "se ocultan con el PropertyModal", la zona segura que no puede funcionar, y las columnas del listado del panel.
+
+⚠ **Dos desvíos los dejé marcados en vez de borrarlos**, porque son inconsistencias abiertas y no errores del documento: el anillo de foco al 20 % y las etiquetas a 12 px. Están anotados como tales, con puntero a `PENDIENTES.md`.
+
+### `PENDIENTES.md` (+31.019 bytes)
+
+- **Sección nueva arriba de todo**: las **42 inconsistencias**, encabezadas por la de seguridad.
+- **Cierre del grupo** (`## Pulido visual — grupo CERRADO`): las cuatro piezas, **la lección**, diez decisiones descartadas con su motivo, lo medido, y lo que quedó abierto —incluidas **las tres que este grupo introdujo**, marcadas como tales.
+- **Corregido:** el `:808` del baseline (dos veces), el ítem D3 que hablaba de "el panel desplegable actual" cuando hoy es una hoja, el ítem de **"Tamaños de botones"** que quedó cerrado por la escala, y el desfasaje de `DESIGN.md` §7, ya resuelto.
 
 ---
 
-## 2. Los radios, leídos del CSS compilado
+## 2. Cuántas inconsistencias, y con qué criterio
 
-| Clase | Antes | Después | Qué viste |
-|---|---|---|---|
-| `.rounded-none` | `border-radius:0` | `border-radius:0` | sin cambio |
-| `.rounded-sm` | `calc(var(--radius) * .6)` = **6 px** | `.25rem` = **4 px** | chips, etiquetas de estado, **casillas** |
-| `.rounded-md` | `calc(var(--radius) * .8)` = **8 px** | `.375rem` = **6 px** | botones, campos, selectores, ítems de menú |
-| `.rounded-lg` | `var(--radius)` = **10 px** | `.5rem` = **8 px** | tarjetas, secciones, paneles, diálogos, menús, avisos |
-| `.rounded-t-xl` | `calc(var(--radius) * 1.4)` = **14 px** | `.875rem` = **14 px** | **excepción**: las dos hojas que suben desde abajo |
-| `.rounded-full` | círculo | círculo | sin cambio |
-| `.rounded` (sin sufijo) | `.25rem` = **4 px** | `.25rem` = **4 px** | literal de Tailwind, no pasa por los tokens: 4 esqueletos |
-
-**La variable base:** `--radius` pasó de `0.625rem` (10 px) a `0.5rem` (8 px), alineada con el radio de contenedor.
-
-⚠ **Elementos que usaban el valor base directamente: ninguno.** Verificado por búsqueda: `var(--radius)` solo aparecía dentro de las definiciones de los tokens, que ahora son valores fijos. Los seis `border-radius` literales de `globals.css` **no dependían del tema y no se tocaron**: el pin del mapa (8 px, línea 231), tres círculos del pin (50 %), el control de zoom de Leaflet (8 px) y su caja de atribución (6 px).
-
-**Antes de esta tanda, ningún elemento cumplía el número de la tabla de DESIGN §4 aunque usara la clase correcta. Ahora los tres valores coinciden.**
-
----
-
-## 3. El componente de botón
-
-**Antes** (`ui/button.tsx`, base):
-
-```
-"group/button inline-flex shrink-0 items-center justify-center rounded-none border border-transparent bg-clip-padding text-xs font-semibold tracking-widest whitespace-nowrap uppercase transition-all …"
-default: "h-10 gap-1.5 px-6 has-data-[icon=inline-end]:pr-4 has-data-[icon=inline-start]:pl-4"
-```
-
-**Después:**
-
-```
-"group/button relative inline-flex shrink-0 items-center justify-center rounded-md border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all …"
-default: "h-11 gap-1.5 px-4 has-data-[icon=inline-end]:pr-3 has-data-[icon=inline-start]:pl-3"
-```
-
-Cambió: **recto → 6 px**, **MAYÚSCULAS con espaciado ancho → minúsculas**, **12 px → 14 px**, **negrita → medio**, **40 px → 44 px de alto** (el mínimo táctil de DESIGN §6) y **24 → 16 px de relleno**. El `relative` es para anclar el área de toque del tamaño chico.
-
-**Medido en pantalla:** "Ingresar" (inicio de sesión) y "Crear cuenta" (registro) miden ahora **44 px de alto, radio 6 px, texto de 14 px, `text-transform: none`, espaciado normal, relleno 16 px**. Antes: 40 px, radio 0, 12 px, mayúsculas, relleno 24.
-
-### Dónde se va a notar
-
-| Pantalla | Qué cambia |
+| | |
 |---|---|
-| **`/login`** | "Ingresar": de rectángulo en MAYÚSCULAS a botón redondeado en minúsculas, más alto |
-| **`/register`** | "Crear cuenta": ídem |
-| **`/register/plan`** | "Continuar": ídem |
-| **8 diálogos de confirmación** (5 en `/admin`, 1 en Propiedades, 1 en Suscripción, 1 en Equipo) | La caja del diálogo pasa a 8 px, **el título deja las mayúsculas** y sus dos botones (confirmar y cancelar) cambian igual que los de arriba |
-| **2 menús `⋯`** (Propiedades y `/admin`) | La caja del menú a 8 px y sus 12 ítems a 6 px |
-| **4 desplegables de ciudad / tipo / estado / agente** (registro y formulario de propiedades) | La caja a 8 px y sus ítems a 6 px |
-| **8 casillas** (filtros del mapa, filtros de admin, formulario de propiedades) | De cuadrado perfecto a 4 px |
-| **Todo lo que tenga radio** (247 elementos en 43 archivos) | 2 px menos: tarjetas y secciones 10 → 8, botones y campos 8 → 6, chips 6 → 4 |
+| Anotadas a lo largo del grupo (crudas, con repeticiones entre informes) | **76** |
+| Abiertas al relevamiento de formas, ya consolidadas | **46** |
+| + las dos últimas tandas | **+12 = 58** |
+| **Volcadas a `PENDIENTES.md`** | **42** |
+| Resueltas en tandas posteriores a su anotación | **13** |
+| **Descartadas al verificarlas contra el código** | **2** |
+| Dejó de ser inconsistencia y pasó a ser regla | **1** |
+| Fusionadas con otra | **3** |
+| Nueva, aparecida en esta verificación | **+1** (`viewportFit`) |
+
+**Las 13 que ya estaban resueltas** y por eso no se escribieron: los radios a 2 px de DESIGN, los siete altos de botón, el contraste de las casillas, las otras tres casillas invisibles, los botones rectos del alta, la forma de diálogos y menús, los filtros de admin, el botón de menú tapando los títulos, la estructura de las opciones de operación, el número de línea del warning, y los dos documentos desactualizados (que cerró esta misma tanda).
+
+**Las 2 descartadas** están escritas en el archivo con lo que se midió, para que nadie las vuelva a anotar: la quita del "15" con característica de 4 dígitos (**probadas las 9.900 posibles, cero casos erróneos**) y el `relative` del botón (**cero hijos `absolute` en todos los usos de `<Button>`**).
+
+**El criterio de prioridad, y por qué ése.** No ordena el **costo de arreglarlo** sino **a quién le pasa algo si se deja**, y el marco es el calendario: fundadoras en septiembre, publicidad en octubre.
+
+- **P0 (1)** — puede comprometer los datos de una agencia frente a otra. Antes del primer cliente que no controlamos.
+- **P1 (7)** — una inmobiliaria o un visitante lo ve y **cambia lo que hace o lo que carga**.
+- **P2 (16)** — accesibilidad y coherencia visible: no bloquea, pero deja a alguien afuera o da imagen despareja.
+- **P3 (18)** — deuda interna, documentación y cosmético.
+
+⚠ **La decisión de orden que más discutiría, y por qué la sostengo:** las dos inconsistencias de las **casillas** están en **P1, no en accesibilidad**, aunque el arreglo sea una clase de color. Es la aplicación directa de la lección: **producen datos mal cargados**, y el costo de arreglar algo no dice nada sobre su prioridad. Por el mismo criterio, cosas que "se ven peor" —los dos altos de hoja, los FABs que desaparecen de golpe— están en P3.
 
 ---
 
-## 4. La escala de altos
+## 3. Afirmaciones falsas que encontré
 
-| Tamaño | Alto | Relleno | Texto | Para qué |
-|---|---|---|---|---|
-| **L** | **44** | 16 | 14 px | Acción principal de una pantalla o de un formulario, CTAs, FABs, WhatsApp |
-| **M** | **36** | 12 | 14 px | Contexto denso: filas de tabla, encabezado, filtros |
-| **S** | **28** | 10 | 12 px | Sobre una imagen o un mapa. ⚠ Bajo el mínimo táctil: lleva área de toque extendida |
-| Íconos | 44 / 36 / 28 | — | — | Botones de solo ícono, en la misma escala |
+**En `DESIGN.md`** (las cinco corregidas):
 
-En `ui/button.tsx`: `default` = L, `sm` = M, `xs` = S, `lg` = L con más ancho (`px-8`).
+| Decía | Lo medido |
+|---|---|
+| `### Extensión en tailwind.config.ts` con un bloque `theme.extend.colors` | **No existe ningún `tailwind.config.*` en el repo.** Es Tailwind v4: los tokens están en `@theme inline` de `globals.css:8`. Ese objeto no lo lee nadie |
+| §4: el layout móvil es *"Filtros (chips inline, scroll horizontal)"* y un FAB único *"Ver en mapa"* en `bottom-6 right-6` | **Nunca hubo chips inline.** Son **dos** FABs en `left-4`/`right-4`, y los filtros abren una **hoja desde abajo** |
+| §16: los FABs *"se ocultan cuando el PropertyModal está abierto"* | También con la hoja de filtros, desde la primera tanda del grupo |
+| §13: los FABs respetan `env(safe-area-inset-bottom)` | **Cierto y sin efecto:** `layout.tsx:65-67` declara solo `themeColor`, y **sin `viewportFit: "cover"` esas variables valen 0 en todo dispositivo**. La regla está escrita, aplicada, y no hace nada |
+| §7: el listado del panel sin las columnas de visitas y consultas | Las tiene desde el 14 sep (`PropertiesTable.tsx:228-229` y `:391-401`) |
 
-**Qué se movió** (medido donde la pantalla es pública):
+**En `CLAUDE.md`:** el warning del baseline en **`:808`** (dos veces) cuando está en **`:814`** — exactamente el número desactualizado que anticipaba el prompt. Y el árbol de carpetas sin `components/forms/` ni `phoneWa.ts`, que existen desde la segunda tanda.
 
-| Botón | Antes | Después |
-|---|---|---|
-| `Button` por defecto (inicio de sesión, registro, plan, diálogos) | 40 | **44 (L)** |
-| `Button` `icon` | 40 | **44** |
-| Filtros del mapa · operación (Venta/Alquiler/Temporal) | 36 (`py-2`) | **36 (M)**, ahora por alto explícito |
-| Filtros del mapa · tipo de propiedad | **34** | **36 (M)** |
-| Filtros del mapa · moneda USD/ARS | **32** | **36 (M)** |
-| Filtros del mapa · dormitorios | 36 | **36 (M)** |
-| Filtros del mapa · "Limpiar filtros" | ~42 (`py-2.5`) | **44 (L)** |
-| Lista de propiedades · "Limpiar filtros" del estado vacío | **40** | **44 (L)** |
-| Mapa de ubicación · "Centrar" | **32** | **28 (S)** + área de toque |
-| Detalle · "Ver ficha completa" | 28 (`py-1.5`) | **28 (S)** + área de toque |
-| Tablas · menú `⋯` y eliminar agente (×4) | **30** (`p-1.5`) | **36 (M)** |
+**En `PENDIENTES.md`:** el mismo `:808` (dos veces), y el ítem D3 describiendo "el panel desplegable actual" cuando hoy es una hoja.
 
-**Medido después, en pantalla:** FABs 44 · WhatsApp del detalle 44 · "Compartir" y "Ver todas las propiedades" de la ficha 44 · los cuatro grupos de filtros 36 · "Limpiar filtros" 44 · "Ver ficha completa" 28.
+**En la propia lista de inconsistencias**, dos afirmaciones que arrastraba de informes anteriores:
+
+- *"Etiquetas en MAYÚSCULAS a **14 px**"* → son **12 px** (`text-xs`). El desvío contra DESIGN existe, pero es otro número.
+- *"La quita del 15 **podría** fallar"* → estaba anotada como no verificada; **se verificó y no falla**.
 
 ---
 
-## 5. El área de toque de los tamaños chicos
+## 4. Baseline de calidad
 
-El recurso ya estaba en el proyecto: **`ui/checkbox.tsx`** extiende el área con un pseudo-elemento (`after:absolute after:-inset-x-3 after:-inset-y-2`) sin cambiar el dibujo. Se siguió ese molde en los tres lugares con tamaño S:
-
-- `ui/button.tsx`, tamaño `xs` e `icon-xs`: `after:absolute after:-inset-x-2 after:-inset-y-2`.
-- `PropertyModal`, "Ver ficha completa".
-- `LocationPicker`, "Centrar".
-
-**Medido sobre el detalle de propiedad abierto en un teléfono (390 px):**
-
-```
-"Ver ficha completa": alto dibujado 28 px · ancho 146,6
-  área de toque ::after → top -8px, bottom -8px
-  alto efectivo 44 px · ancho efectivo 162,6 px
-```
-
-Y en "Centrar" queda además escrito en el código que **no es la única forma de hacer lo mismo**: arrastrar el pin también recentra.
-
----
-
-## 6. La lista de exclusiones, una por una
-
-| Exclusión | Estado | Evidencia |
-|---|---|---|
-| Botones de solo ícono circulares sobre fotos y mapa | **Intactos** | Los 19 `rounded-full` siguen en sus 10 archivos. Medido: "Cerrar" y "Compartir" del detalle siguen círculos de 36 px |
-| Avatares, interruptor, puntos del carrusel, barras de progreso, franjas | **Intactos** | Mismos `rounded-full`; `PreferencesContent` (interruptor), `Sidebar` y `ProfileForm` (avatares), `PlanBadge` y `SubscriptionContent` (progreso) sin cambios |
-| **Esquinas superiores de las hojas** | **Intactas, y nombrado como excepción** | `--radius-xl: 0.875rem; /* 14px — solo las hojas */` con el motivo escrito en `globals.css`. Medido: hoja de filtros y hoja del detalle, **14 px arriba y 0 abajo** |
-| Campos subrayados de inicio de sesión y registro | **Intactos** | El disparador de `Select` y el `Textarea` conservan `rounded-none`; `Input` no tiene clase de radio. Medido en `/login` y `/register`: **radio 0, alto 40, relleno izquierdo 0** |
-| Pines del mapa y cromo de Leaflet | **Intactos** | Literales de `globals.css`: pin 8 px, círculos 50 %, zoom 8 px, atribución 6 px. No dependen del tema |
-| Esqueletos de carga | **Intactos** | Siguen con `rounded-sm` y `rounded` sueltos; el único efecto es el −2 px general del token |
-| **Etiquetas de formulario (punto 7)** | **NO SE TOCARON** | `ui/label.tsx` conserva `text-xs font-semibold tracking-wide uppercase`. **Siguen en MAYÚSCULAS a 12 px** (14 donde el formulario las pisa), incluidos los 25 usos. Queda como decisión aparte |
-| Tanda anterior: color del borde de las casillas | **Intacto** | `border border-graphite/80` sigue en `ui/checkbox.tsx` |
-| Tanda anterior: opciones de operación | **Estructura intacta** | Siguen `border-terracota bg-white` / `border-stone bg-transparent` con el mismo `p-4`. ⚠ Su radio pasó de 8 a 6 px **por la regla general del tema**, no por un cambio en ese archivo |
-| Tanda anterior: relleno del panel en celular | **Intacto** | `pt-14 md:pt-0` en los dos layouts |
-| Tanda anterior: filtros de administración | **Intacto** | `space-y-4` y la estructura de dos columnas siguen igual |
-
----
-
-## 7. El título del bloque de precios
-
-**De dónde salió el tratamiento:** de los títulos de sección que ya existen en cada pantalla, no de uno nuevo.
-- **Detalle de propiedad:** "Requisitos para alquilar" (`PropertyModal.tsx`) → `<p className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite">`.
-- **Ficha pública:** "Comodidades" (`propiedades/[slug]/page.tsx:304`) → mismo juego de clases, en `<h2>`.
-
-**Detalle de propiedad** (`src/components/map/PropertyModal.tsx`):
-
-```tsx
-        {/* ⚠ UN SOLO título para todo el bloque, no uno por operación: cada
-            línea ya dice a qué operación corresponde. Sin él, una propiedad sin
-            precio cargado mostraba solo "A convenir", sin nada que dijera de qué
-            se estaba hablando. Mismo tratamiento que los otros títulos de sección
-            de esta pantalla ("Requisitos para alquilar"). */}
-        <div className="space-y-1.5">
-          <p className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite">
-            Precio
-          </p>
-          <div className="space-y-2.5">
-          {operations.map((o) => (
-            <div key={o.operation}>
-              {operations.length > 1 && (
-                <p className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite">
-                  {OPERATION_TYPE_LABELS[o.operation]}
-                </p>
-              )}
-              <p className="font-serif text-3xl font-bold text-terracota">
-                {formatPrice(o.price, o.currency)}
-              </p>
-            </div>
-          ))}
-          </div>
-        </div>
-```
-
-**Ficha pública** (`src/app/(public)/propiedades/[slug]/page.tsx`):
-
-```tsx
-        <div className="mt-4">
-          {/* ⚠ UN SOLO título para todo el bloque: cada línea ya dice su
-              operación. Sin él, una propiedad sin precio mostraba solo "A
-              convenir". Mismo tratamiento que los otros títulos de sección de
-              esta página ("Comodidades", "Requisitos para alquilar"). */}
-          <h2 className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite">
-            Precio
-          </h2>
-          <div className="mt-2 space-y-3">
-          {operations.map((o) => (
-            <div key={o.operation}>
-              {operations.length > 1 && (
-                <p className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite">
-                  {OPERATION_TYPE_LABELS[o.operation]}
-                </p>
-              )}
-              <p className="font-serif text-[40px] font-bold leading-none text-terracota">
-                {formatPrice(o.price, o.currency)}
-              </p>
-            </div>
-          ))}
-          </div>
-        </div>
-```
-
-**Medido:** en las dos pantallas el título sale en **11 px, mayúsculas, color `graphite` (rgb 78,74,70)**, con 6 px hasta el precio en el detalle y 16 px de separación del bloque anterior en la ficha. La etiqueta por operación (solo cuando hay más de una) se conservó.
-
----
-
-## 8. ⚠ Qué mirar para evaluar el cambio de aspecto
-
-De mayor a menor impacto visible:
-
-1. **`/login` y `/register`.** El botón principal: antes rectángulo gris oscuro con "INGRESAR" en mayúsculas apretadas a 12 px; ahora redondeado, "Ingresar" en minúsculas a 14 px y 4 px más alto. **Es el cambio más grande de la tanda y lo primero que ve una inmobiliaria.**
-2. **`/register/plan`.** Mismo botón en "Continuar", debajo de las tres tarjetas de plan.
-3. **Un diálogo de confirmación.** En Propiedades, el menú `⋯` de cualquier fila → "Eliminar". Mirar tres cosas juntas: la **caja ya no es recta**, el **título dejó las mayúsculas** y los **dos botones** cambiaron de forma y de texto.
-4. **El menú `⋯` de una fila** (Propiedades o `/admin`): caja redondeada y cada ítem con su propio redondeo al pasar el mouse. ⚠ Los ítems **siguen en mayúsculas**: es deliberado, el prompt solo pedía la forma.
-5. **El panel de filtros del mapa** (home, escritorio): los cuatro grupos de botones ahora miden todos 36 px —antes 36, 34 y 32— y "Limpiar filtros" 44. Es el lugar donde más se nota la escala de altos.
-6. **Las casillas** (filtros del mapa, y en el formulario de propiedades): cuadrados con 4 px de esquina en vez de esquina viva.
-7. **El detalle de una propiedad** (tocar un pin): el título **"Precio"** arriba del número, y "Ver ficha completa" sobre la foto.
-8. **La ficha pública de una propiedad sin precio** (`/propiedades/...`): ahí se ve para qué sirve el título, porque abajo dice solo "A convenir".
-9. **Las tarjetas y secciones del panel**: 2 px menos de esquina. Es el cambio más sutil; conviene mirarlo comparando una tarjeta con el borde de la pantalla, no de memoria.
-10. **Lo que NO tiene que haber cambiado:** los botones circulares sobre la foto del detalle, las esquinas superiores de las hojas al abrirlas desde abajo en el celular, y los campos de inicio de sesión y registro, que siguen siendo una línea sin caja.
-
----
-
-## 9. Inconsistencias nuevas (sin arreglar)
-
-Se suman a las 46 + 6 abiertas de las tandas anteriores.
-
-1. **Los ítems de menú siguen en MAYÚSCULAS a 12 px con espaciado ancho** (`ui/dropdown-menu.tsx`), ahora que los botones dejaron ese tratamiento. Dentro del mismo panel conviven dos voces: un botón "Eliminar agente" en minúsculas y un ítem de menú "ELIMINAR". El prompt pedía solo la forma de los ítems.
-2. **El tamaño `lg` del botón quedó con la misma altura que el `default`** (44): se diferencian solo por el relleno (32 contra 16). Es un tamaño redundante en la escala; hoy no lo usa nadie.
-3. **`icon-lg` quedó igual que `icon`** (44 px) por el mismo motivo; tampoco tiene usos.
-4. **`Badge` y `Card` del preset siguen rectos** (`rounded-none`) y sin ningún consumidor. Si alguien los usa, entran fuera de la regla sin que nada avise.
-5. **El área de toque extendida de "Ver ficha completa" llega a 162,6 px de ancho** sobre la foto del detalle, y los puntos del carrusel están centrados en esa misma franja inferior. Hoy no se tocan (medido en 390 px), pero en una pantalla más angosta podrían quedar a pocos píxeles.
-6. **`ui/button.tsx` ganó `relative` en su base.** Es lo que ancla el área de toque del tamaño chico, pero cambia el bloque contenedor de cualquier hijo posicionado en absoluto dentro de un botón. No encontré ninguno hoy (por lectura), así que queda anotado como algo a vigilar.
-
----
-
-## 10. Baseline de calidad
-
-Borré `.next/` y `tsconfig.tsbuildinfo` antes de correr.
+Corrido **después** de editar los tres `.md`. Borré `.next/` y `tsconfig.tsbuildinfo` antes de la primera corrida.
 
 ### `npx tsc --noEmit`
 
@@ -264,7 +121,6 @@ Sin salida: **0 errores, exit 0.**
 ```
 > marka@0.1.0 lint
 > eslint
-
 
 /home/facuzavaleta89/dev/marka/src/components/properties/PropertyForm.tsx
   814:30  warning  Compilation Skipped: Use of incompatible library
@@ -285,7 +141,7 @@ This API returns functions which cannot be memoized without leading to stale UI.
 LINT_EXIT=0
 ```
 
-**0 errores, 1 warning (el conocido, `react-hooks/incompatible-library`), exit 0.** Misma llamada `watch("amenities")`, misma línea que en la tanda anterior (814).
+**0 errores, 1 warning** (el conocido, `react-hooks/incompatible-library`), **exit 0**. ⚠ **En `:814`, no en `:808`**: es el número que este informe corrigió en los dos archivos.
 
 ### `npx next build`
 
@@ -294,15 +150,10 @@ LINT_EXIT=0
 - Environments: .env.local
 
   Creating an optimized production build ...
-✓ Compiled successfully in 11.4s
+✓ Compiled successfully in 7.7s
   Running TypeScript ...
-  Finished TypeScript in 9.6s ...
   Collecting page data using 3 workers ...
-  Generating static pages using 3 workers (0/20) ...
-  Generating static pages using 3 workers (5/20) 
-  Generating static pages using 3 workers (10/20) 
-  Generating static pages using 3 workers (15/20) 
-✓ Generating static pages using 3 workers (20/20) in 1264ms
+✓ Generating static pages using 3 workers (20/20) in 2.5s
   Finalizing page optimization ...
 
 Route (app)
@@ -329,27 +180,27 @@ Route (app)
 ├ ○ /robots.txt
 └ ƒ /sitemap.xml
 
-
-ƒ Proxy (Middleware)
-
-○  (Static)   prerendered as static content
-ƒ  (Dynamic)  server-rendered on demand
-
 BUILD_EXIT=0
 ```
 
-**Verde, exit 0, 22 rutas**, mismos nombres y tipos. **Sin cambios en el baseline.**
+**Verde, exit 0, 22 rutas.** Como anticipaba el prompt, tocar solo `.md` no movió nada: **idéntico antes y después** de las ediciones.
 
 ---
 
-## 11. Lo que resultó falso o imposible
+## 5. Lo que este prompt afirma y no resultó exacto
 
-**Ninguna decisión resultó imposible.** Las ocho se implementaron como estaban descritas.
+**1. ⚠ `PENDIENTES.md` NO tiene "sección de método", así que la lección fue a otro lado.** El prompt pide meterla "en la sección de método, junto a los otros patrones". Los patrones de método viven **en `CLAUDE.md` → "Método de Diagnóstico"** (ahí están los seis casos de comentarios que mienten, la regla de recorrer de punta a punta y la trampa de las columnas generadas). En `PENDIENTES.md` lo que hay son párrafos de *"Método, lo que dejó el grupo"* al cierre de cada grupo. **Hice las dos cosas**: el patrón completo en `CLAUDE.md`, donde están sus pares, y el resumen con el caso concreto en el cierre del grupo, donde el archivo ya lo espera.
 
-**Precisiones sobre lo que afirma el prompt:**
+**2. "El gesto escucha solo la zona que no scrollea" vale para UNA de las dos hojas.** La de filtros sí, y por estructura. **La del detalle sigue escuchando la hoja entera** (`PropertyModal.tsx:788-790`), sin mirar el scroll: no se tocó a propósito, porque cambiarlo le saca un gesto a quien ya lo usa. Lo documenté como la excepción abierta y es la **inconsistencia 4 (P1)**, no una nota al pie.
 
-1. **"Hoy las tres variables derivan de una sola y dan dos píxeles más que la tabla documentada" — exacto**, y verificado en el CSS compilado antes y después: 6/8/10 → 4/6/8.
-2. **"Verificá si hay elementos que usan el valor base directamente y quedarían descolgados" — no hay ninguno.** `var(--radius)` solo se usaba dentro de las definiciones de los tokens. Sí encontré **seis `border-radius` literales** en `globals.css` (pin del mapa, sus tres círculos, el control de zoom y la caja de atribución de Leaflet): **no dependen del tema y son justamente parte de las exclusiones**, así que quedaron intactos. El único que quedaría "descolgado" en teoría es el pin, a 8 px literales, que hoy coincide con el radio de contenedor.
-3. **"Su alto por defecto queda por debajo del mínimo táctil" — cierto:** el `Button` medía 40 px y DESIGN §6 pide 44. Corregido y medido.
-4. **Una consecuencia que conviene tener presente:** el radio de **las opciones de operación** (tanda anterior) pasó de 8 a 6 px. No toqué ese archivo para eso: es la regla general del tema aplicándose a una clase `rounded-md` que ya estaba. Su estructura, su relleno y sus colores siguen exactamente como los dejó la tanda anterior.
-5. **Sobre el punto 7 (etiquetas):** quedaron **sin tocar** y siguen en mayúsculas. Vale anotar que ahora son, junto con los ítems de menú, lo último que conserva el tratamiento en mayúsculas del preset dentro de los formularios.
+**3. "No respondía la tecla de escape" — se arregló en una sola hoja.** `FilterPanel.tsx:189-196` cierra con Escape; **el detalle no tiene ningún listener** (grep vacío en todo `src/`). Está en la inconsistencia 9 (P2).
+
+**4. "Son más de cincuenta" — sí, pero solo 42 sobreviven a la verificación.** Crudas fueron 76; consolidadas y abiertas, 58. Verificar cada una contra el código de hoy fue la mitad del trabajo de esta tanda, y **16 se cayeron**: trece resueltas, dos que no existen y una que se convirtió en regla.
+
+**5. El ítem de seguridad es como lo describe el prompt, con una precisión que conviene tener.** Confirmado que la policy no restringe columnas y que el rol autenticado puede escribir `role` y `agency_id`. Las precisiones: el permiso **no es por columna sino de tabla entera** (`authenticated=arwdDxtm`, y las nueve columnas tienen `attacl` nulo, o sea **cero restricciones**); `anon` tiene el mismo permiso pero **la policy lo frena** porque exige `auth.uid()`, así que hace falta **una sesión de agente real**; y la agravante que no estaba en el prompt: los caminos que confían en esas dos columnas —gestión de propiedades de la agencia y alta/baja de agentes— **escriben con service role**, que saltea la RLS.
+
+**6. No creé `supabase/pending/`.** La convención del proyecto manda un cambio de schema sin aplicar a `supabase/pending/<fecha>-<tema>.sql`, y ese directorio **no existe hoy** (que es el estado sano). Esta tanda era de documentación y el prompt acotó a tres archivos, así que **el SQL de la corrección quedó escrito dentro del ítem**, listo para copiar. Si querés que además quede como archivo pendiente, es un `Write` de dos líneas.
+
+**7. Dato de procedencia, para que no se lea como medido hoy.** Los números del bloque "Lo que se MIDIÓ al cerrar" (contraste 4,31–5,07:1, radios del CSS compilado, 28→44 px de área de toque, los altos scrolleables) **son las mediciones de las tandas que los produjeron**, recuperadas de sus informes; no las volví a tomar en esta tanda, que no levantó el servidor. Lo que **sí** medí hoy contra el código o la base: las 42 inconsistencias una por una, la policy y los permisos de `agents`, el baseline, y las cinco afirmaciones falsas de `DESIGN.md`.
+
+**8. Una que el prompt da por sentada y es exacta:** *"sus números de radio eran los correctos y el código no los cumplía. Ahora sí"*. Verificado en el CSS compilado y en `globals.css:60-63`: los tres valores coinciden con la tabla de §4 por primera vez.

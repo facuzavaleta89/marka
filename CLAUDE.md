@@ -22,7 +22,7 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 
 **Estado:** Deployado en Vercel, **sin datos reales todavía** (lo cargado es de prueba; el lanzamiento con inmobiliarias fundadoras se apunta a octubre). MVP + multi-agente completos. **Fase White-label cerrada** en lo esencial: Sub-pieza A (ruta `/[slug]` + mapa filtrado + gate de plan), B1 (subir logo) y B2a (mostrar logo + nombre + "powered by Marka." en el header) hechas y probadas. **B2b (variante admin en `disabled`) y C (slug editable) estuvieron EN PAUSA meses y se cerraron el 12–13 sep 2026** — ver el grupo del sitio de marca, al final de este párrafo. **Fase de modelo de agencias CERRADA** (ago 2026): solo-agencias, matrícula + aprobación manual, bloqueo de publicación en la base, sesión unificada. Ver "Aprobación de agencias" abajo. **Fase de cobrabilidad CERRADA** (31 ago – 1 sep 2026): la visibilidad pública ahora depende de que la agencia esté al día (ver "Visibilidad pública de las propiedades") y el panel `/admin` dejó de ser de una sola vía —cancelar solicitud, vencimiento, baja/reactivación, eliminación y cambio de plan (ver "Panel de plataforma")—. **Ese era el bloqueante para poder cobrar y ya no lo es.** **Fase de modelo de la propiedad CERRADA** (3 sep 2026): una propiedad puede ofrecerse en **varias operaciones a la vez** con precio y moneda propios por operación, el **precio es opcional** ("a convenir") y las propiedades en alquiler llevan **requisitos para el inquilino**. Ver "Operaciones, precios y requisitos de la propiedad". **Grupo de archivos de Storage CERRADO** (5–6 sep 2026), en tres tandas: policies finas por agencia, borrado de archivos en los caminos que no lo hacían, y una herramienta de línea de comandos que audita y limpia huérfanos. El bucket quedó en **9 objetos y 707 kB, sin un solo huérfano**; venía de 24 objetos y 6,4 MB con el 89 % del peso en basura. Ver "Imágenes y Storage". **Grupo de blindaje CERRADO** (7 sep 2026, última de sus cinco tandas): una agencia **ya no puede existir sin fila de suscripción** —lo garantiza un trigger en la base— y el choque de matrícula duplicada al aprobar **se explica**, con la matrícula en conflicto y la regla, en vez de un "no se pudo" genérico. Ver "Suscripciones y límites" y "Aprobación de agencias". **La consulta sobrevive al agente** (7 sep 2026): borrar un agente con consultas a su nombre **antes fallaba siempre** contra una clave foránea; ahora la consulta se **desvincula** y conserva el nombre de quien la atendió en una **copia congelada que escribe la base**, no el cliente. En la misma tanda: el registro de una consulta **ya no falla en silencio** en el mapa público, y el aviso previo al borrado de un agente **dice también qué pasa con sus consultas**. Ver "La consulta sobrevive al agente". **Cada propiedad tiene su página pública propia** (7–8 sep 2026): `/propiedades/[slug]`, renderizada en el servidor e indexable, con vista previa enriquecida al compartir el enlace, botón de compartir, mapa del sitio y archivo de instrucciones para buscadores. Y **el modal dice quién publica**: logo y nombre de la inmobiliaria más el nombre del agente que atiende. Ver "Página pública de la propiedad" y "Quién publica". **Grupo de captación y difusión CERRADO** (10 sep 2026, con su tercera y última pieza): el enlace del encabezado público que decía **"Ingresar"** —sin decir para quién era— es ahora una **puerta de captación**: un llamado a sumar la inmobiliaria que lleva al registro, más el ingreso como enlace secundario. La pieza además **desduplicó** ese enlace, que estaba escrito en dos archivos y cuyas copias ya habían empezado a divergir, y le puso al encabezado de la home las **guardas de ancho** que tenía el del sitio de marca y a él le faltaban enteras. Ver "El encabezado público". **Grupo de coherencia del panel CERRADO** (10–11 sep 2026, cinco tandas): era un grupo chico —un cartel, un banner y una ruta— y **destapó el bug más caro medido hasta ahora**: pedir un plan mayor **sacaba a la agencia del mapa** hasta que el dueño se lo activara a mano, porque el pedido escribía `status: 'pending'` y la regla de visibilidad exige `'active'`. **Una agencia que quería pagar más se apagaba sola.** De ahí salió la regla que gobierna el modelo de planes: **un pedido abierto se detecta por `pending_plan`, NUNCA por el estado** (ver "Un pedido de plan abierto"). En la misma tanda: el panel ahora **dice cuándo una agencia no se está viendo** (cartel de tres motivos, nunca dos a la vez, con un helper nuevo espejo de la regla de visibilidad), el **banner de error** se extrajo de las cuatro copias que ya habían divergido, `/register/plan` entró a la lista de rutas protegidas, y **dos mensajes dejaron de prometer lo que el cupo del aterrizaje no permite**. Ver "El cartel de visibilidad del panel" y "El estado de aterrizaje y su cupo". **Grupo del sitio de marca CERRADO** (12–13 sep 2026, cuatro tandas), y con él las dos sub-piezas que llevaban meses en pausa. **(1)** La dirección del sitio **ya se puede editar** —antes se generaba del nombre y no se cambiaba desde ningún lado—, y antes hubo que cerrar un agujero que ya existía: **no había NINGUNA lista de direcciones reservadas**, así que una agencia podía quedarse con `admin` o `precios` y dejar su propio sitio inalcanzable en silencio. **(2)** El sitio apagado **le habla a su administrador**: seis motivos distintos, con botón solo en los tres que él puede resolver, y un descarte por cookie para que el visitante anónimo no pague nada. **(3)** El cambio de nombre quedó completo: dos columnas de rastro, la distinción en el panel y **dos formas de rechazo**, porque rechazar un nombre no es lo mismo que rechazar una agencia que venía funcionando y pagando. **(4) Y recién en la cuarta tanda se descubrió que las tres anteriores se habían construido sin que existiera el campo para pedir el cambio**: una capacidad entera en el servidor sin punta en la interfaz. De ahí salió la regla de método más cara del grupo (ver "Método de Diagnóstico" → recorrer de punta a punta). Ver "La dirección del sitio de marca", "El sitio apagado le habla a su dueño" y "El cambio de nombre de la agencia". **El contador de visitas cuenta** (14 sep 2026, tres tandas): la columna `views_count` valía **0 en todas las propiedades** porque la función que la incrementa existía en la base y **ningún camino del código la llamaba**, y era lo primero que una inmobiliaria iba a mirar en su panel. **(1)** El listado del panel muestra **visitas y consultas por propiedad**, separadas y en todos los planes, con los contactos traídos en **una sola consulta agregada**. **(2)** La visita se cuenta desde **tres lugares** —pin, tarjeta de la lista y ficha pública—, **una vez por propiedad por visitante**, y en la ficha **con la primera interacción, nunca al montar**. **(3)** Contar una visita **movía la fecha de modificación que el mapa del sitio le informa a los buscadores**; se cerró con una guarda en la base que acopla dos funciones por una variable de transacción. **Y el primer intento de esa guarda falló por una trampa de PostgreSQL** que quedó escrita en "Método de Diagnóstico": dentro de un trigger BEFORE, la columna generada todavía no tiene su valor. Ver "Visitas y consultas por propiedad" y "Base de Datos" → la guarda de `updated_at`.
 
-**Baseline de calidad medido (no documentado de memoria; última medición: 14 sep 2026):** `npx tsc --noEmit` 0 errores (exit 0), `npm run lint` **0 errores y 1 warning** (`PropertyForm.tsx:808`, exit 0), `npx next build` verde (exit 0) con **22 rutas**. Cualquier error nuevo, un warning distinto del único conocido, o una ruta que aparezca sin motivo, es una regresión.
+**Baseline de calidad medido (no documentado de memoria; última medición: 14 sep 2026):** `npx tsc --noEmit` 0 errores (exit 0), `npm run lint` **0 errores y 1 warning** (`PropertyForm.tsx:814`, exit 0), `npx next build` verde (exit 0) con **22 rutas**. *(Re-medido el 15 sep 2026 al cerrar el grupo de pulido: sin cambios salvo el número de línea del warning.)* Cualquier error nuevo, un warning distinto del único conocido, o una ruta que aparezca sin motivo, es una regresión.
 
 > ⚠ **Las rutas pasaron de 19 a 22, y es la ÚNICA vez que el número se movió.** Las tres nuevas son de la página pública de la propiedad: **`/propiedades/[slug]`** (la página, dinámica), **`/sitemap.xml`** (dinámica: ver "Infraestructura de buscadores") y **`/robots.txt`** (estática). Las dos últimas no son código de aplicación sino **archivos de convención de Next**, que cuentan como ruta en ese listado igual que `/apple-icon.png`, que ya estaba. Las 19 anteriores siguen las 19, con el mismo nombre y el mismo tipo (`○`/`ƒ`).
 >
@@ -385,7 +385,10 @@ prometer lo que la base va a rechazar si alguna vez alguien borra una fila a man
 │   │   │   │                              publica". Sobre la foto: cerrar, compartir, favorito y el botón
 │   │   │   │                              "Ver ficha completa" (los cuatro absolute: cuestan 0px de alto)
 │   │   │   ├── FilterPanel.tsx          ← Filtros (checkboxes shadcn, commit on-blur). Operación es
-│   │   │   │                              MÚLTIPLE; el rango de precio solo se habilita con UNA marcada
+│   │   │   │                              MÚLTIPLE; el rango de precio solo se habilita con UNA marcada.
+│   │   │   │                              ⚠ Se monta DOS VECES: panel lateral en escritorio y HOJA desde
+│   │   │   │                              abajo en celular (`h-[85vh]`), que cierra con ✕, velo, Escape
+│   │   │   │                              y arrastre. Ver "Las hojas que suben desde abajo"
 │   │   │   ├── CityPicker.tsx           ← Selector de ciudad (lee cityStore). Es el slot ELÁSTICO del
 │   │   │   │                              encabezado: `min-w-0` afuera y el nombre en un `<span>` con
 │   │   │   │                              `truncate` — suelto era un item anónimo, imposible de recortar
@@ -407,6 +410,12 @@ prometer lo que la base va a rechazar si alguna vez alguien borra una fila a man
 │   │   │   └── ErrorBanner.tsx          ← Banner de error DESCARTABLE (Client Component, ✕ para cerrar).
 │   │   │                                  Extraído de sus 4 copias, que ya habían divergido.
 │   │   │                                  ⚠ El margen viene de afuera: ver "Avisos persistentes"
+│   │   ├── forms/
+│   │   │   ├── fieldStyles.ts           ← ⚠ LA ÚNICA DEFINICIÓN DEL CAMPO CON CAJA. Constantes, no una
+│   │   │   │                              variante de `Input`: la misma caja viste contenedores que no son
+│   │   │   │                              un input (los campos con prefijo). Ver "El campo con caja"
+│   │   │   └── PhoneWaInput.tsx         ← Campo de teléfono con el prefijo "+54 9" fijo y visible, en las
+│   │   │                                  dos familias (caja y subrayado) + el aviso de número a revisar
 │   │   ├── properties/
 │   │   │   ├── PropertyCard.tsx         ← Card editorial reutilizable. Kicker con todas las operaciones,
 │   │   │   │                              UN precio (el de getDisplayOperationPrice, según el filtro).
@@ -512,6 +521,9 @@ prometer lo que la base va a rechazar si alguna vez alguien borra una fila a man
 │   │       │                              opuestas (ver "Los dos helpers que parecen lo mismo")
 │   │       ├── getLatestRejectionNote.ts ← Motivo del último rechazo (agency_reviews, service role) verificando pertenencia antes de devolver nada
 │   │       ├── licenseNumber.ts         ← Formato y normalización de la matrícula, compartidos por el alta y por Preferencias
+│       ├── phoneWa.ts               ← Fuente única del teléfono: normalización de TODAS las formas en que
+│       │                              se escribe un celular argentino, validación y el campo de zod.
+│       │                              ⚠ `splitStoredPhoneWa` NUNCA corrige un número guardado
 │   │       ├── resolveAgencyBySlug.ts   ← Resuelve slug → agencia + suscripción + ciudad (service role). 3 estados: not_found / disabled / active. `disabled` = 3 gates (aprobación + has_white_label + pago vía RPC agency_is_publicly_visible). White-label
 │   │       ├── authErrors.ts            ← translateAuthError: mapea errores de Supabase Auth a español (registro + alta de agente)
 │   │       ├── storagePath.ts           ← PROPERTY_IMAGES_BUCKET + extractStoragePath(url): string | null.
@@ -593,8 +605,8 @@ prometer lo que la base va a rechazar si alguna vez alguien borra una fila a man
 
 ### ESLint
 - El patrón `setIsLoading(true)` al inicio de efectos: usar IIFE async dentro del efecto. No bajar la regla globalmente.
-- **Baseline medido: 0 errores y 1 warning.** El único warning es `react-hooks/incompatible-library` en `PropertyForm.tsx:808` (`watch("amenities")`): el React Compiler detecta que el `watch()` de react-hook-form no se puede memoizar y renuncia a memoizar el componente. Es inherente a la librería, no un defecto del código; no bloquea el build. **Cualquier otro warning es una regresión.**
-- **La regla señala UNA sola llamada: la primera `watch()` del componente.** `PropertyForm.tsx` tiene cuatro (`amenities`, `lat`, `lng`, `address`) y el warning es uno solo, así que **al agregar campos nuevos no hay que usar `watch()`: hay que usar `Controller`**. Es lo que hacen el bloque de operaciones y precios y la sección de requisitos, y por eso ninguno de los dos sumó un warning. (Histórico: el warning apuntaba antes a `watch("currency")` y a un segundo idéntico en `RegisterForm.tsx`; los dos desaparecieron con sus campos, y el señalamiento se corrió a la `watch()` siguiente.)
+- **Baseline medido: 0 errores y 1 warning.** El único warning es `react-hooks/incompatible-library` en `PropertyForm.tsx:814` (`watch("amenities")`): el React Compiler detecta que el `watch()` de react-hook-form no se puede memoizar y renuncia a memoizar el componente. Es inherente a la librería, no un defecto del código; no bloquea el build. **Cualquier otro warning es una regresión.**
+- **La regla señala UNA sola llamada: la primera `watch()` del componente.** `PropertyForm.tsx` tiene cuatro (`amenities`, `lat`, `lng`, `address`) y el warning es uno solo, así que **al agregar campos nuevos no hay que usar `watch()`: hay que usar `Controller`**. Es lo que hacen el bloque de operaciones y precios y la sección de requisitos, y por eso ninguno de los dos sumó un warning. (Histórico: el warning apuntaba antes a `watch("currency")` y a un segundo idéntico en `RegisterForm.tsx`; los dos desaparecieron con sus campos, y el señalamiento se corrió a la `watch()` siguiente.) ⚠ **El NÚMERO DE LÍNEA se mueve con cualquier edición del archivo** —fue `:269`, `:808`, `:804` y hoy es **`:814`**—, así que **no es parte del baseline**: lo que hay que verificar es que siga siendo **un solo warning, de esa regla, sobre `watch()`**. Un número distinto acá no es una regresión; dos warnings sí.
 
 ### Estilos
 - Tailwind, sin CSS-in-JS ni módulos CSS. shadcn/ui para componentes base
@@ -602,6 +614,75 @@ prometer lo que la base va a rechazar si alguna vez alguien borra una fila a man
 
 ### Comentarios
 - Lógica de negocio en español, código en inglés
+
+---
+
+## Formas, alturas y tipografía de los controles
+
+> Espejo de `DESIGN.md` §4 y §6. Acá va lo que un cambio de código necesita saber; allá, cómo se ve.
+
+### ⚠ LA FORMA LA DECIDE QUÉ ES EL ELEMENTO, NO DE DÓNDE VINO NI DÓNDE ESTÁ
+
+**Un botón es un botón en el alta, en el panel y adentro de un diálogo, y lleva el mismo radio en los tres lados.** El criterio **no** es la pantalla, **no** es la librería de origen y **no** es "lo que traía el preset".
+
+| Familia | Qué es | Token | Píxeles | Qué entra |
+|---|---|---|---|---|
+| **Marca chica** | se lee, no se toca | `rounded-sm` | **4** | chips, badges, etiquetas de estado, **casillas** |
+| **Tocable / rellenable** | se toca, o se escribe adentro | `rounded-md` | **6** | botones, campos con caja, selectores, segmentados, **ítems de menú y de desplegable** |
+| **Contenedor** | contiene a lo anterior | `rounded-lg` | **8** | tarjetas, secciones, paneles, avisos, **diálogos, menús, desplegables** |
+| **Circular** | circular por naturaleza | `rounded-full` | — | avatares, interruptor, puntos del carrusel, barras de progreso, botones de solo ícono sobre fotos y mapa |
+| **Sin caja** | el campo subrayado | `rounded-none` | **0** | `Input`, `Textarea`, `SelectTrigger` |
+
+**⚠ QUE UN COMPONENTE VENGA DEL PRESET "Sera" NO LO EXIME.** El preset trae sus propios radios —varios en `rounded-none`— y **se sobreescriben en `components/ui/`**. Al agregar un componente nuevo con `npx shadcn add`, lo primero es mirar qué radio trae y llevarlo a la tabla.
+
+**Los tres valores son FIJOS EN PÍXELES y no se derivan de `--radius`** (`globals.css:60-63`). ⚠ Antes salían de `--radius` con multiplicadores (0,6 / 0,8 / 1) y daban **6 / 8 / 10**: dos píxeles por encima de la tabla documentada, **en toda la app a la vez**. Si alguien vuelve a derivarlos, el desvío reaparece en los 247 elementos de una sola vez y sin ningún síntoma.
+
+**Excepciones deliberadas, con su motivo** (no "unificar" ninguna):
+
+| Excepción | Valor | Por qué |
+|---|---|---|
+| Esquinas **superiores** de las dos hojas | `rounded-t-xl` = **14px** | Es el gesto de una hoja que entra desde el borde. `--radius-xl` existe **solo para esto**; no bajarlo por coherencia |
+| Esquinas **inferiores** de esas hojas | **0** | Están contra el borde de la pantalla |
+| Botones circulares sobre fotos y mapa | `rounded-full` | Flotan sobre una imagen: el círculo es lo que los separa del fondo |
+| Pines y cromo de Leaflet | **siete `border-radius` literales** en `globals.css` (pin 8px `:231`, su punta 2px `:267`, sus badges y el cluster 50% `:286`/`:307`/`:362`, zoom 8px `:409`, atribución 6px `:441`) | **No pasan por el tema**: los dibuja CSS suelto sobre elementos que crea la librería. Cambiar un token no los toca |
+| Esqueletos de carga | `rounded` (4px, literal de Tailwind) | No son un elemento: son la silueta de uno |
+| `Input` / `Textarea` / `SelectTrigger` | `rounded-none` | Familia subrayado (ver "El campo con caja") |
+
+### La escala de altos de botón
+
+`ui/button.tsx` tiene **tres alturas y nada más**, y la escala está comentada en el propio archivo. El mínimo táctil de accesibilidad es **44 px**, así que ése es el tamaño por defecto:
+
+| Tamaño | Variante | Alto | Relleno | Para qué |
+|---|---|---|---|---|
+| **L** | `default` (y `lg`: igual de alto, más ancho) | **44** | 16px (32 en `lg`) | Acción principal de una pantalla o un formulario: CTAs, WhatsApp, FABs, botones de diálogo |
+| **M** | `sm` | **36** | 12px | Contexto denso donde 44 px rompen el ritmo: filas de tabla, encabezados, filtros |
+| **S** | `xs` | **28** | 10px | Sobre una imagen o un mapa, donde el botón compite con el contenido |
+| Íconos | `icon` / `icon-sm` / `icon-xs` | 44 / 36 / 28 | — | Los mismos tres, cuadrados |
+
+#### ⚠⚠ UN BOTÓN DE MENOS DE 44 px LLEVA SIEMPRE ÁREA DE TOQUE EXTENDIDA
+
+**No se dibuja más grande: se le agrega un pseudo-elemento que agranda la zona sensible sin mover el dibujo.**
+
+```
+after:absolute after:-inset-x-2 after:-inset-y-2     ← en el tamaño `xs` e `icon-xs`
+```
+
+Es el recurso que **`ui/checkbox.tsx` ya usaba** (`after:-inset-x-3 after:-inset-y-2`), y por eso el botón base lleva `relative`: sin él, el `absolute` del pseudo-elemento se ancla al ancestro posicionado más cercano y el área aparece en cualquier lado. Los tres tamaños S del proyecto lo tienen: el `xs` del componente, "Ver ficha completa" del detalle y "Centrar" del mapa de ubicación. **Medido: "Ver ficha completa" dibuja 28 px y toca 44.**
+
+⚠ **Un botón chico sin esa extensión es un botón que en un teléfono se falla** — y el que lo falla es una inmobiliaria que paga.
+
+### ⚠ RÓTULO CORTO EN MAYÚSCULAS, FRASE EN MINÚSCULAS
+
+**Los botones dejaron las mayúsculas y los ítems de menú NO, y eso es deliberado: no es una inconsistencia pendiente de emparejar, es la misma regla aplicada a dos casos distintos.**
+
+| | Qué es | Tratamiento | Dónde vive |
+|---|---|---|---|
+| Ítem de menú, etiqueta de formulario, badge, chip, título de sección | un **rótulo** de una o dos palabras ("Editar", "TELÉFONO", "Pileta") | **MAYÚSCULAS**, 11-12px, `tracking-wide`/`wider` | `ui/dropdown-menu.tsx`, `ui/label.tsx` |
+| Botón | puede ser una **frase entera** ("Consultar por WhatsApp", "Ver todas las propiedades en el mapa") | **minúsculas**, 14px, `font-medium` | `ui/button.tsx` |
+
+**El motivo es de legibilidad, no de gusto:** las mayúsculas espaciadas ordenan un rótulo corto y **empeoran una frase**, que además se vuelve bastante más ancha — y el ancho es justo lo que no sobra en un teléfono. Un botón puede crecer a una frase en cualquier momento; un ítem de menú, no.
+
+⚠ **Quien "unifique" los dos casos va a empeorar el que hoy está bien.** Si alguna vez se decide que los ítems de menú bajen a minúsculas, es una decisión de diseño con su motivo, no una corrección de coherencia.
 
 ---
 
@@ -1619,9 +1700,160 @@ El `<Link>` lleva además `relative z-10`: sin eso, el enlace y el fondo de la t
 - Tailwind v4 trae `h-dvh`/`min-h-dvh` nativas (no hace falta el arbitrario `h-[100dvh]`).
 - Los `fixed`/`sticky` (bottom sheets, FABs, marco editorial, sidebar mobile) se reanclan bien y NO se tocan; el problema era solo el chrome en flujo normal sobre wrappers `100vh`.
 
+### El campo con caja — UNA definición, en `src/components/forms/fieldStyles.ts`
+
+Hay **dos familias de campo y las dos son deliberadas**:
+
+| | **SUBRAYADO** | **CAJA** |
+|---|---|---|
+| Dónde | inicio de sesión y registro | todo el panel: perfil, preferencias, equipo, propiedades, `/admin` |
+| Forma | solo borde inferior, **0 px de relleno**, fondo transparente | cuatro bordes, `rounded-md`, **12 px** de relleno, fondo blanco |
+| Origen | el estilo de fábrica de `Input`, `Textarea` y `SelectTrigger` | definición propia |
+
+El relleno cero del subrayado **no es un olvido**: alinea el texto con su etiqueta y con el enlace "Volver al mapa", que comparten ese eje (DESIGN §14).
+
+**La caja vive en un solo lugar** (`FIELD_BOX`, `FIELD_BOX_ERROR`, `FIELD_UNDERLINE_ERROR` y el juego `FIELD_BOX_GROUP*` para los campos con prefijo). **No escribirla a mano en una pantalla.**
+
+#### ⚠ POR QUÉ SON CONSTANTES Y NO UNA VARIANTE DEL COMPONENTE
+
+Dos motivos, y los dos son estructurales:
+
+1. **La misma caja tiene que vestir cosas que NO son un `<input>`:** el **contenedor** de un campo con prefijo fijo (el teléfono, la dirección del sitio de marca), donde la caja la dibuja un `<div>` y el input va adentro sin borde ni fondo. **Una variante de `Input` no llega ahí.**
+2. **Los tres componentes de fábrica** (`Input`, `Textarea`, `SelectTrigger`) consumen la misma clase, así que un solo lugar alcanza para los tres.
+
+#### ⚠⚠ LA TRAMPA QUE LA HIZO NECESARIA — VA A VOLVER A PASAR
+
+**`cn` combina clases con `tailwind-merge`, que resuelve conflictos quedándose con la última clase de cada grupo. Y `border-stone` —un color de los CUATRO lados— es del mismo grupo que `border-transparent` y `border-b-input`, así que LOS ELIMINA.**
+
+Qué producía, en las pantallas que le pasaban al campo subrayado solo un color de borde:
+
+```
+Input (subrayado)  :  border-transparent  border-b-input  px-0
+   + className     :  border-stone
+   = tailwind-merge:  border-stone                        px-0
+                      ↑ cuatro bordes                     ↑ relleno del subrayado
+```
+
+O sea **una caja de cuatro lados con el relleno cero del subrayado**: el texto pegado al borde (medido: 0 px) y **sin anillo de foco**, porque `focus-visible:ring-terracota` sin `ring-2` da un color de anillo sin ancho y no dibuja nada. **Nadie escribió esa caja: la produjo el combinador.** No aparece en ningún archivo y por eso nadie la encontraba leyendo.
+
+**Las dos consecuencias que hay que respetar al tocar esto:**
+
+- **`FIELD_UNDERLINE_ERROR` colorea SOLO el borde inferior.** Pasarle `border-error` —el color de los cuatro lados— dispara exactamente el mismo conflicto: el subrayado se convertía en **una caja roja sin relleno justo cuando había un error**, y el texto se corría respecto de la etiqueta.
+- **`aria-invalid:border-b-error` no es redundante.** Los componentes de fábrica traen `aria-invalid:border-b-destructive`, que **pesa más** (lleva un selector de atributo), así que en un campo con `aria-invalid` el subrayado salía con el rojo del preset y no con el `error` del proyecto. Nombrarla hace que `tailwind-merge` descarte la de fábrica.
+
+⚠ **La regla general, que vale para cualquier componente del preset:** pasarle por `className` una clase del **mismo grupo** que una que el componente ya trae **no la agrega: la reemplaza**, y se lleva puestas a sus hermanas de grupo. Ante un estilo que "no se aplica" o que aparece de la nada, mirar primero qué clase se está pisando.
+
+### Las hojas que suben desde abajo
+
+Son **DOS**, y son hermanas pero no gemelas: la de **filtros** (`FilterPanel.tsx:607`, `h-[85vh]`) y la del **detalle de propiedad** (`PropertyModal.tsx:782`, `h-[82vh]`). Las dos: `fixed bottom-0 inset-x-0 z-[610]`, `rounded-t-xl` arriba y 0 abajo, y se mueven con una transición de 220 ms.
+
+#### Cómo se cierran
+
+| Forma | Filtros | Detalle |
+|---|---|---|
+| Botón ✕ | sí | sí |
+| Tocar el velo | sí | sí |
+| **Tecla Escape** | **sí** (`FilterPanel.tsx:189-196`) | ⚠ **NO** — no tiene ningún listener |
+| **Arrastrar hacia abajo** | **sí, desde la franja y el encabezado** | sí, **desde cualquier parte de la hoja** |
+
+⚠ **La franja gris de arriba PROMETE un gesto, así que tiene que cumplirlo.** Antes estaba dibujada en las dos hojas y solo la del detalle arrastraba: en la de filtros era decorativa (su propio comentario decía *"Handle visual"*). Una affordance que no responde se lee como una app rota, no como una app sin esa función.
+
+#### ⚠ POR QUÉ EL GESTO ESCUCHA SOLO LA ZONA QUE NO SCROLLEA
+
+**Arrastrar para cerrar y scrollear son dos gestos verticales en el mismo lugar.** Si la hoja entera escucha el arrastre, un visitante que vuelve al principio del texto **cierra la ficha sin querer**.
+
+**La solución es ESTRUCTURAL, no una condición sobre `scrollTop`:** los manejadores viven **solo en la franja y en el encabezado** (`FilterPanel.tsx:305`, `:377`, `:616`), y el cuerpo scrolleable es **hermano** del encabezado, no descendiente — así que un `pointerdown` en el cuerpo **nunca llega** a ellos. No hay ninguna condición que se pueda olvidar ni ningún caso borde que revisar.
+
+Las tres piezas finas del gesto, todas necesarias:
+
+| Pieza | Para qué |
+|---|---|
+| **Umbral de 8 px** (`DRAG_SLOP_PX`) | Hasta ahí sigue siendo un toque: la hoja no se mueve y al soltar no pasa nada, así que el click llega a la ✕ |
+| **Captura de puntero diferida sobre un botón** | Si el gesto empieza sobre la ✕, capturar de entrada redirigiría el `pointerup` y el click dejaría de caer en el botón |
+| **Anulación del click posterior a un arrastre** | Un arrastre no termina en click; se apaga en cada `pointerdown`, para no comerse el click de un toque siguiente |
+| **`touch-none` en las dos zonas** | Sin eso el navegador puede reclamar el gesto antes que nosotros |
+
+⚠ **La del detalle NO sigue esta regla y es la excepción abierta** (anotada en `PENDIENTES.md`): escucha `onTouchStart/Move/End` en la raíz de la hoja (`PropertyModal.tsx:788-790`), sin mirar el scroll. **No se tocó** porque cambiarlo le saca un gesto a quien ya lo usa. Si alguna vez se extrae una hoja compartida, es la decisión que hay que tomar primero.
+
+⚠ **Y las dos mueven la superficie con propiedades CSS DISTINTAS:** la de filtros escribe `style.translate` —la **misma** propiedad que usa la clase `translate-y-full`, así que la reemplaza—, y la del detalle escribe `style.transform`, que **se suma** a la de la clase en vez de reemplazarla. En Tailwind v4 `translate-y-*` escribe `translate`, no `transform` (medido: con la hoja abierta y cerrada, `transform` da `none`). Quien toque el gesto del detalle tiene que saber que ahí se componen dos desplazamientos.
+
+#### El presupuesto de alto — medido en 375×667
+
+**Las dos hojas tienen alto FIJO y su cuerpo es lo ÚNICO que cede**, así que cada píxel que se le agrega a una zona fija se lo resta al área que se puede leer.
+
+| | Filtros (85vh = 566,94) | Detalle (82vh = 546,94) |
+|---|---|---|
+| Franja | 20 | 20 |
+| Zona fija | encabezado 57 · pie "Limpiar filtros" 75 **solo si hay filtros activos** | carrusel 220 · zona inferior 129,5 |
+| **Cuerpo scrolleable** | **489,94** sin filtros · **414,94** con filtros | **177,44** |
+
+⚠ **177 px es contra lo que juega quien quiera agregar algo a la zona inferior del detalle** — menos de dos párrafos. Por eso los cuatro botones flotantes (cerrar, compartir, favorito y "Ver ficha completa") van **sobre la foto**, en `absolute`: cuestan **cero** píxeles de alto. Es el primer lugar a mirar antes de sumar una fila.
+
+#### ⚠⚠ TRAMPA — UN CONTENEDOR AL 100 % DEL ALTO CON UN HERMANO ARRIBA DESBORDA
+
+**Apareció en TRES lugares distintos** (`FilterPanel`, `ModalContent` y `ModalSkeleton`) y es la causa única de que el contenido de las dos hojas se saliera **exactamente 20 px** por debajo del borde de la pantalla — los 20 de la franja.
+
+```
+❌  <div className="h-full flex flex-col">      dentro de una hoja que ADEMÁS tiene la franja
+✅  <div className="flex-1 min-h-0 flex flex-col">
+```
+
+**Por qué:** `h-full` es el 100 % del padre, y el padre ya gastó 20 px en la franja; como item de flex, su `min-height: auto` **le impide achicarse**, así que el excedente sale por abajo. `flex-1 min-h-0` le dice que ocupe *lo que quede* y que **puede** achicarse.
+
+**El daño no era cosmético:** dejaba **4 px del botón "Consultar por WhatsApp" fuera de pantalla** en el detalle, y el pie entero de "Limpiar filtros" en los filtros. ⚠ Y `ModalSkeleton` tenía el mismo defecto: corregir solo el contenido real hacía que **todo saltara 20 px al terminar de cargar**.
+
+⚠ **En escritorio NO se nota**, porque ahí el contenedor no tiene hermano arriba y las dos formas miden igual (medido: 744 px las dos). O sea que **se ve solo en un teléfono**.
+
+#### ⚠ TRAMPA — LOS BOTONES FLOTANTES SE PINTAN ENCIMA DE LA HOJA
+
+Los dos FABs están en `z-[610]` y el velo de la hoja en `z-[600]`, así que con una hoja abierta **quedaban encima y seguían siendo tocables**: tocar "Ver lista" cambiaba la vista de atrás **sin cerrar la hoja**, y el botón tapaba el final del contenido. Se ocultan con el mismo render condicional en las dos pantallas que los montan:
+
+```tsx
+{!selectedPropertyId && !filterPanelOpen && ( … )}
+```
+
+⚠ **Subir el z-index de la hoja NO alcanza**: la dejaría por encima pero los botones seguirían ahí, visibles y tocables sobre el velo. Y **ocultarlos es lo que libera el último renglón**: después de arreglar el desborde, la fila "Solo destacadas" ocupa justo donde estaban.
+
 ### WhatsApp
-- `phone_wa` en formato `"5491112345678"`. `generateWaUrl()` retorna `string | null` — verificar antes de usar; si null, deshabilitar botón con mensaje.
+- `phone_wa` en formato `"5491112345678"` (solo dígitos: `549` + característica + número). `generateWaUrl()` retorna `string | null` — verificar antes de usar; si null, deshabilitar botón con mensaje.
 - Registrar lead (con `agency_id`) antes de abrir WhatsApp. **Pero el registro no puede bloquear el contacto** — ver "El registro de la consulta NO puede bloquear al visitante".
+
+### El campo de teléfono — prefijo argentino fijo
+
+**La plataforma es para inmobiliarias argentinas y el número existe para armar un enlace de WhatsApp**, así que no hay selector de país: el campo muestra **`+54 9` fijo y visible** y la persona escribe solo característica y número. Fuente única: **`src/lib/utils/phoneWa.ts`**, que usan los cuatro formularios que escriben un teléfono (perfil, preferencias, alta de agente, registro) **y sus cuatro server actions**.
+
+#### Lo que se guarda NO cambió
+
+| | |
+|---|---|
+| **En la base** | `"549"` + característica + número, solo dígitos (`5493854000000`). **Es lo que consume `generateWaUrl`** y esta pieza no lo tocó |
+| **En pantalla** | el prefijo `+54 9` como texto fijo a la izquierda, y en el campo solo `3854000000` |
+
+**Característica + número son SIEMPRE 10 dígitos** en Argentina, sea cual sea el largo de la característica (11+8, 385+7, 2944+6). Por eso la validación tiene **mínimo y máximo**: sin máximo, un número con el prefijo duplicado (`549549…`) pasaba sin ningún error.
+
+#### Qué limpia al pegar
+
+`normalizePhoneWaNational` acepta **todas** las formas en que se escribe o se dicta un celular argentino:
+
+| Lo que se pega | Queda |
+|---|---|
+| `+54 9 385 400-0000` (contacto copiado del teléfono) | `3854000000` |
+| `5493854000000` (el formato viejo del campo) | `3854000000` |
+| `0385 15 400 0000` (como se dicta en Argentina) | `3854000000` |
+
+Del principio quita, **en cualquier combinación y en bucle**: signos, espacios, ceros, el `54` y el `9`. Es seguro porque **toda característica argentina empieza con 1, 2 o 3**, así que ninguno de los tres puede ser su comienzo. El **`15`** es el caso distinto: **no va al principio sino DESPUÉS de la característica**, así que se busca en las tres posiciones posibles (característica de 2, 3 o 4 dígitos) y **solo cuando sobran exactamente dos dígitos**, que es la única forma de saber que está.
+
+⚠ **Mientras se tipea solo se filtran dígitos, sin quitar prefijos.** Hacerlo tecla por tecla borraría un `5` o un `0` recién escrito antes de que la persona termine. La limpieza completa corre **al pegar, al salir del campo y al validar**.
+
+#### ⚠⚠ UN NÚMERO GUARDADO CON FORMATO INESPERADO SE MUESTRA TAL CUAL Y NO SE CORRIGE NUNCA
+
+Hay números viejos en la base sin el `9` de celular. `splitStoredPhoneWa` los devuelve **enteros, con `recognized: false`**, y el formulario muestra un aviso de revisión. **NO los corrige.**
+
+**El motivo: editar el nombre de un perfil no puede cambiarle el teléfono a alguien sin que lo pida.** Una corrección silenciosa sobre un número que quizás está bien —y que es por donde esa inmobiliaria recibe sus consultas— es la clase de cambio que nadie nota hasta que deja de sonar el teléfono. Por lo mismo, `resolvePhoneWaForSave` recibe el valor **ya guardado** (`preserved`) y, si llega exactamente ese, lo devuelve **sin tocar**: guardar un formulario sin tocar el teléfono no lo reescribe. ⚠ En el servidor `preserved` sale **siempre de la fila real**, nunca del cliente, así que no sirve para colar un valor sin validar.
+
+#### ⚠ LIMITACIÓN ACEPTADA: NO SE PUEDEN CARGAR LÍNEAS FIJAS
+
+El campo antepone **siempre** `549`. Un número escrito con `54` y sin el `9` (`543854000000`) **se guarda con el 9 agregado** (verificado). Es coherente con la decisión de aceptar solo celulares, pero tiene un costo concreto: **una inmobiliaria que atienda WhatsApp Business desde una línea fija —que va sin el 9— no puede cargar su número**, y el campo se lo "corrige" mientras escribe. Anotado en `PENDIENTES.md`; si aparece una fundadora en ese caso, es lo primero a revisar.
 
 ### La consulta sobrevive al agente que la atendió
 
@@ -2392,6 +2624,38 @@ mismo objeto en el mismo momento**.
 ⚠ **El comentario del archivo de migración todavía la llama "HIPÓTESIS NO VERIFICADA"**: se escribió
 antes de encontrar la documentación. Está confirmada; hay que corregirlo la próxima vez que se toque
 ese archivo (ver PENDIENTES.md).
+
+### ⚠⚠ UN DEFECTO "VISUAL" SOBRE UN CONTROL NO ES VISUAL: ES UN AGUJERO DE DATOS (15 sep 2026)
+
+> **Es la lección del grupo de pulido, y es la única de esta lista que no es sobre cómo se diagnostica
+> sino sobre CÓMO SE PRIORIZA.** Se reportó como "se ven mal unas casillas". Lo que estaba pasando era
+> que se cargaban mal las propiedades.
+
+**El caso.** Las casillas sin marcar tenían un borde con **≈ 1,00:1 de contraste** contra el fondo —o sea,
+invisible— y las tres opciones de operación (venta, alquiler, alquiler temporal) **no parecían tocables**.
+La consecuencia no es estética:
+
+> Una inmobiliaria carga una casa que **también alquila**, no ve que la opción se puede marcar, y la
+> publica **solo en venta**. La propiedad queda fuera de los filtros de alquiler. **La consulta que
+> nunca llega no aparece en ningún lado**: no hay error, no hay registro, y ni la agencia ni nosotros
+> podemos distinguir esa propiedad de una que efectivamente solo se vende.
+
+**Por qué no se puede medir después, que es lo que lo vuelve caro.** Un dato que nunca se cargó no deja
+rastro. Cuando aparezca la sospecha —"pocas propiedades en alquiler"— **ya no hay forma de saber cuántas
+fueron un error de carga**, y la corrección exige pedirle a cada agencia que revise su cartera.
+
+**LA REGLA: cuando un defecto visual está sobre un CONTROL —algo que se marca, se elige o se escribe—,
+la pregunta no es "¿se ve mal?" sino "¿QUÉ DATO PRODUCE, Y QUÉ PASA SI NO SE USA?".** Un control que no
+parece operable no se usa, y lo que no se registra **es un agujero silencioso en los datos del negocio**,
+no una imperfección de la interfaz. Eso lo saca de "pulido estético" y lo sube a la prioridad de los
+bugs funcionales.
+
+**Cómo se ve aplicada:** en la lista de inconsistencias de `PENDIENTES.md`, las casillas invisibles
+quedaron en **P1** (junto a lo funcional) y no en el bloque de accesibilidad o de coherencia visual,
+**aunque el arreglo fuera una clase de color**. El costo de arreglarlo no dice nada sobre su prioridad.
+
+⚠ **El corolario incómodo:** el resto del grupo —radios, alturas, mayúsculas— **sí** era estético, y se
+hizo en la misma pasada. La diferencia no estaba en cómo se reportó ninguno de los dos.
 
 ## Diseño
 

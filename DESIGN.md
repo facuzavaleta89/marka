@@ -69,30 +69,11 @@ El diseño comunica que esta es una herramienta seria para profesionales del rea
 }
 ```
 
-### Extensión en `tailwind.config.ts`
+### ⚠ Dónde viven los colores — NO hay `tailwind.config.ts`
 
-```ts
-theme: {
-  extend: {
-    colors: {
-      black:     "#111111",
-      graphite:  "#4E4A46",
-      stone:     "#C8C0B7",
-      mist:      "#EAE4DC",
-      paper:     "#FBF9F6",
-      terracota: {
-        DEFAULT: "#A0522D",
-        hover:   "#8B4526",
-        subtle:  "#F5EDE8",
-      },
-      whatsapp: {
-        DEFAULT: "#25D366",
-        hover:   "#1EBE57",
-      },
-    },
-  },
-}
-```
+**El proyecto usa Tailwind v4, que no tiene archivo de configuración**: verificado, no existe ningún `tailwind.config.*` en el repo. Los tokens se declaran con `@theme inline` en `src/app/globals.css:8`, y de ahí salen las clases (`bg-terracota`, `text-graphite`, `rounded-md`…).
+
+⚠ **Acá había un bloque `theme.extend.colors` de Tailwind v3 presentado como la forma de extender la paleta. Era falso**: ese archivo no existe y ese objeto no lo lee nadie. Quien agregue un color lo agrega al `@theme` de `globals.css`, junto a los radios.
 
 ### Reglas de uso de color
 
@@ -192,39 +173,52 @@ Base: **4px**. Todos los valores de margin/padding son múltiplos de 4.
 
 ### Layout mobile (cards-first)
 
-En mobile, el mapa no es el punto de entrada. Los visitantes en mobile navegan por una lista de cards. El mapa es accesible pero secundario.
+En mobile el mapa no es el punto de entrada. Los visitantes en mobile navegan por una lista de cards. El mapa es accesible pero secundario.
 
 ```
 ┌─────────────────────────┐
 │  Header (56px)          │
-├─────────────────────────┤
-│  Filtros (chips inline, │
-│  scroll horizontal)     │
 ├─────────────────────────┤
 │                         │
 │  Lista de PropertyCards │
 │  (scroll vertical)      │
 │                         │
 ├─────────────────────────┤
-│  FAB: "Ver en mapa" ↗   │  ← floating, bottom-right, terracota
+│ [Filtros]    [Ver mapa] │  ← dos FABs, bottom-left y bottom-right
 └─────────────────────────┘
+        ↑ tocar "Filtros" levanta la HOJA desde abajo (85vh)
 ```
 
 - Breakpoint mobile/desktop: `md` (768px). Bajo ese breakpoint, mostrar cards. Sobre ese, mostrar mapa.
-- El FAB "Ver en mapa" está fijo en `bottom-6 right-6`, fondo terracota, ícono de mapa, texto en DM Sans.
+- **Son DOS FABs, no uno:** el primario "Ver lista / Ver mapa" en terracota (`right-4`) y el secundario "Filtros" en `paper` con borde `stone` (`left-4`). Los dos respetan `env(safe-area-inset-bottom)` — con la salvedad de §13.
+- **Los filtros se abren en una HOJA que sube desde abajo**, no en una tira de chips.
+
+⚠ **Acá decía *"Filtros (chips inline, scroll horizontal)"* y un FAB único *"Ver en mapa"* en `bottom-6 right-6`. Las tres cosas eran falsas** respecto del código: nunca hubo chips inline, los FABs son dos y están en `left-4`/`right-4`. (La tira de chips fijos sigue siendo una idea viva, pero como pieza futura: `PENDIENTES.md` → D3.)
 
 ### Border radius
 
-| Elemento | Valor |
-|---|---|
-| Cards, modales, panels | `rounded-lg` (8px) |
-| Inputs, selects | `rounded-md` (6px) |
-| Badges, chips | `rounded-sm` (4px) |
-| Botones | `rounded-md` (6px) |
-| Avatares | `rounded-full` |
-| Pines del mapa | `rounded-lg` (8px) |
+⚠ **LA FORMA LA DECIDE QUÉ ES EL ELEMENTO — nunca en qué pantalla está ni de qué librería vino.** Un botón es un botón en el alta, en el panel y adentro de un diálogo, y lleva el mismo radio en los tres lados. Que un componente venga del preset "Sera" no lo exime: el preset trae sus propios radios (varios en `rounded-none`) y **se sobreescriben**.
 
-**Regla:** nunca `rounded-full` en cards, botones grandes o contenedores. Reservado para avatares y elementos circulares por naturaleza.
+| Familia | Qué es | Valor | Qué entra |
+|---|---|---|---|
+| **Marca chica** | algo que se lee, no se toca | `rounded-sm` · **4px** | chips de comodidades y de requisitos, badges, etiquetas de estado, **casillas** |
+| **Tocable / rellenable** | algo que se toca o donde se escribe | `rounded-md` · **6px** | botones, campos con caja, selectores, segmentados, **ítems de menú y de desplegable** |
+| **Contenedor** | algo que contiene a lo anterior | `rounded-lg` · **8px** | tarjetas, secciones, paneles, avisos, **diálogos, menús y desplegables** |
+| **Circular** | circular por naturaleza | `rounded-full` | avatares, interruptor, puntos del carrusel, barras de progreso, botones de solo ícono sobre fotos y mapa |
+| **Sin caja** | el campo subrayado | `rounded-none` · **0** | `Input`, `Textarea` y `SelectTrigger` de inicio de sesión y registro |
+
+**Los tres números son fijos y NO se derivan de `--radius`** (`globals.css:60-63`: `--radius-sm: .25rem` · `--radius-md: .375rem` · `--radius-lg: .5rem`). ⚠ Antes salían de `--radius` con multiplicadores (0,6 / 0,8 / 1) y daban **6 / 8 / 10**: o sea **2 px por encima de esta tabla, en toda la app**. Los números de acá eran los correctos y el código no los cumplía; desde el 15 sep 2026 sí.
+
+**Las excepciones, todas deliberadas:**
+
+| Excepción | Valor | Por qué |
+|---|---|---|
+| **Esquinas SUPERIORES de las hojas** que suben desde abajo | `rounded-t-xl` · **14px** | Es el gesto de una hoja que entra desde el borde; con 8 px se lee como una tarjeta pegada abajo. ⚠ `--radius-xl` existe **solo para esto** y no hay que bajarlo "por coherencia" |
+| **Esquinas inferiores de esas hojas** | **0** | Están contra el borde de la pantalla: un radio ahí dibujaría dos esquinas flotando sobre el fondo |
+| **Pines y cromo de Leaflet** | literales en `globals.css` (pin 8px, sus círculos 50%, zoom 8px, atribución 6px) | No pasan por el tema: los dibuja CSS suelto sobre elementos que crea la librería |
+| **Esqueletos de carga** | `rounded` (4px) | No son un elemento, son la silueta de uno |
+
+**Regla que se mantiene:** nunca `rounded-full` en cards, botones grandes o contenedores. Reservado para avatares y elementos circulares por naturaleza.
 
 ### Sombras
 
@@ -342,6 +336,7 @@ El modal se abre al hacer click en un pin. En desktop es un drawer desde la dere
 ├─────────────────────────────────┤
 │  Tipo · Operación               │  DM Sans 12px, graphite, uppercase
 │  Título de la propiedad         │  Noto Serif H2
+│  PRECIO                         │  DM Sans 11px, graphite, uppercase
 │  USD 250.000                    │  Noto Serif 32px bold, terracota
 │  ─────────────────────────────  │  divider stone
 │  📍 Dirección, Barrio           │  DM Sans 14px, graphite
@@ -357,6 +352,10 @@ El modal se abre al hacer click en un pin. En desktop es un drawer desde la dere
 │  [● Consultar por WhatsApp]     │  ← fondo whatsapp-green, full-width
 └─────────────────────────────────┘
 ```
+
+**El título "Precio" (las dos pantallas):**
+
+Un solo rótulo para todo el bloque, con el tratamiento de los otros títulos de sección de cada pantalla (DM Sans 11px SemiBold uppercase `tracking-wider`, `graphite`). ⚠ **Uno solo, no uno por operación:** cada línea ya dice a qué operación corresponde, y cuando hay una sola no hay ninguna etiqueta. Sin él, una propiedad sin precio cargado mostraba **"A convenir" suelto**, sin nada que dijera de qué se estaba hablando — y ése es el caso frecuente, no el borde (7 de 18 propiedades tienen alguna operación sin precio).
 
 **Bloque "quién publica" (zona inferior):**
 
@@ -403,7 +402,29 @@ Identifica a la inmobiliaria y a la persona que va a atender la consulta. Sin é
 | Ghost | `transparent` | `graphite` | — | Acciones terciarias, cancelar |
 | Destructive | `transparent` | `error` | `error` | Eliminar, desactivar |
 
-Altura estándar: `44px` (cumple accesibilidad táctil). Padding horizontal: `16px`.
+**Altura: TRES tamaños y nada más** (`ui/button.tsx`, la escala está comentada en el propio archivo). El mínimo táctil es **44 px**, así que ése es el tamaño por defecto:
+
+| Tamaño | Variante | Alto | Relleno | Para qué |
+|---|---|---|---|---|
+| **L** | `default` (y `lg`, igual de alto pero más ancho) | **44px** | 16px (32 en `lg`) | La acción principal de una pantalla o de un formulario: CTAs, WhatsApp, FABs, botones de diálogo |
+| **M** | `sm` | **36px** | 12px | Contexto denso, donde 44 px rompen el ritmo: filas de tabla, encabezados, panel de filtros |
+| **S** | `xs` | **28px** | 10px | Sobre una imagen o un mapa, donde el botón compite con el contenido. ⚠ **Por debajo del mínimo táctil** |
+| Íconos | `icon` / `icon-sm` / `icon-xs` | 44 / 36 / 28 | — | Los mismos tres, cuadrados |
+
+⚠ **TODO TAMAÑO POR DEBAJO DE 44 px LLEVA ÁREA DE TOQUE EXTENDIDA, SIN EXCEPCIÓN.** No se dibuja más grande: se le agrega un pseudo-elemento que agranda la zona sensible sin mover el dibujo (`after:absolute after:-inset-x-2 after:-inset-y-2`), que es el recurso que `ui/checkbox.tsx` ya usaba. Medido en el detalle de propiedad: "Ver ficha completa" **dibuja 28 px y toca 44**. Un botón chico sin esa extensión es un botón que en un teléfono se falla, y el que lo falla es un cliente.
+
+**Tipografía del botón: 14px, peso medio (`font-medium`), MINÚSCULAS.** El preset los traía `text-xs font-semibold tracking-widest uppercase` — rectos, en mayúsculas apretadas y a 12 px.
+
+#### ⚠ Rótulo corto en MAYÚSCULAS, frase en minúsculas
+
+Los **ítems de menú y las etiquetas de formulario siguen en mayúsculas** mientras los botones dejaron de estarlo, y **no es una inconsistencia pendiente de emparejar: es la misma regla aplicada a dos casos distintos.**
+
+| | Qué es | Tratamiento |
+|---|---|---|
+| Ítem de menú, etiqueta de formulario, badge, chip, título de sección | un **rótulo** de una o dos palabras ("Editar", "TELÉFONO", "Pileta") | **MAYÚSCULAS** espaciadas: ordenan la pantalla y se leen de un vistazo |
+| Botón | puede ser una **frase entera** ("Consultar por WhatsApp", "Ver todas las propiedades en el mapa") | minúsculas |
+
+**Una frase en mayúsculas espaciadas se lee peor y ocupa bastante más ancho** — que es justo lo que no sobra en un teléfono. Quien unifique los dos casos "por coherencia" va a empeorar el que hoy está bien.
 
 ### PropertyCard (listado mobile y dashboard)
 
@@ -426,11 +447,24 @@ Altura estándar: `44px` (cumple accesibilidad táctil). Padding horizontal: `16
 
 ### Inputs y formularios
 
-- Background: `white` (excepción al uso de `paper` — mejor legibilidad dentro de formularios)
-- Border: `stone` en reposo, `graphite` en focus, `error` en error
-- Label: DM Sans 13px Medium, `black`
-- Placeholder: DM Sans 14px, `stone`
-- Focus ring: `terracota` con `ring-2 ring-terracota ring-offset-1`
+Hay **DOS familias de campo, y las dos son deliberadas**:
+
+| | **SUBRAYADO** | **CAJA** |
+|---|---|---|
+| Dónde | inicio de sesión y registro | todo el panel: perfil, preferencias, equipo, propiedades, `/admin` |
+| Forma | solo borde inferior, sin caja, **0px de relleno** | borde en los cuatro lados, `rounded-md`, **12px** de relleno |
+| Fondo | transparente | `white` |
+| Origen | el estilo de fábrica de `Input`, `Textarea` y `SelectTrigger` (preset Sera) | definición propia del proyecto |
+
+⚠ **El relleno cero del subrayado NO es un olvido:** alinea el texto del campo con su etiqueta y con el enlace "Volver al mapa", que comparten ese eje (§14).
+
+⚠ **LA CAJA TIENE UNA SOLA DEFINICIÓN, Y VIVE EN `src/components/forms/fieldStyles.ts`** (`FIELD_BOX`, `FIELD_BOX_ERROR`, y el juego `FIELD_BOX_GROUP*` para los campos con prefijo fijo). **No escribirla a mano en una pantalla**: es exactamente cómo se rompió antes. El porqué completo —incluida la trampa de `tailwind-merge` que convertía un subrayado en una caja sin relleno— está en `CLAUDE.md` → "El campo con caja".
+
+- Label: DM Sans 13px Medium, `black`. ⚠ **Desvío conocido:** `ui/label.tsx` las dibuja a 12px SemiBold **en mayúsculas** (`text-xs font-semibold tracking-wide uppercase`). Se dejó así a propósito —son rótulos, y entran en la regla de arriba—, pero el tamaño y el peso no coinciden con esta línea. Anotado en `PENDIENTES.md`.
+- Placeholder: DM Sans 14px, `stone`.
+- Border: `stone` en reposo, `graphite` en focus, `error` en error.
+- Focus ring: `ring-2 ring-terracota ring-offset-1`. ⚠ **Desvío conocido:** la familia caja lo dibuja al **20 %** (`ring-terracota/20`) y la familia subrayado **no tiene anillo**. Anotado en `PENDIENTES.md`.
+- **Campo con prefijo fijo** (el teléfono, la dirección del sitio de marca): la caja la dibuja el **contenedor** y el input va adentro sin borde ni fondo; el foco se muestra con `focus-within`, para que el prefijo y lo escrito se lean como un solo campo. El prefijo va en `graphite` y **al mismo tamaño que el input** (es parte del dato, no un texto de ayuda).
 
 ### Badges y chips
 
@@ -500,6 +534,7 @@ La misma propiedad que el modal, pero como **página propia con dirección propi
 │                                              │
 │  CASA · VENTA · ALQUILER          ★ Destacada│  DM Sans 11px uppercase tracking-wider
 │  Casa 3 ambientes en el centro               │  Noto Serif 30/36px bold  ← <h1>
+│  PRECIO                                      │  DM Sans 11px uppercase graphite
 │  USD 250.000                                 │  Noto Serif 40px bold terracota
 │  ARS 450.000            (etiqueta por op.)   │
 │  📍 Mitre 291, Centro — Santiago del Estero  │  DM Sans 15px graphite
@@ -585,6 +620,7 @@ El área privada del agente mantiene la paleta pero con una distribución más f
 - El footer del sidebar tiene dos salidas apareadas: "Ver el mapa" (→ `/`, ícono `Map`) encima de "Cerrar sesión", ambas con ícono 18px y tratamiento `stone`→`paper` en hover. "Ver el mapa" no es navegación interna del dashboard (no va en `NAV_ITEMS`, donde la lógica de item activo usa `pathname.startsWith(href)` y `href="/"` haría match en cualquier ruta): es una salida al sitio público, igual que el logout. Abre en la misma pestaña.
 
 **PropertiesTable (refinado):**
+- **Columnas "Visitas" y "Consultas", separadas** (`views_count` y el conteo de leads), en **todos los planes**. En celular las dos van en una línea: *"N visitas · M consultas"*. ⚠ Un conteo que no se pudo leer se muestra **"—", nunca 0** (que diría "nadie escribió").
 - Thumbnails 64×48 (ratio 4:3), `rounded-md`
 - StatusBadge "Activa" en verde sutil (`bg-success/10 text-success`), no terracota — para no competir con los CTAs
 - Skeleton de tabla mientras carga (`loading.tsx` en la ruta)
@@ -836,7 +872,8 @@ La app es instalable como PWA. Esto implica algunos detalles de diseño:
 - **Íconos de la PWA**: usar el logo sobre fondo `paper`, en `192px` y `512px`
 - **Splash screen**: fondo `paper`, logo centrado, sin texto de carga
 - **Safe areas en mobile**: respetar `env(safe-area-inset-*)` para que el header y el FAB no queden bajo el notch o la barra de gestos
-- El FAB "Ver en mapa" debe respetar `padding-bottom: env(safe-area-inset-bottom)`
+- Los FABs respetan `padding-bottom: env(safe-area-inset-bottom)`
+- ⚠ **PERO HOY ESE `env()` VALE 0 EN TODOS LOS DISPOSITIVOS, así que la regla está escrita, aplicada… y no hace nada.** El `export const viewport` de `src/app/layout.tsx` declara solo `themeColor`: **sin `viewportFit: "cover"` el navegador no expone las zonas seguras** y las cuatro variables devuelven 0. Es una línea, y hasta que esté, cualquier ajuste de márgenes contra el notch se está midiendo contra cero. Anotado en `PENDIENTES.md`.
 
 ---
 
@@ -905,7 +942,7 @@ Card editorial reutilizable. Recibe `PropertyCardData` (un `Pick` de `Property`,
 
 - Par coherente: primario "Ver lista/mapa" en terracota + texto paper; secundario "Filtros" en paper + borde stone + texto graphite
 - DM Sans, rounded-md, shadow-lg, respetan `env(safe-area-inset-bottom)`
-- Se ocultan cuando el PropertyModal está abierto
+- **Se ocultan cuando hay una hoja abierta: la del detalle de propiedad *o* la de filtros.** ⚠ Antes solo se ocultaban con la primera, y con la de filtros abierta quedaban **encima de ella y tocables** (su `z-[610]` gana sobre el velo `z-[600]`): tocar "Ver lista" cambiaba la vista de atrás sin cerrar la hoja, y el botón tapaba el final del contenido. Es un render condicional sobre las dos banderas, en las dos pantallas que montan los FABs.
 
 ---
 
