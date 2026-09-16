@@ -131,10 +131,22 @@ export function splitStoredPhoneWa(stored: string): {
  * El valor a guardar, o `null` si no es un celular argentino válido.
  *
  * `preserved` es el número que YA está guardado. Si llega exactamente ese
- * valor se devuelve sin tocarlo, aunque no tenga el formato esperado: es la
- * forma de que guardar un formulario sin tocar el teléfono no lo reescriba. En
- * el servidor, `preserved` sale SIEMPRE de la fila real, nunca del cliente, así
- * que no sirve para colar un valor nuevo sin validar.
+ * valor se devuelve sin tocarlo: es la forma de que guardar un formulario sin
+ * tocar el teléfono no lo reescriba. En el servidor, `preserved` sale SIEMPRE
+ * de la fila real, nunca del cliente, así que no sirve para colar un valor
+ * nuevo sin validar.
+ *
+ * Desde el 16 sep 2026 un valor guardado SIEMPRE cumple el formato: la base
+ * tiene los CHECK `agents_phone_wa_format` y `agencies_phone_wa_format` con el
+ * mismo patrón que STORED_PATTERN (`^549[1-3][0-9]{9}$`), y los números viejos
+ * sin el 9 se corrigieron antes de agregarlos. O sea que preservar sin validar
+ * ya no puede dejar pasar un número mal formado. La rama se conserva porque no
+ * cuesta nada y evita reformatear lo que no se tocó.
+ *
+ * ⚠ SI ALGÚN DÍA SE ACEPTAN LÍNEAS FIJAS (hoy el formato exige el 549 de
+ * celular), no alcanza con cambiar este archivo: hay que aflojar esos dos CHECK
+ * con un ALTER, o el formulario va a aceptar un número que la base rechaza. Ver
+ * supabase/migrations/20240101000000_initial_schema.sql → "BLINDAJE DE COLUMNAS".
  */
 export function resolvePhoneWaForSave(
   input: string,

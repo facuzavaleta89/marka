@@ -10,6 +10,8 @@ import {
   PROPERTY_IMAGES_BUCKET,
   extractStoragePath,
 } from "@/lib/utils/storagePath";
+import { isStoragePublicUrl } from "@/lib/utils/storagePublicUrl";
+import { translateFormatCheckError } from "@/lib/utils/dbFormatErrors";
 import { RENT_REQUIREMENT_LABELS } from "@/lib/utils/labels";
 import {
   RENT_REQUIREMENTS_OTHER_MAX,
@@ -24,6 +26,26 @@ type ActionResult = { error: string } | undefined;
 // (no hacemos rollback: la propiedad ya existe y el agente puede reintentar).
 const PARTIAL_IMAGES_MSG =
   "La propiedad se guardó pero algunas imágenes no se guardaron. Podés agregarlas desde Editar.";
+
+// Mensaje cuando alguna URL de imagen recibida no es del Storage del proyecto.
+const INVALID_IMAGE_URL_MSG =
+  "Alguna de las imágenes no es válida. Quitala y volvé a subirla.";
+
+// ⚠ LAS URLs DE IMÁGENES SE VALIDAN ANTES DE CUALQUIER ESCRITURA. Llegan del
+// navegador tal como las armó el uploader, y un cliente manipulado puede mandar
+// cualquier cosa. La base las rechaza igual (CHECK property_images_url_storage),
+// pero en la EDICIÓN las imágenes se borran antes de insertar las nuevas: un
+// rechazo recién en el insert dejaría la propiedad sin fotos. Validando acá, un
+// payload inválido no toca nada.
+function hasInvalidImageUrl(images: unknown): boolean {
+  if (!Array.isArray(images)) return true;
+  return images.some(
+    (img) =>
+      typeof img !== "object" ||
+      img === null ||
+      !isStoragePublicUrl((img as { url?: unknown }).url)
+  );
+}
 
 // ─── Tipos para alta y edición ────────────────────────────────
 
@@ -362,6 +384,12 @@ function translatePropertyWriteError(
   if (dbError.message.includes("suscripción")) {
     return "La suscripción de tu inmobiliaria no está activa, así que no podés publicar propiedades. Escribinos para reactivarla.";
   }
+  // Formato de un dato (teléfono, URL de archivo) o el contador de visitas: se
+  // reconocen por el nombre de la constraint o el texto del trigger, así que no
+  // pueden confundirse con los tres de arriba. Van ANTES del cajón de sastre,
+  // que si no los reportaría como límite de plan.
+  const formatError = translateFormatCheckError(dbError);
+  if (formatError) return formatError;
   if (dbError.code === "23514" || dbError.message.includes("Límite")) {
     return limitMessage;
   }
@@ -469,6 +497,9 @@ export async function createPropertyAction(
   if (session.status === "no_session") return { error: "No autenticado" };
   if (session.status === "unlinked") return { error: "Agente no encontrado" };
   const { userId: callerId, agent } = session;
+
+  // Antes de cualquier escritura (ver hasInvalidImageUrl).
+  if (hasInvalidImageUrl(data.images)) return { error: INVALID_IMAGE_URL_MSG };
 
   const { data: agency } = await supabase
     .from("agencies")
@@ -593,6 +624,10 @@ export async function updatePropertyAction(
 ): Promise<ActionResult> {
   const { ok, error, supabase, db, mode } = await authorizePropertyAccess(id);
   if (!ok) return { error: error! };
+
+  // Antes del update de la propiedad y, sobre todo, antes del delete de sus
+  // imágenes (ver hasInvalidImageUrl).
+  if (hasInvalidImageUrl(data.images)) return { error: INVALID_IMAGE_URL_MSG };
 
   // Destacar es un entitlement de la suscripción (has_featured): si la agencia
   // no lo tiene, se ignora el valor que mandó el form. La lectura va con el

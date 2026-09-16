@@ -1848,13 +1848,13 @@ Del principio quita, **en cualquier combinación y en bucle**: signos, espacios,
 
 #### ⚠⚠ UN NÚMERO GUARDADO CON FORMATO INESPERADO SE MUESTRA TAL CUAL Y NO SE CORRIGE NUNCA
 
-Hay números viejos en la base sin el `9` de celular. `splitStoredPhoneWa` los devuelve **enteros, con `recognized: false`**, y el formulario muestra un aviso de revisión. **NO los corrige.**
+`splitStoredPhoneWa` devuelve un número guardado que no cumple el formato **entero, con `recognized: false`**, y el formulario muestra un aviso de revisión. **NO lo corrige.** ⚠ Acá decía que *"hay números viejos en la base sin el `9` de celular"*: dejó de ser cierto el 16 sep 2026, cuando se corrigieron y la base ganó los CHECK `agents_phone_wa_format` / `agencies_phone_wa_format`, así que hoy **no puede haber** un guardado fuera de formato. La rama se conserva por las dudas (ver "Blindaje de columnas" → TRAMPA 7).
 
 **El motivo: editar el nombre de un perfil no puede cambiarle el teléfono a alguien sin que lo pida.** Una corrección silenciosa sobre un número que quizás está bien —y que es por donde esa inmobiliaria recibe sus consultas— es la clase de cambio que nadie nota hasta que deja de sonar el teléfono. Por lo mismo, `resolvePhoneWaForSave` recibe el valor **ya guardado** (`preserved`) y, si llega exactamente ese, lo devuelve **sin tocar**: guardar un formulario sin tocar el teléfono no lo reescribe. ⚠ En el servidor `preserved` sale **siempre de la fila real**, nunca del cliente, así que no sirve para colar un valor sin validar.
 
 #### ⚠ LIMITACIÓN ACEPTADA: NO SE PUEDEN CARGAR LÍNEAS FIJAS
 
-El campo antepone **siempre** `549`. Un número escrito con `54` y sin el `9` (`543854000000`) **se guarda con el 9 agregado** (verificado). Es coherente con la decisión de aceptar solo celulares, pero tiene un costo concreto: **una inmobiliaria que atienda WhatsApp Business desde una línea fija —que va sin el 9— no puede cargar su número**, y el campo se lo "corrige" mientras escribe. Anotado en `PENDIENTES.md`; si aparece una fundadora en ese caso, es lo primero a revisar.
+El campo antepone **siempre** `549`. Un número escrito con `54` y sin el `9` (`543854000000`) **se guarda con el 9 agregado** (verificado). Es coherente con la decisión de aceptar solo celulares, pero tiene un costo concreto: **una inmobiliaria que atienda WhatsApp Business desde una línea fija —que va sin el 9— no puede cargar su número**, y el campo se lo "corrige" mientras escribe. Anotado en `PENDIENTES.md`; si aparece una fundadora en ese caso, es lo primero a revisar. ⚠ Y cambiarlo exige además aflojar los CHECK de teléfono de la base (TRAMPA 7).
 
 ### La consulta sobrevive al agente que la atendió
 
@@ -2372,6 +2372,30 @@ Se vio en las pruebas del 16 sep 2026: antes del cambio, un INSERT con `agency_i
 
 **Consecuencia viva:** si alguien restringe la lectura de `subscriptions` (por ejemplo, solo para admins), **los agentes comunes dejan de poder publicar**, con un mensaje de cupo que no tiene nada que ver. (`check_agency_approved()` lee `agencies`, hoy de lectura pública con `USING (true)`: restringir esa policy tendría el mismo efecto sobre la aprobación.)
 
+##### Blindaje de columnas (16 sep 2026): contador de visitas, URLs de archivos y teléfonos
+
+Cuatro reglas que vivían solo en las server actions pasaron a la base (aplicado a mano, transcripto en el archivo de schema → "BLINDAJE DE COLUMNAS"): `trg_protect_views_count` (las sesiones `anon`/`authenticated` no escriben `views_count`; `increment_views()` y service role sí), los CHECK `property_images_url_storage`, `agents_avatar_url_storage` y `agencies_logo_url_storage` (URL del Storage público del proyecto), y `agents_phone_wa_format` / `agencies_phone_wa_format` (`^549[1-3][0-9]{9}$`). Las actions validan lo mismo **antes** de escribir (`lib/utils/storagePublicUrl.ts`, `lib/utils/phoneWa.ts`) y traducen el rechazo por el **nombre** de la constraint (`lib/utils/dbFormatErrors.ts`), nunca solo por el código: todo CHECK levanta 23514, igual que los gates de publicación.
+
+##### ⚠ TRAMPA 3 — Los CHECK de URL llevan escrito el host del proyecto
+
+`https://mrvkurpampyucoonwgmy.supabase.co/storage/v1/object/public/property-images/` está literal en los tres CHECK. **Migrar a otro proyecto de Supabase exige un ALTER de los tres** y que `NEXT_PUBLIC_SUPABASE_URL` apunte al mismo host, porque `storagePublicUrl.ts` arma el prefijo desde esa variable. Si cambia solo uno de los dos lados, la app deja pasar URLs que la base rechaza, o rechaza las que la base acepta.
+
+##### ⚠ TRAMPA 4 — Un CHECK se evalúa en cualquier INSERT/UPDATE de la fila, aunque no toque esa columna
+
+Un dato viejo inválido **bloquea toda edición de su fila**: un agente con un teléfono mal formado no podría cambiar ni su nombre, y una acción de `/admin` sobre su agencia fallaría. Antes de agregar un CHECK hay que medir las filas que lo violan y corregirlas; para estos se corrigieron dos teléfonos de prueba sin el 9 (`543853000299` → `5493853000299`). En la edición de propiedades además las imágenes se **borran antes** de insertar las nuevas: por eso las URLs se validan en la action antes de cualquier escritura, o un rechazo de la base dejaría la propiedad sin fotos.
+
+##### ⚠ TRAMPA 5 — `protect_views_count()` no puede ser SECURITY DEFINER
+
+Decide por `current_user`, y dentro de una función SECURITY DEFINER `current_user` es **su dueño** (documentación de PostgreSQL). Siendo DEFINER vería siempre `postgres` y no bloquearía a nadie. Es el mismo mecanismo que deja pasar a `increment_views()`: SECURITY DEFINER con dueño `postgres`, así que su `UPDATE` llega al trigger con `current_user = 'postgres'`.
+
+##### ⚠ TRAMPA 6 — La protección del contador y la guarda de `updated_at` usan mecanismos distintos, a propósito
+
+La guarda reconoce a `increment_views()` por la variable `marka.skip_updated_at` (ver abajo). **Esa variable no sirve como permiso: cualquier sesión puede ponerla** con `set_config()` en su propia transacción (probado: un agente con la variable en `'on'` escribía el contador antes del trigger). Para la guarda alcanza —lo peor que logra quien la pone es no mover su propio `updated_at`—; para proteger el contador hace falta el rol. No "unificar" los dos mecanismos.
+
+##### ⚠ TRAMPA 7 — Aceptar líneas fijas exige aflojar los CHECK de teléfono
+
+`resolvePhoneWaForSave` (`phoneWa.ts`) preserva sin validar un valor igual al guardado; con el CHECK en la base, un valor guardado siempre cumple el formato. Pero si algún día se aceptan **líneas fijas** (hoy el formato exige el `549` de celular), no alcanza con cambiar `phoneWa.ts`: hay que aflojar `agents_phone_wa_format` y `agencies_phone_wa_format` con un ALTER, o el formulario acepta un número que la base rechaza.
+
 **Query principal:**
 ```sql
 SELECT ... FROM properties
@@ -2381,7 +2405,7 @@ WHERE city_id = $1 AND status = 'active'
 
 **Amenities** JSONB: filtrar con `.contains("amenities", JSON.stringify([...]))` (genera `@>`). ⚠ **No tiene barrera de dominio en ninguna capa** (zod `z.array(z.string())`, la action escribe sin filtrar, la columna no tiene CHECK): lo que se cuele ahí se renderiza en el modal público. Es deuda anotada — el molde para arreglarlo es el de los requisitos de alquiler. Ver PENDIENTES.md.
 
-**Triggers de `properties` (los TRES gates de publicación, ver "Bloqueo de publicación"), en el orden alfabético en que Postgres los dispara:** `trg_check_agency_approved` (BEFORE INSERT → agencia aprobada), `trg_check_agency_subscription` (BEFORE INSERT → suscripción no `canceled`/`past_due`) y `trg_check_property_limit` (BEFORE INSERT OR UPDATE → cupo del plan; sin fila de suscripción el límite es 0). Los tres lanzan SQLSTATE **23514**, así que **ese orden decide qué mensaje ve el agente**. (Hay además dos `trg_*_updated_at` sobre `properties` y `subscriptions`: ver la guarda, abajo.)
+**Triggers de `properties` (los TRES gates de publicación, ver "Bloqueo de publicación"), en el orden alfabético en que Postgres los dispara:** `trg_check_agency_approved` (BEFORE INSERT → agencia aprobada), `trg_check_agency_subscription` (BEFORE INSERT → suscripción no `canceled`/`past_due`) y `trg_check_property_limit` (BEFORE INSERT OR UPDATE → cupo del plan; sin fila de suscripción el límite es 0). Los tres lanzan SQLSTATE **23514**, así que **ese orden decide qué mensaje ve el agente**. (Hay además dos `trg_*_updated_at` sobre `properties` y `subscriptions` —ver la guarda, abajo— y, desde el 16 sep 2026, `trg_protect_views_count` sobre `properties`, que lanza **42501** y no 23514: ver "Blindaje de columnas", arriba.)
 
 #### ⚠ La guarda de `updated_at` ante el contador de visitas — dos funciones ACOPLADAS
 

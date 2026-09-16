@@ -19,13 +19,19 @@ import {
   validateAgencyName,
 } from "@/lib/utils/agencyName";
 import { PHONE_WA_ERROR, resolvePhoneWaForSave } from "@/lib/utils/phoneWa";
+import { isStoragePublicUrl } from "@/lib/utils/storagePublicUrl";
+import { translateFormatCheckError } from "@/lib/utils/dbFormatErrors";
 
 type ActionResult = { error: string } | undefined;
 
 // El logo se sube client-side a Storage (bucket público); acá solo persistimos la
-// URL pública ya resultante. Validamos que sea una URL no vacía.
+// URL pública ya resultante. Tiene que ser una URL del Storage del proyecto: lo
+// mismo que exige el CHECK agencies_logo_url_storage de la base.
 const agencyLogoSchema = z.object({
-  logo_url: z.string().url("URL de logo inválida"),
+  logo_url: z
+    .string()
+    .url("URL de logo inválida")
+    .refine(isStoragePublicUrl, "El logo no es válido. Volvé a subirlo."),
 });
 
 // Actualiza el teléfono de WhatsApp de la agencia del admin logueado.
@@ -77,7 +83,11 @@ export async function updateAgencyPhoneAction(input: {
     .eq("id", caller.agency_id);
 
   if (error) {
-    return { error: "No se pudo actualizar el teléfono de la agencia. Intentá de nuevo." };
+    return {
+      error:
+        translateFormatCheckError(error) ??
+        "No se pudo actualizar el teléfono de la agencia. Intentá de nuevo.",
+    };
   }
 
   revalidatePath("/dashboard/preferencias");
@@ -114,7 +124,11 @@ export async function updateAgencyLogoAction(input: {
     .eq("id", caller.agency_id);
 
   if (error) {
-    return { error: "No se pudo actualizar el logo de la agencia. Intentá de nuevo." };
+    return {
+      error:
+        translateFormatCheckError(error) ??
+        "No se pudo actualizar el logo de la agencia. Intentá de nuevo.",
+    };
   }
 
   revalidatePath("/dashboard/preferencias");
@@ -440,7 +454,13 @@ function translateAgencySlugWriteError(dbError: DbLikeError): string {
     return "Otra inmobiliaria tomó esa dirección hace un momento. Elegí una distinta.";
   }
 
-  return "No se pudo guardar la dirección. Intentá de nuevo.";
+  // Un CHECK de formato (teléfono, logo) se evalúa en CUALQUIER UPDATE de la
+  // fila: no puede dispararse por el slug, pero si llegara no se disfraza de
+  // choque de dirección.
+  return (
+    translateFormatCheckError(dbError) ??
+    "No se pudo guardar la dirección. Intentá de nuevo."
+  );
 }
 
 // El esquema normaliza ANTES de validar, mismo molde que la matrícula
