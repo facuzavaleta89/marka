@@ -350,28 +350,42 @@ function OperationField({
         //   · marcada    → borde terracota + fondo blanco (estado activo, DESIGN §2);
         //   · sin marcar → borde stone sobre el fondo de la sección.
         // El relleno y el radio no cambian con el estado: la casilla no se mueve.
+        //
+        // ⚠ LA FRANJA SUPERIOR ES LA ETIQUETA, Y SE LLEVA EL RELLENO. Antes el
+        // `p-4` era de la tarjeta y solo respondían la casilla y el texto: la
+        // tarjeta invitaba a tocarla y el resto no hacía nada. La tarjeta
+        // ENTERA no puede ser un <label>: marcada, contiene el precio y los
+        // botones de moneda, y un toque en ellos alternaría la operación. Por
+        // eso la etiqueta es solo la franja, a todo el ancho, y el bloque de
+        // precio lleva su propio `px-4 pb-4` (la separación de arriba la da el
+        // `p-4` de la franja, que reemplaza al `mt-4` de antes).
+        // El `htmlFor` es necesario: dentro de un <form>, Radix agrega un
+        // <input> oculto al lado de la casilla, y sin `htmlFor` la etiqueta
+        // apuntaría a ese input en vez de a la casilla.
         <div
           className={cn(
-            "rounded-md border p-4 transition-colors",
+            "rounded-md border transition-colors",
             flagField.value
               ? "border-terracota bg-white"
               : "border-stone bg-transparent"
           )}
         >
-          <div className="flex items-center gap-2">
+          <label
+            htmlFor={flagName}
+            className="flex items-center gap-2 p-4 cursor-pointer select-none"
+          >
             <Checkbox
               id={flagName}
               checked={flagField.value}
               onCheckedChange={(v) => flagField.onChange(v === true)}
-              className="data-[state=checked]:bg-terracota data-[state=checked]:border-terracota"
             />
-            <Label
-              htmlFor={flagName}
-              className="font-sans text-sm text-black cursor-pointer"
-            >
+            {/* Mismo resultado tipográfico que el `Label` de antes: su
+                variante `peer-data-[slot=checkbox]` lo dejaba en 14px, peso
+                normal, sin espaciado y sin mayúsculas. */}
+            <span className="font-sans text-sm font-normal tracking-normal normal-case text-black">
               {label}
-            </Label>
-          </div>
+            </span>
+          </label>
 
           {flagField.value && (
             <Controller
@@ -386,7 +400,7 @@ function OperationField({
                   String(priceField.value).trim() === "";
 
                 return (
-                  <div className="mt-4 space-y-3">
+                  <div className="px-4 pb-4 space-y-3">
                     <FieldRow>
                       <Field label={`Precio (${label.toLowerCase()})`} error={priceError}>
                         <Input
@@ -649,7 +663,6 @@ function RentRequirementsSection({ control }: { control: Control<FormValues> }) 
                               id={`rent-req-${req}`}
                               checked={selected.includes(req)}
                               onCheckedChange={() => toggle(req)}
-                              className="data-[state=checked]:bg-terracota data-[state=checked]:border-terracota"
                             />
                             <Label
                               htmlFor={`rent-req-${req}`}
@@ -1216,7 +1229,6 @@ export function PropertyForm({
                 id={`amenity-${amenity}`}
                 checked={selectedAmenities.includes(amenity)}
                 onCheckedChange={() => toggleAmenity(amenity)}
-                className="data-[state=checked]:bg-terracota data-[state=checked]:border-terracota"
               />
               <Label
                 htmlFor={`amenity-${amenity}`}
@@ -1262,7 +1274,6 @@ export function PropertyForm({
                 id="is_featured"
                 checked={field.value}
                 onCheckedChange={field.onChange}
-                className="data-[state=checked]:bg-terracota data-[state=checked]:border-terracota"
               />
             )}
           />

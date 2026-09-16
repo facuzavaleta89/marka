@@ -12,13 +12,6 @@ import {
   OPERATION_TYPE_LABELS,
 } from "@/lib/utils/labels";
 
-// Override para que el Checkbox de shadcn use terracota en estado marcado
-// (mismo patrón que PropertyForm, para consistencia en todo el form).
-// ⚠ Sin color de borde para el estado SIN marcar: lo pone el componente
-// (`ui/checkbox.tsx`). Acá había `border-stone`, que daba 1,71:1 sobre paper.
-const CHECKBOX_TERRACOTA =
-  "data-[state=checked]:bg-terracota data-[state=checked]:border-terracota data-[state=checked]:text-paper";
-
 // ─── Constantes ───────────────────────────────────────────────
 
 // Todos los tipos de propiedad, para los botones del filtro
@@ -533,7 +526,6 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
                     id={`amenity-${value}`}
                     checked={active}
                     onCheckedChange={() => toggleAmenity(value)}
-                    className={CHECKBOX_TERRACOTA}
                   />
                   <span className="font-sans text-sm text-black">
                     {AMENITY_LABELS[value]}
@@ -556,7 +548,6 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
               onCheckedChange={() =>
                 setFilter("only_featured", !filters.only_featured)
               }
-              className={CHECKBOX_TERRACOTA}
             />
             <span className="font-sans text-sm text-black">
               Solo propiedades destacadas
