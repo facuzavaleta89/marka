@@ -14,8 +14,10 @@ import {
 
 // Override para que el Checkbox de shadcn use terracota en estado marcado
 // (mismo patrón que PropertyForm, para consistencia en todo el form).
+// ⚠ Sin color de borde para el estado SIN marcar: lo pone el componente
+// (`ui/checkbox.tsx`). Acá había `border-stone`, que daba 1,71:1 sobre paper.
 const CHECKBOX_TERRACOTA =
-  "border-stone data-[state=checked]:bg-terracota data-[state=checked]:border-terracota data-[state=checked]:text-paper";
+  "data-[state=checked]:bg-terracota data-[state=checked]:border-terracota data-[state=checked]:text-paper";
 
 // ─── Constantes ───────────────────────────────────────────────
 

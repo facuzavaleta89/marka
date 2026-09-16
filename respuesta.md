@@ -1,11 +1,11 @@
-# Tanda: campos de formulario — definición única de la caja y teléfono con prefijo
+# Tanda: los cuatro defectos de forma que rompen algo
 
-> **Modo ejecución.** Sin comandos de git y sin SQL de ningún tipo en esta tanda: la base no se tocó. `CLAUDE.md` y `PENDIENTES.md` no se tocaron. Tampoco se tocaron el enlace de contacto (`waMessage.ts`), las hojas del mapa ni la policy de `agents`.
+> **Modo ejecución.** Se modificaron 6 archivos de `src/`. No se ejecutó ningún comando de git. No se tocó la base. `CLAUDE.md` y `PENDIENTES.md` no se tocaron.
 >
-> **Cómo se midió:**
-> - **Build y navegador:** build de producción servido con `next start` y medido con Chrome headless por el protocolo de DevTools.
-> - **Campos reales:** inicio de sesión y registro (incluidos el estado de error, el pegado y el tipeo en el teléfono).
-> - **Pantallas con sesión** (perfil, preferencias, equipo, admin): no inicié sesión. Medí elementos con **la clase final que produce el código**, calculada con `tailwind-merge` a partir de las constantes reales de `fieldStyles.ts` e inyectada sobre `/login`, que carga la misma hoja de estilos global. Es el mismo CSS aplicado a la misma clase, **no la pantalla autenticada**.
+> **Cómo se midió:** build de producción servido con `next start` y Chrome headless por el protocolo de DevTools.
+> - **Casilla del filtro del mapa:** medida sobre la pantalla real (`/`).
+> - **Pantallas con sesión** (panel, formulario de propiedades, admin): no inicié sesión. Se reprodujeron con **las clases reales, antes y después**, sobre la misma hoja de estilos, con el fondo real de cada pantalla.
+> - **Contraste:** el color computado del borde se compone sobre el fondo en un canvas y se lee el píxel resultante. Así se resuelven los colores con transparencia (`graphite/80`).
 > - **Limpieza:** servidor y Chrome apagados. Scripts en el scratchpad de la sesión, fuera del repo.
 
 ---
@@ -14,468 +14,258 @@
 
 | Archivo | Qué cambió |
 |---|---|
-| **`src/components/forms/fieldStyles.ts`** (nuevo) | **La definición única** del campo con caja, su error, el error del subrayado y el campo con prefijo |
-| **`src/components/forms/PhoneWaInput.tsx`** (nuevo) | Campo de teléfono con prefijo `+54 9` fijo (limpia al pegar y al salir) + aviso de número a revisar |
-| **`src/lib/utils/phoneWa.ts`** (nuevo) | Fuente única del formato: normalización, validación de largo, separación del número guardado y campo de zod. Cliente y servidor |
-| `src/components/dashboard/ProfileForm.tsx` | 4 campos pasan a la caja; teléfono con `PhoneWaInput` y número guardado preservado |
-| `src/components/dashboard/AgencyPhoneForm.tsx` | Ídem para el teléfono de la agencia |
-| `src/components/dashboard/AgencyIdentityForm.tsx` | 2 campos (nombre, matrícula) pasan a la caja |
-| `src/components/dashboard/TeamContent.tsx` | 4 campos del alta de agente pasan a la caja; teléfono con `PhoneWaInput` |
-| `src/components/dashboard/AgencySlugForm.tsx` | El campo con prefijo usa la definición única en vez de su caja escrita a mano |
-| `src/components/properties/PropertyForm.tsx` | Se borró su constante `FIELD`/`FIELD_ERR`; importa la única (13 + 6 usos) |
-| `src/app/(agent)/admin/AgenciesTable.tsx` | Se borró su copia de `FIELD`; importa la única. El área de texto del motivo de rechazo pasa a la caja |
-| `src/app/(agent)/login/LoginForm.tsx` | El error colorea el subrayado en vez de convertir el campo en caja |
-| `src/app/(agent)/register/RegisterForm.tsx` | Ídem (5 campos + selector de ciudad); teléfono con `PhoneWaInput` en variante subrayado |
-| `src/app/(agent)/dashboard/perfil/actions.ts` | **Valida el teléfono en el servidor** (antes no validaba nada) |
-| `src/app/(agent)/register/actions.ts` | **Valida el teléfono en el servidor** antes de crear el usuario; un solo valor para las dos tablas |
-| `src/app/(agent)/dashboard/preferencias/actions.ts` | Validación del teléfono con la fuente única, preservando el número guardado |
-| `src/app/(agent)/dashboard/equipo/actions.ts` | Validación del teléfono con la fuente única |
+| `src/components/ui/checkbox.tsx` | Borde por defecto de `border-input` (≈ 1:1) a **`border-graphite/80`**. Solo el color del borde |
+| `src/components/map/FilterPanel.tsx` | `CHECKBOX_TERRACOTA` sin `border-stone`: el borde lo pone el componente |
+| `src/app/(agent)/admin/AgenciesTable.tsx` | `CHECKBOX_TERRACOTA` sin `border-stone` + la barra de filtros reestructurada (título en su columna, opciones en su contenedor, 16 px entre grupos) |
+| `src/components/properties/PropertyForm.tsx` | `OperationField`: el contenedor existe siempre con el mismo relleno; cambia solo el tratamiento según el estado |
+| `src/app/(agent)/dashboard/layout.tsx` | `<main>` con `pt-14 md:pt-0` |
+| `src/app/(agent)/admin/layout.tsx` | Ídem |
 
 ---
 
-## 2. La definición única del campo con caja
+## 2. Las casillas
 
-### Dónde vive y cómo quedó
+### Los fondos reales, y un dato del prompt que no se sostiene
 
-`src/components/forms/fieldStyles.ts`:
+**No son dos fondos distintos: el del panel y el del formulario de propiedades son el mismo, `mist` (#EAE4DC).** El formulario se monta dentro del layout del panel (`main` sin fondo propio, dentro de `bg-mist`, `dashboard/layout.tsx:33`), y sus secciones no tienen tarjeta.
 
-```ts
-/** Caja completa para `Input`, `Textarea` y `SelectTrigger`. */
-export const FIELD_BOX =
-  "rounded-md border border-stone border-b-stone bg-white px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracota/20 focus-visible:ring-offset-1 focus-visible:border-graphite focus-visible:border-b-graphite";
+Los fondos donde viven casillas son **tres**:
 
-/** Estado de error de la caja. Se suma a `FIELD_BOX`, nunca va solo. */
-export const FIELD_BOX_ERROR = "border-error border-b-error";
+| Fondo | Dónde |
+|---|---|
+| **`mist`** #EAE4DC | filtros de admin; requisitos, comodidades y destacada del formulario de propiedades; opciones de operación sin marcar |
+| **`paper`** #FBF9F6 | filtro del mapa (panel lateral y hoja) |
+| **blanco** | casilla de la opción de operación marcada (dentro de su tarjeta) |
 
-export const FIELD_UNDERLINE_ERROR =
-  "border-b-error focus-visible:border-b-error aria-invalid:border-b-error";
+`mist` es el más oscuro, así que es el caso límite.
 
-export const FIELD_BOX_GROUP =
-  "flex items-center rounded-md border border-stone bg-white pl-3 focus-within:ring-2 focus-within:ring-terracota/20 focus-within:ring-offset-1 focus-within:border-graphite";
-export const FIELD_BOX_GROUP_ERROR = "border-error";
-export const FIELD_UNDERLINE_GROUP =
-  "flex items-center border-b border-input focus-within:border-ring";
-export const FIELD_UNDERLINE_GROUP_ERROR = "border-error focus-within:border-error";
-export const FIELD_GROUP_PREFIX =
-  "shrink-0 font-sans text-base md:text-sm text-graphite select-none whitespace-nowrap";
-export const FIELD_BOX_GROUP_INPUT =
-  "border-0 bg-transparent pr-3 shadow-none focus-visible:ring-0";
-export const FIELD_UNDERLINE_GROUP_INPUT =
-  "border-0 bg-transparent shadow-none focus-visible:ring-0";
+### El color elegido: `graphite/80`
+
+Se calcularon los candidatos de la paleta contra los tres fondos antes de editar. `graphite/70` ya pasaba el 3:1, pero con poco margen en `mist` (3,46); se eligió **`graphite/80`**, que queda holgado en los tres.
+
+**Contraste medido del borde de la casilla sin marcar:**
+
+| Casilla | Fondo | Antes | Después |
+|---|---|---|---|
+| Formulario de propiedades (operaciones, requisitos, comodidades, destacada) | **`mist`** | **1,00:1** (`border-input`) | **4,31:1** |
+| Casilla de la opción de operación marcada | **blanco** | — | **5,07:1** |
+| Filtros de admin (`CHECKBOX_TERRACOTA`) | **`mist`** | **1,42:1** (`border-stone`) | **4,31:1** |
+| Filtro del mapa (`CHECKBOX_TERRACOTA`) — **medido en la pantalla real** | **`paper`** | **1,71:1** (`border-stone`) | **4,90:1** |
+
+**Las ocho casillas quedan por encima del 3:1** que pide WCAG 1.4.11 para el borde de un control. Color compuesto medido: `rgb(109,105,100)` sobre `mist`, `rgb(112,109,105)` sobre `paper` y `rgb(113,110,107)` sobre blanco.
+
+**Las cuatro que pasaban un color propio no quedaron peor:** pasaron de 1,42–1,71 a 4,31–4,90. Su `border-stone` quedó redundante —y habría pisado el borde nuevo— y **se sacó** de las dos constantes (`FilterPanel.tsx`, `AgenciesTable.tsx`). Búsqueda posterior: ningún override de color de borde sin marcar queda en `src/`.
+
+**Lo que NO se sacó, porque no quedó redundante:** las clases del estado **marcado** en terracota (`data-[state=checked]:bg-terracota …`). El componente de fábrica marca en `bg-primary` (casi negro), así que sin ellas las casillas marcadas cambiarían de color.
+
+El cambio en el componente, `src/components/ui/checkbox.tsx`:
+
+```tsx
+        "peer relative flex size-4.5 shrink-0 items-center justify-center rounded-none border border-graphite/80 bg-transparent …
 ```
 
-**`FIELD_BOX` es textualmente la constante que ya tenían duplicada `PropertyForm` y `AgenciesTable`.** Se mudó, no se reinventó: esas dos pantallas se ven exactamente igual que antes, medido (12 px de relleno, anillo de foco igual).
-
-### Por qué constantes y no una variante del componente
-
-**Porque la caja tiene que vestir cosas que no son un `<input>`.** En un campo con prefijo fijo —la dirección del sitio de marca y ahora el teléfono— la caja la dibuja **el contenedor** `<div>`, y el input va adentro sin borde. Una variante de `Input` no llega a ese contenedor, y la definición del campo con prefijo quedaría en otro lado: dos fuentes.
-
-Además, `Input`, `Textarea` y `SelectTrigger` consumen **la misma clase**, así que un solo lugar alcanza para los tres sin tocar los componentes de fábrica. Y es el patrón que ya estaba probado en `PropertyForm`, solo que copiado.
-
-El archivo explica arriba de todo **por qué existe**: la trampa de `tailwind-merge`, que convertía un color de borde en una caja sin relleno.
-
-### Quiénes la consumen
-
-Búsqueda de `components/forms/fieldStyles` en `src/`: **9 archivos**.
-
-| Consumidor | Qué usa |
-|---|---|
-| `ProfileForm.tsx` | `FIELD_BOX` (nombre, 2 contraseñas) + el teléfono vía `PhoneWaInput` |
-| `AgencyPhoneForm.tsx` | teléfono vía `PhoneWaInput` |
-| `AgencyIdentityForm.tsx` | `FIELD_BOX` (nombre, matrícula) |
-| `TeamContent.tsx` | `FIELD_BOX` (nombre, email, contraseña) + teléfono vía `PhoneWaInput` |
-| `AgencySlugForm.tsx` | `FIELD_BOX_GROUP` + `FIELD_GROUP_PREFIX` + `FIELD_BOX_GROUP_INPUT` |
-| `PropertyForm.tsx` | `FIELD_BOX` (13 usos: `Input`, `Textarea`, 3 `SelectTrigger`) + `FIELD_BOX_ERROR` (6) |
-| `AgenciesTable.tsx` | `FIELD_BOX` (3 `Input` + el `Textarea` del motivo) + `FIELD_BOX_ERROR` |
-| `LoginForm.tsx`, `RegisterForm.tsx` | `FIELD_UNDERLINE_ERROR` (y `PhoneWaInput` en registro) |
-| `PhoneWaInput.tsx` | las constantes de grupo |
-
-**Verificación de "una sola fuente":**
-- No queda ninguna `const FIELD` en `src/`.
-- No queda ningún `bg-white border-stone focus-visible:ring-terracota` (búsquedas con resultado vacío).
-- Único `"border-error"` suelto que queda: `LocationPicker.tsx:158`. Es el recuadro del mini-mapa, no un campo.
-
-### ⚠ Cambios visibles en la dirección del sitio de marca
-
-Al pasar su caja a la definición única, ese campo cambió en tres cosas:
-
-| | Antes | Después | Por qué |
-|---|---|---|---|
-| Color del prefijo | `stone` (#C8C0B7) | **`graphite`** (#4E4A46) | `stone` es el color de los placeholders: el prefijo se leía como texto de ayuda. Contraste sobre blanco: ~1,7:1 → ~9:1 |
-| Tamaño del prefijo en celular | 14 px | **16 px** | Igual al input que acompaña, que en celular va a 16 px |
-| Anillo de foco | terracota **sólido** | **terracota al 20 %** + borde `graphite` | El de toda la familia caja. DESIGN.md pide sólido; ver la inconsistencia #16 del informe anterior, que sigue abierta |
-
-La geometría no cambió (medido): prefijo a 13 px del borde, valor pegado al final del prefijo, alto 42 px.
-
-### Decisión 5 — área de texto y selector
-
-| Dónde conviven | Qué se hizo |
-|---|---|
-| **Formulario de propiedades** (`Textarea` y 3 `SelectTrigger` junto a `Input` con caja) | ya usaban la caja; ahora de la fuente única |
-| **Panel admin** (`Textarea` del motivo de rechazo en una pantalla donde todos los demás campos son caja) | **pasó a `FIELD_BOX`** + `py-2`, como la descripción de propiedades. Medido: 12 px de relleno. Antes era subrayado, y con error, caja roja con 0 px |
-| **Registro** (`SelectTrigger` de ciudad junto a `Input` subrayados) | **queda subrayado**, coherente con su pantalla; su error usa `FIELD_UNDERLINE_ERROR` |
-
-No hay otro lugar donde un área de texto o un selector conviva con campos de la otra familia.
+Solo cambió `border-input` → `border-graphite/80`. `rounded-none` y `size-4.5` no se tocaron.
 
 ---
 
-## 3. El estado de error de inicio de sesión y registro
-
-**Elegí colorear el subrayado sin convertirlo en caja.**
-
-**Por qué:**
-- **Esas pantallas son de la familia subrayado.** Pasar a caja al fallar le cambiaría la forma al campo **justo en el momento del error**.
-- **El texto se correría.** Con la caja entera (12 px de relleno), el texto se movería 12 px respecto de la etiqueta y del enlace "Volver al mapa", que DESIGN §14 alinea a propósito. Con la caja sin relleno se reproduciría el defecto.
-- **Error debe ser menos cambio, no más.** El mismo campo, con otro color de línea.
-
-La constante lleva **solo clases de borde inferior**. Ese es el punto: nunca le pasa a `tailwind-merge` un color de los cuatro lados.
-
-⚠ **Un hallazgo que salió midiendo, y quedó resuelto en la misma constante.** La primera versión era `border-b-error focus-visible:border-b-error`. Con ella, el selector de ciudad salía con el rojo **del preset** (`lab(48 77 61)`) y no con el `error` del proyecto. El selector lleva `aria-invalid`, y la clase de fábrica `aria-invalid:border-b-destructive` pesa más: tiene selector de atributo. Se agregó `aria-invalid:border-b-error`, que hace que `tailwind-merge` descarte la de fábrica (verificado en la clase final). Medido después: **los tres campos del registro con error en `rgb(155, 35, 53)`**.
-
-**Medido después, sobre los campos reales:**
-
-| Campo | Bordes con ancho | Color de los laterales | Color inferior | Relleno | Radio |
-|---|---|---|---|---|---|
-| Inicio de sesión, email con error | 1 px (laterales transparentes) | `rgba(0,0,0,0)` | **`rgb(155, 35, 53)`** | 0 | 0 |
-| Registro, nombre con error | ídem | transparente | **`rgb(155, 35, 53)`** | 0 | 0 |
-| Registro, selector de ciudad con error | ídem | transparente | **`rgb(155, 35, 53)`** | 0 | 0 |
-| Registro, teléfono con error | solo inferior | — | **`rgb(155, 35, 53)`** | 0 | 0 |
-
-Antes (informe anterior, mismo código): **caja roja de 4 lados con 0 px de relleno**.
-
----
-
-## 4. El anillo de foco
-
-| Pantallas | Antes | Después |
-|---|---|---|
-| **Perfil, preferencias (nombre, matrícula, teléfono), equipo** | **ninguno** (medido `box-shadow: none`) | **resuelto por la definición única.** Medido: `rgb(255,255,255) 0 0 0 1px, lab(44 30 36 / 0.2) 0 0 0 3px` (anillo de 2 px terracota al 20 % con 1 px de separación), **idéntico al del formulario de propiedades** |
-| Teléfono y dirección del sitio (con prefijo) | dirección: terracota sólido | el mismo anillo, en el contenedor (`focus-within`) |
-| **Inicio de sesión y registro** | solo cambia el borde inferior | **igual: sin anillo**. Es el diseño de la familia subrayado (el foco se marca en la línea). Con error, la línea sigue roja al enfocar (medido). Lo reporto sin arreglarlo: agregarle anillo a esa familia es una decisión de diseño aparte |
-
-⚠ **El anillo de la familia caja sigue siendo al 20 %, no el sólido que pide `DESIGN.md:433`.** Tomé el de la constante existente para no cambiar el aspecto de propiedades y admin. Esa divergencia con DESIGN ya estaba anotada (#16 del informe anterior) y sigue abierta.
-
----
-
-## 5. Espacio entre el borde y el primer carácter
-
-"Desde el borde externo" incluye el 1 px del borde.
-
-| Pantalla y campo | Cómo se midió | Antes | Después |
-|---|---|---|---|
-| **Perfil** (nombre, contraseñas) | clase final inyectada | **1 px** (0 px de relleno), caja sin radio | **13 px** (12 de relleno), radio 8 px |
-| **Preferencias** (nombre, matrícula) | ídem | **1 px** | **13 px** |
-| **Equipo** (nombre, email, contraseña) | ídem | **1 px** | **13 px** |
-| **Teléfono en perfil, preferencias y equipo** | contenedor + prefijo inyectados | **1 px** (sin prefijo) | prefijo `+54 9` a **13 px**; **8 px** entre el prefijo y el primer dígito (dígito a 58,3 px del borde) |
-| Dirección del sitio | ídem | prefijo a 13 px, valor pegado | **igual**: prefijo a 13 px, valor pegado (0 px) |
-| **Admin, motivo de rechazo** | ídem | 1 px (subrayado; con error, caja) | **13 px** |
-| Propiedades y admin (fechas, confirmación) | ídem | 13 px | **13 px** (sin cambio) |
-| **Inicio de sesión** (real) | real | 1 px, subrayado | **1 px, subrayado** (sin cambio, a propósito) |
-| **Inicio de sesión con error** (real) | real | **1 px dentro de una caja roja** | **1 px, subrayado rojo** |
-| **Registro** (real) | real | 1 px, subrayado | 1 px, subrayado |
-| **Registro con error** (real) | real | **1 px dentro de una caja roja** | **1 px, subrayado rojo** |
-| **Registro, teléfono** (real, 390×844) | real | 1 px, sin prefijo | prefijo `+54 9` a **0 px** (alineado con la etiqueta, medido); el input empieza a 50,6 px |
-
----
-
-## 6. El campo de teléfono
+## 3. Las tres opciones de operación
 
 ### El JSX
 
-`src/components/forms/PhoneWaInput.tsx`, el render:
+`src/components/properties/PropertyForm.tsx`, `OperationField`:
 
 ```tsx
-  return (
-    <div
-      className={cn(
-        box ? FIELD_BOX_GROUP : FIELD_UNDERLINE_GROUP,
-        invalid && (box ? FIELD_BOX_GROUP_ERROR : FIELD_UNDERLINE_GROUP_ERROR)
-      )}
-    >
-      {!isPreserved && (
-        <span id={prefixId} className={cn(FIELD_GROUP_PREFIX, "pr-2")}>
-          {PHONE_WA_PREFIX_LABEL}
-        </span>
-      )}
-      <Input
-        id={id}
-        name={name}
-        ref={inputRef}
-        type="tel"
-        inputMode="numeric"
-        autoComplete="tel-national"
-        value={value}
-        onChange={handleChange}
-        onBlur={handleBlur}
-        placeholder={PHONE_WA_PLACEHOLDER}
-        aria-invalid={invalid || undefined}
-        aria-describedby={
-          [isPreserved ? null : prefixId, describedBy].filter(Boolean).join(" ") ||
-          undefined
-        }
-        className={box ? FIELD_BOX_GROUP_INPUT : FIELD_UNDERLINE_GROUP_INPUT}
-      />
-    </div>
-  );
-```
-
-Cuándo limpia:
-
-```tsx
-  function handleChange(e: ChangeEvent<HTMLInputElement>) {
-    const next = e.target.value;
-    // Más de un carácter de una sola vez = pegado o autocompletado. …
-    const insertedAtOnce = next.length - value.length > 1;
-    onChange(
-      insertedAtOnce ? normalizePhoneWaNational(next) : sanitizePhoneWaTyping(next)
-    );
-  }
-
-  function handleBlur() {
-    // … Un número guardado sin tocar NO se toca …
-    if (!isPreserved) {
-      const normalized = normalizePhoneWaNational(value);
-      if (normalized !== value) onChange(normalized);
-    }
-    onBlur();
-  }
-```
-
-Montaje en perfil (`ProfileForm.tsx`), con `Controller` y **sin `watch()`**:
-
-```tsx
-            <Controller
-              control={profileForm.control}
-              name="phone_wa"
-              render={({ field, fieldState }) => (
-                <>
-                  <PhoneWaInput
-                    id="phone_wa"
-                    name={field.name}
-                    value={field.value ?? ""}
-                    onChange={field.onChange}
-                    onBlur={field.onBlur}
-                    inputRef={field.ref}
-                    variant="box"
-                    invalid={!!fieldState.error}
-                    preservedValue={preservedPhone}
-                    describedBy="phone_wa_help"
-                  />
-                  {preservedPhone !== null && field.value === preservedPhone && (
-                    <PhoneWaReviewNotice stored={preservedPhone} />
-                  )}
-                </>
-              )}
+    <Controller
+      name={flagName}
+      control={control}
+      render={({ field: flagField }) => (
+        // ⚠ EL CONTENEDOR EXISTE SIEMPRE, marcada o no, con el MISMO relleno.
+        // Antes solo la marcada tenía tarjeta (borde, fondo y `p-4`) y la sin
+        // marcar no tenía nada: al marcarla la casilla saltaba 16px a la derecha,
+        // y las opciones sin marcar se leían como texto suelto, no como opciones
+        // del mismo conjunto. Ahora cambia solo el tratamiento:
+        //   · marcada    → borde terracota + fondo blanco (estado activo, DESIGN §2);
+        //   · sin marcar → borde stone sobre el fondo de la sección.
+        // El relleno y el radio no cambian con el estado: la casilla no se mueve.
+        <div
+          className={cn(
+            "rounded-md border p-4 transition-colors",
+            flagField.value
+              ? "border-terracota bg-white"
+              : "border-stone bg-transparent"
+          )}
+        >
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id={flagName}
+              checked={flagField.value}
+              onCheckedChange={(v) => flagField.onChange(v === true)}
+              className="data-[state=checked]:bg-terracota data-[state=checked]:border-terracota"
             />
+            <Label
+              htmlFor={flagName}
+              className="font-sans text-sm text-black cursor-pointer"
+            >
+              {label}
+            </Label>
+          </div>
 ```
 
-**Teclado numérico (decisión 13):** los cuatro campos de teléfono (perfil, preferencias, equipo, registro) son ahora el mismo componente, con `type="tel"` y `inputMode="numeric"`. Medido en el registro real: `type: "tel"`, `inputMode: "numeric"`, `autoComplete: "tel-national"`. Antes, tres de los cuatro no tenían ninguno de los dos atributos.
+**Tratamiento según DESIGN.md:**
+- **Marcada:** borde terracota y fondo blanco. DESIGN §2 reserva el terracota para "estados activos" y §6 lo usa para lo seleccionado. No se mezcla con `graphite` en el mismo elemento, porque la casilla marcada también es terracota.
+- **Sin marcar:** borde `stone` sobre el fondo de la sección, el borde de reposo de DESIGN §6. La casilla adentro (`graphite/80`, 4,31:1) es la que marca que se puede tocar.
 
-### La función que limpia
+**Sin cambios de radio ni de tamaños:** `rounded-md` sigue igual y `p-4` es el relleno que la marcada ya tenía. Lo único que cambió es que ahora lo tienen las tres.
 
-`src/lib/utils/phoneWa.ts`:
+### La casilla no se mueve — medido
 
-```ts
-export function normalizePhoneWaNational(value: string): string {
-  let digits = value.replace(/\D/g, "");
+Posición de la casilla respecto del contenedor de la sección (704 px de ancho, fondo `mist`):
 
-  let previous: string;
-  do {
-    previous = digits;
-    digits = digits.replace(/^0+/, "");
-    if (digits.startsWith("54")) digits = digits.slice(2);
-    if (digits.startsWith("9")) digits = digits.slice(1);
-  } while (digits !== previous);
+| | Opción 1 | Opción 2 | Opción 3 |
+|---|---|---|---|
+| **Antes** — Venta marcada | x **17** (tarjeta, relleno 16) | x **1** (sin tarjeta) | x **1** |
+| **Después** — Venta marcada | x **17** · y 18 dentro de la tarjeta | x **17** · y 18 | x **17** · y 18 |
+| **Después** — Alquiler marcada | x **17** · y 18 | x **17** · y 18 | x **17** · y 18 |
 
-  if (digits.length === PHONE_WA_NATIONAL_LENGTH + 2) {
-    for (const at of [2, 3, 4]) {
-      if (digits.slice(at, at + 2) === "15") {
-        return digits.slice(0, at) + digits.slice(at + 2);
-      }
-    }
-  }
+**Antes, marcar una opción corría la casilla 16 px; ahora está en x = 17 y a 18 px del borde superior en los dos estados**, y en las tres opciones.
 
-  return digits;
-}
+Aspecto de cada contenedor, después:
+
+| Estado | Borde | Fondo | Relleno | Radio | Alto |
+|---|---|---|---|---|---|
+| Marcada | `rgb(160,82,45)` terracota | blanco | 16 px | 8 px | 132 (incluye precio y moneda) |
+| Sin marcar | `rgb(200,192,183)` stone | transparente (`mist`) | 16 px | 8 px | **54** (antes 22, sin contenedor) |
+
+**Las tres se leen como un conjunto de opciones antes de tocarlas:** cada una en su caja, con la casilla visible a la misma altura.
+
+---
+
+## 4. El botón de menú
+
+### Dónde se resolvió
+
+**En la disposición compartida, no en las páginas.** Las diez páginas del panel cuelgan de **dos** layouts, y los dos montan el mismo `Sidebar`:
+
+| Layout | Páginas |
+|---|---|
+| `src/app/(agent)/dashboard/layout.tsx` | `/dashboard`, `/dashboard/propiedades`, `…/nueva`, `…/[id]/editar`, `/dashboard/leads`, `/dashboard/equipo`, `/dashboard/perfil`, `/dashboard/preferencias`, `/dashboard/suscripcion` (9) |
+| `src/app/(agent)/admin/layout.tsx` | `/admin` (1) |
+
+El cambio, idéntico en los dos:
+
+```tsx
+      <main className="relative flex-1 overflow-y-auto pt-14 md:pt-0">{children}</main>
 ```
 
-y la validación y el valor a guardar:
+**Por qué ahí:**
+- **El botón es fijo** (`top-4 left-4`, 36 px de alto: termina en y = 52).
+- **Las páginas tienen dos rellenos distintos:** 7 con `p-8` y 3 con `p-6 md:p-8`.
+- **Sumar 56 px arriba del `<main>`**, solo debajo de `md`, deja el título de las diez por debajo del botón **sin tocar ninguna página**.
+- **Nada cambia en escritorio** (`md:pt-0`); el botón además está oculto ahí.
 
-```ts
-const NATIONAL_PATTERN = /^[1-3]\d{9}$/;
+⚠ **Son dos líneas, no una**, porque el panel tiene dos layouts separados (el de admin tiene su propio control de acceso). No son diez copias: son los dos únicos contenedores. El comentario de cada una apunta a la otra.
 
-export function resolvePhoneWaForSave(
-  input: string,
-  preserved: string | null = null
-): string | null {
-  if (preserved !== null && preserved !== "" && input === preserved) {
-    return preserved;
-  }
-  const national = normalizePhoneWaNational(input);
-  return isValidPhoneWaNational(national)
-    ? PHONE_WA_STORED_PREFIX + national
-    : null;
-}
-```
+### Medido (reproducción con las clases reales)
 
-**Por qué es seguro quitar 0, 9 y 54 del principio:** toda característica argentina empieza con 1, 2 o 3, así que ninguno de los tres puede ser el comienzo real del número.
+| | Celular 390, página `p-8` | Celular 390, página `p-6 md:p-8` | Escritorio 1280 |
+|---|---|---|---|
+| **Antes** | título en y 27–76 → **superposición de 20 × 25 px** con el botón (y 16–52) | título en y 19–68 → **superposición de 28 × 33 px** | botón oculto; título en y 27 |
+| **Después** | título en y 83–132 → **superposición vertical 0; 31 px de aire** debajo del botón | título en y 75–124 → **superposición vertical 0; 23 px de aire** | **igual que antes**: título en y 27 |
 
-**Largo (decisión 10): mínimo Y máximo, exactamente 10 dígitos.** Característica + número suman siempre 10 en Argentina, sea cual sea el largo de la característica.
+La "superposición x" que queda (20 y 28 px) es solo la franja horizontal compartida: con 31 y 23 px de separación vertical, el botón y el título no se tocan.
 
-### Qué produce cada entrada
+---
 
-Ejecutado contra la función real (`node` sobre `src/lib/utils/phoneWa.ts`):
+## 5. Los filtros de administración
 
-| Entrada | Queda en el campo | Se guarda |
+### Medidas antes y después
+
+Reproducción con las clases reales, fondo `mist`, las 8 casillas marcadas (su estado inicial). **Escritorio:** 960 px, el ancho real del contenido del admin en una pantalla de 1280. **Celular:** 326 px, el ancho real en 390.
+
+#### Escritorio (960 px)
+
+| | Antes | Después |
 |---|---|---|
-| **Número completo con el signo más** `+54 9 385 400-0000` | `3854000000` | **`5493854000000`** |
-| **Con el código de país sin el signo** `5493854000000` | `3854000000` | **`5493854000000`** |
-| **Con cero adelante** `03854000000` | `3854000000` | **`5493854000000`** |
-| **Con quince** `0385 15 400 0000` | `3854000000` | **`5493854000000`** |
-| **Solo característica y número** `3854000000` | `3854000000` | **`5493854000000`** |
-| Con espacios `385 400 0000` | `3854000000` | `5493854000000` |
-| Con quince sin cero `385154000000` | `3854000000` | `5493854000000` |
-| 54 sin el 9 `543854000000` | `3854000000` | `5493854000000` |
-| Buenos Aires con 0 y 15 `011 15 1234-5678` | `1112345678` | `5491112345678` |
-| Bariloche (característica de 4) con 15 `02944 15 123456` | `2944123456` | `5492944123456` |
-| Discado internacional `0054 9 385 4000000` | `3854000000` | `5493854000000` |
-| **Prefijo duplicado** (pegado sobre el prefijo) `5495493854000000` | `3854000000` | `5493854000000` |
-| Sin característica `15 4000000` | `154000000` | **error** |
-| Corto `385400000` | igual | **error** |
-| Largo `38540000000` | igual | **error** |
+| Separación entre grupos | **8 px** | **16 px** |
+| Primera opción de "Aprobación" | x 96,7 | x **116** |
+| Primera opción de "Suscripción" | x **98,4** (no coincide) | x **116** (coincide) |
+| Título | ancho 76,7 / 78,4, alto 16,5, corrido 1,8 px | **ancho fijo 96, alto 20** (mismo alto que una opción) |
+| Líneas por grupo | 1 y 1 | 1 y 1 |
+| Alto total | 48 | 56 |
 
-**Las cinco formas de escribir el mismo número (+, código de país, cero, quince, a mano) guardan exactamente el mismo valor.**
+#### Celular (326 px)
 
-**Medido en el navegador**, sobre el campo real del registro:
-
-| Acción | En el campo al hacerla | Al salir del campo |
+| | Antes | Después |
 |---|---|---|
-| **Pegar** `+54 9 385 400-0000` | **`3854000000`** (limpio en el acto) | `3854000000` |
-| Pegar `5493854000000` | `3854000000` | `3854000000` |
-| Pegar `0385 15 400 0000` | `3854000000` | `3854000000` |
-| Pegar `011 15 1234-5678` | `1112345678` | `1112345678` |
-| **Tipear** `+54 9 385 400-0000` de a una tecla | `5493854000000` (solo dígitos) | **`3854000000`** |
-| Tipear `03854000000` | `03854000000` | `3854000000` |
-| Tipear `0385 15 400 0000` | `0385154000000` | `3854000000` |
-| Tipear `385 4000000` | `3854000000` | `3854000000` |
+| **Separación entre grupos** | **8 px** | **16 px** |
+| **Separación entre líneas de un grupo** | **8 px** (igual a la de grupos: se mezclaban) | **8 px** (la mitad de la de grupos) |
+| Aprobación | `APROBACIÓN` · Pendiente · Aprobada / **Rechazada en x = 0, debajo del título** | `APROBACIÓN` en su línea / Pendiente · Aprobada · Rechazada **desde x = 0**, todas juntas |
+| Suscripción | `SUSCRIPCIÓN` · Plan pendiente / **Pagas activas (x = 0)** · Free / **Dadas de baja (x = 0)** · Otras | `SUSCRIPCIÓN` en su línea / Plan pendiente · Pagas activas / Free · Dadas de baja · Otras — **las dos líneas desde x = 0** |
+| Primera opción de cada línea | 96,7 · 0 · 98,4 · 0 · 0 (mezcla) | **0 · 0 · 0** (alineadas entre sí) |
+| Alto total | 132 | 140 |
 
-**Por qué al tipear no se quitan prefijos tecla por tecla:** borraría un `5` o un `0` recién escrito antes de que la persona termine. Mientras tipea solo se sacan los caracteres que no son dígitos. Al salir del campo, al pegar y al validar, se limpia entero.
+**Las dos condiciones mínimas se cumplen en los dos anchos:**
+1. **Entre grupos hay 16 px, el doble que entre líneas de un grupo (8 px).**
+2. **Las opciones que bajan de línea se alinean entre sí**: en celular, todas las líneas de opciones arrancan en x = 0 debajo de su título, que ocupa su propia línea; en escritorio, las dos filas de opciones arrancan en la misma x (116).
 
-**Mensaje de error** (cliente y servidor, el mismo):
+### El JSX
 
-> Revisá el número: la característica y el número juntos tienen que ser 10 dígitos (ej: 385 4000000).
+`src/app/(agent)/admin/AgenciesTable.tsx`, la barra de filtros (se muestra el primer grupo; el segundo tiene la misma estructura con `PLAN_FILTERS`):
 
-**Texto de ayuda** debajo del campo:
+```tsx
+      <div className="mb-4 space-y-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-5">
+          <span className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite leading-5 sm:w-24 sm:shrink-0">
+            Aprobación
+          </span>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+          {APPROVAL_FILTERS.map(({ key, label }) => (
+            <label … className="flex items-center gap-2 cursor-pointer">
+              <Checkbox … className={CHECKBOX_TERRACOTA} />
+              <span className="font-sans text-sm text-black">{label}</span>
+            </label>
+          ))}
+          </div>
+        </div>
+```
 
-> Característica y número, sin el 0 ni el 15. Si pegás el número completo, se acomoda solo.
+Los títulos son `<span>`, no el componente `Label`: su tipografía (11 px, mayúsculas) no cambió. Solo se les agregó `leading-5` (alto de línea igual al de una opción) y el ancho fijo desde `sm`.
 
 ---
 
-## 7. Un perfil cuyo número guardado no tiene el formato esperado
+## 6. Confirmación: nada del aspecto general
 
-**El caso real:** 2 de los 6 números guardados son `543853000299`, sin el 9 de celular.
-
-**Qué pasa, en orden:**
-
-1. `splitStoredPhoneWa("543853000299")` → `{ national: "543853000299", recognized: false }` (ejecutado).
-2. El campo se carga **con el número tal cual**: `543853000299`.
-3. **El prefijo `+54 9` no se muestra** mientras el campo conserve ese valor sin tocar. Mostrarlo haría leer "+54 9 543853000299", que es otro número.
-4. Al salir del campo **no se limpia**: `handleBlur` no normaliza un valor preservado.
-5. **Debajo del campo aparece este aviso** (`PhoneWaReviewNotice`, tono `warning`, título con ícono de alerta):
-
-   > **Revisá este número de WhatsApp**
-   >
-   > El número guardado, **543853000299**, no tiene el formato de un celular argentino (+54 9, característica y número), así que el enlace de WhatsApp puede no llegar a destino.
-   >
-   > No lo cambiamos por vos. Si está bien, dejalo como está; si no, borralo y escribí la característica y el número.
-
-6. **Si guarda el perfil sin tocar el teléfono** (por ejemplo, cambió el nombre): el esquema acepta ese valor exacto y lo manda **sin reformatear**, y el servidor también (ver 9). Ejecutado:
-   - `phoneWaField("543853000299").safeParse("543853000299")` → `{"success":true,"data":"543853000299"}`;
-   - `resolvePhoneWaForSave("543853000299", "543853000299")` → `"543853000299"`.
-
-   **El teléfono queda igual.** Sin la preservación, el mismo valor se habría guardado como `"5493853000299"`, corregido en silencio (ejecutado para comprobar el riesgo).
-7. **Si toca el campo**, pasa a ser un número nuevo: aparece el prefijo, el aviso desaparece, y al salir se limpia y valida como cualquier otro.
-
-⚠ **Límite:** este flujo **no lo vi en la pantalla real de perfil** (exige sesión). Lo verifiqué con la función real, el esquema real y el código del componente.
-
----
-
-## 8. El registro escribe el mismo valor normalizado en las dos tablas
-
-`src/app/(agent)/register/actions.ts`:
-- **Resolución:** el teléfono se resuelve **una sola vez**, antes de crear el usuario de Auth.
-- **Escrituras:** las dos usan esa variable, verificado por búsqueda.
-
-```ts
-  const phoneWa =
-    typeof data.phoneWa === "string" ? resolvePhoneWaForSave(data.phoneWa) : null;
-  if (phoneWa === null) {
-    return { error: PHONE_WA_ERROR };
-  }
-```
-
-```
-100:        phone_wa: phoneWa,     ← insert en agencies
-136:    phone_wa: phoneWa,         ← insert en agents
-```
-
-No queda ningún `data.phoneWa` en las escrituras. **Agencia y admin nacen con el mismo número, byte a byte.** Y como la validación va antes del `signUp`, un teléfono inválido no deja un usuario de Auth creado que haya que borrar.
-
----
-
-## 9. Validaciones del servidor
-
-**Los cuatro caminos que escriben un teléfono validan ahora en el servidor, con la misma función.**
-
-| Camino | Antes | Ahora |
+| Lista de lo que no había que tocar | ¿Se tocó? | Evidencia |
 |---|---|---|
-| `perfil/actions.ts` → `updateProfileAction` | **ninguna** | lee `phone_wa` actual de la fila del agente → `resolvePhoneWaForSave(input, actual)` → error si `null`. Se escribe el valor resuelto |
-| `register/actions.ts` → `registerAction` | **ninguna** | `resolvePhoneWaForSave(input)` antes del `signUp`; un solo valor para las dos tablas |
-| `preferencias/actions.ts` → `updateAgencyPhoneAction` | regex `^\d{10,}$` | lee `phone_wa` actual de la agencia (service role, acotado a la agencia de la sesión) → `resolvePhoneWaForSave(input, actual)` |
-| `equipo/actions.ts` → `createAgentAction` | regex `^\d{10,}$` | `phoneWaField()` en su esquema de zod: normaliza, valida largo y entrega el valor completo |
+| Radios del tema | **No** | `globals.css` no se modificó |
+| Radio de cualquier elemento | **No** | La casilla sigue `rounded-none`; la tarjeta de operación sigue `rounded-md` (medido 8 px antes y después) |
+| Componente de botón | **No** | `ui/button.tsx` no se modificó |
+| Diálogos de confirmación | **No** | `ui/alert-dialog.tsx` no se modificó |
+| Menús | **No** | `ui/dropdown-menu.tsx` no se modificó |
+| Escala de altos de botón | **No** | Ningún botón se modificó |
+| Etiquetas y sus mayúsculas | **No** | `ui/label.tsx` no se modificó; ningún `<Label>` cambió de clase |
+| Base, policy de agentes, `CLAUDE.md`, `PENDIENTES.md` | **No** | — |
 
-**Detalles que importan:**
-- **El valor preservado sale SIEMPRE de la fila real**, leída en la misma action, nunca del cliente. Solo permite reenviar el número que ya estaba guardado; no sirve para colar uno nuevo sin validar.
-- **Un valor que no es texto** (cliente manipulado) se rechaza con el mismo mensaje.
-- **Normalizar en el servidor es idempotente:** `resolvePhoneWaForSave("5493854000000")` → `"5493854000000"` (ejecutado). Que el cliente ya mande el número completo no rompe nada.
-- **En preferencias la validación pasó a correr después de la sesión**, porque necesita saber de qué agencia es el número guardado. Los mensajes de sesión y rol son los mismos de antes.
-
----
-
-## 10. Inconsistencias nuevas (sin arreglar, fuera de alcance)
-
-Las de informes anteriores no se repiten.
-
-1. **`CLAUDE.md` quedó desactualizado por esta tanda y no lo toqué, por instrucción:**
-   - **baseline:** cita el warning en `PropertyForm.tsx:808`, y ahora está en **`:804`**: se borraron las 4 líneas de la constante duplicada más arriba. Es el mismo warning, sobre la misma llamada `watch("amenities")`;
-   - **árbol de carpetas:** no lista `src/components/forms/` ni `src/lib/utils/phoneWa.ts`;
-   - **"Convenciones → WhatsApp":** no describe el prefijo fijo ni la preservación.
-2. **`DESIGN.md` §6 "Inputs y formularios" (`:427-433`) no describe las dos familias** (subrayado y caja) ni el campo con prefijo, que ahora son una definición del proyecto.
-3. **Quedan cajas escritas a mano fuera de la definición única**, en pantallas fuera de alcance (dos son hojas del mapa):
-   - `FilterPanel.tsx:115-122`;
-   - `PropertyContact.tsx:119-127`;
-   - `PropertyModal.tsx:597-605`;
-   - `ShareButton.tsx:212-217`.
-
-   Usan `focus:` en vez de `focus-visible:`, y rellenos de 12 y 8 px.
-4. **Dentro de la familia caja, el error no se muestra igual:**
-   - **formulario de propiedades:** colorea el campo (`FIELD_BOX_ERROR`);
-   - **teléfono:** colorea el contenedor;
-   - **nombre y contraseñas de perfil, y alta de agente e identidad** (`ProfileForm.tsx`, `TeamContent.tsx`, `AgencyIdentityForm.tsx`): solo muestran el texto rojo debajo, con el campo intacto.
-5. **`aria-invalid` está solo en el selector de ciudad del registro y en el campo de teléfono.** Los demás campos de inicio de sesión, registro, perfil, equipo y preferencias no lo tienen: un lector de pantalla no anuncia que están en error.
-6. **El campo de teléfono en variante subrayado mide 41 px de alto** y los otros subrayados 40 px (medido). El contenedor suma su borde inferior al alto del input.
-7. **`PhoneWaReviewNotice` dice que "el enlace de WhatsApp puede no llegar a destino"** también en el teléfono de la agencia (`AgencyPhoneForm.tsx`), cuyo número no se usa para ningún enlace (hallazgo del informe anterior). El texto es cierto para perfil y exagerado ahí.
-8. **Guardar un número preservado sin tocarlo muestra "Teléfono de la agencia actualizado"** (`AgencyPhoneForm.tsx`) aunque no cambió nada. El aviso de revisión sigue a la vista, pero el mensaje de éxito sugiere que algo se guardó.
-9. **La familia subrayado no tiene anillo de foco** (`LoginForm.tsx`, `RegisterForm.tsx`): medido `box-shadow: none` al enfocar. DESIGN.md pide anillo terracota para todos los campos.
-10. **`LoginForm.tsx:66-122` tiene los hijos del `<form>` con una indentación distinta** (12 espacios contra 6 del `<form>`) y el `</Button>` desalineado. Es cosmético y previo a esta tanda.
-11. **La quita del 15 no distingue características de 4 dígitos terminadas en "15"**: el algoritmo prueba las posiciones 2, 3 y 4 en ese orden. **No verifiqué** si existe alguna característica argentina así; si existe, un número dictado con 15 podría resolverse mal (en ese caso, el largo sigue siendo 10 y no daría error).
-12. **Un número con 54 y sin el 9 escrito a mano** (`543854000000`) se guarda **con el 9 agregado** (`5493854000000`). Es coherente con la decisión de solo celular. Pero una inmobiliaria que atienda WhatsApp Business desde una línea fija (van sin el 9) no puede cargar su número, y el sistema se lo "corrige" sin avisar mientras lo escribe. La decisión de no aceptar fijos ya estaba tomada; lo anoto por el efecto concreto.
+El tamaño de la casilla (`size-4.5`, 18 px medido) no cambió. El único cambio "de tamaño" es que las opciones de operación **sin marcar** ahora tienen el mismo `p-4` que ya tenía la marcada: es la condición para que la casilla no salte, y es la decisión 2.
 
 ---
 
-## 11. Baseline de calidad
+## 7. Inconsistencias nuevas (sin arreglar)
 
-Borré `.next/` y `tsconfig.tsbuildinfo` antes de correr. **Corrida final, después del último cambio:**
+Se suman a las 46 abiertas del relevamiento anterior.
+
+1. **La tarjeta de operación ahora se ve tocable entera, pero solo responden la casilla y el texto.** Tocar el relleno de la tarjeta no marca nada (`PropertyForm.tsx`, `OperationField`: el `Label` no ocupa el ancho del contenedor). Hacerlo requiere tocar la etiqueta o envolver la fila, y las etiquetas estaban fuera de alcance.
+2. **Al enfocar una casilla con el teclado, su borde se ACLARA.** El componente mantiene `focus-visible:border-ring` (`ui/checkbox.tsx`), y `--ring` es un gris más claro que el `graphite/80` nuevo. El anillo de foco sigue estando, pero el borde pierde contraste justo en el foco.
+3. **El color del estado marcado sigue sobrescrito en seis lugares**: `CHECKBOX_TERRACOTA` en `FilterPanel.tsx` y en `AgenciesTable.tsx`, y el mismo texto inline 4 veces en `PropertyForm.tsx`. El componente marca en `bg-primary` (casi negro), así que **una casilla nueva sin override se marcaría en negro**.
+4. **En celular, el contenido del panel pasa por debajo del botón de menú al hacer scroll.** `pt-14` deja libre la posición inicial del título, pero el botón sigue siendo fijo y queda encima de lo que se desplaza (`Sidebar.tsx:187`). Una barra superior en el flujo lo resolvería de raíz.
+5. **Indentación irregular en la barra de filtros de admin:** las etiquetas quedaron con la sangría anterior dentro del contenedor nuevo (`AgenciesTable.tsx`, bloque de filtros). Es cosmético y lo introdujo esta tanda.
+6. **El warning de lint cambió de línea otra vez: ahora `PropertyForm.tsx:814`** (antes 804, y `CLAUDE.md` dice 808), por las 10 líneas de comentario agregadas en `OperationField`. Es el mismo warning; se suma a la inconsistencia de documentación ya anotada.
+
+---
+
+## 8. Baseline de calidad
+
+Borré `.next/` y `tsconfig.tsbuildinfo` antes de correr.
 
 ### `npx tsc --noEmit`
 
@@ -493,25 +283,25 @@ Sin salida: **0 errores, exit 0.**
 
 
 /home/facuzavaleta89/dev/marka/src/components/properties/PropertyForm.tsx
-  804:30  warning  Compilation Skipped: Use of incompatible library
+  814:30  warning  Compilation Skipped: Use of incompatible library
 
 This API returns functions which cannot be memoized without leading to stale UI. To prevent this, by default React Compiler will skip memoizing this component/hook. However, you may see issues if values from this API are passed to other components/hooks that are memoized.
 
-/home/facuzavaleta89/dev/marka/src/components/properties/PropertyForm.tsx:804:30
-  802 |   });
-  803 |
-> 804 |   const selectedAmenities = (watch("amenities") ?? []) as string[];
+/home/facuzavaleta89/dev/marka/src/components/properties/PropertyForm.tsx:814:30
+  812 |   });
+  813 |
+> 814 |   const selectedAmenities = (watch("amenities") ?? []) as string[];
       |                              ^^^^^ React Hook Form's `useForm()` API returns a `watch()` function which cannot be memoized safely.
-  805 |   const lat = watch("lat");
-  806 |   const lng = watch("lng");
-  807 |   const address = watch("address") ?? "";  react-hooks/incompatible-library
+  815 |   const lat = watch("lat");
+  816 |   const lng = watch("lng");
+  817 |   const address = watch("address") ?? "";  react-hooks/incompatible-library
 
 ✖ 1 problem (0 errors, 1 warning)
 
 LINT_EXIT=0
 ```
 
-**0 errores, 1 warning, exit 0.** Es el mismo warning, sobre la misma llamada `watch("amenities")`. **Solo cambió el número de línea (808 → 804)**, porque se borró la constante duplicada 4 líneas más arriba. **No se agregó ningún `watch()`:** los cuatro campos de teléfono usan `Controller`, y la búsqueda de `watch(` en los archivos tocados solo encuentra comentarios.
+**0 errores, 1 warning (`react-hooks/incompatible-library` en `PropertyForm.tsx`), exit 0.** Mismo warning sobre la misma llamada `watch("amenities")`; solo cambió el número de línea (ver inconsistencia #6).
 
 ### `npx next build`
 
@@ -520,15 +310,15 @@ LINT_EXIT=0
 - Environments: .env.local
 
   Creating an optimized production build ...
-✓ Compiled successfully in 8.9s
+✓ Compiled successfully in 11.8s
   Running TypeScript ...
-  Finished TypeScript in 8.5s ...
+  Finished TypeScript in 9.0s ...
   Collecting page data using 3 workers ...
   Generating static pages using 3 workers (0/20) ...
   Generating static pages using 3 workers (5/20) 
   Generating static pages using 3 workers (10/20) 
   Generating static pages using 3 workers (15/20) 
-✓ Generating static pages using 3 workers (20/20) in 1171ms
+✓ Generating static pages using 3 workers (20/20) in 3.0s
   Finalizing page optimization ...
 
 Route (app)
@@ -564,17 +354,19 @@ Route (app)
 BUILD_EXIT=0
 ```
 
-**Verde, exit 0, 22 rutas**, mismos nombres y tipos. **Sin cambios en el baseline**, salvo el número de línea del warning ya explicado.
+**Verde, exit 0, 22 rutas**, mismos nombres y tipos. **Sin cambios en el baseline.**
 
 ---
 
-## 12. Lo que resultó falso o imposible
+## 9. Lo que resultó falso o imposible
 
-**Ninguna decisión resultó imposible.** Las trece se implementaron como estaban descritas.
+**Ninguna decisión resultó imposible**, y **nada de lo que había que arreglar obligó a tocar la lista de exclusiones**.
 
-**Lo que resultó falso o incompleto en el prompt:**
+**Lo que resultó falso o impreciso en el prompt:**
 
-1. **"Sacá del principio … el quince que se usa al dictar un celular" — el quince no va al principio.** Se dicta **después de la característica** ("0385 **15** 400 0000", "011 **15** 1234 5678"), y su posición depende del largo de la característica. Se implementó en esas tres posiciones posibles, **solo cuando sobran exactamente dos dígitos**, que es la única forma de saber que está. Un "15" escrito realmente al principio, sin característica ("15 4000000"), no se puede completar y da error de largo, que es lo correcto.
-2. **"Dos pantallas más ya definieron la variante de caja por su cuenta" — eran tres.** Además de las dos con la constante duplicada, **`AgencySlugForm` tenía su propia caja escrita a mano** (el contenedor del campo con prefijo, con otro anillo y otro color de prefijo). Se pasó a la definición única, y eso le cambió tres detalles visibles (sección 2). Siguen existiendo cajas a mano **fuera de alcance** (inconsistencia #3).
-3. **"Hoy, cuando hay un error, esos campos se convierten en una caja sin relleno" — cierto, y había un segundo defecto en el mismo estado:** el selector de ciudad del registro no se convertía en caja (ya traía `aria-invalid`), pero se pintaba con **el rojo del preset**, no con el `error` del proyecto. Salió al medir y quedó resuelto en la misma constante (sección 3).
-4. **Decisión 4 — "si la definición única lo resuelve, bien":** lo resuelve en perfil, preferencias y equipo (medido). En **inicio de sesión y registro no hay anillo y no es por el override**: es el diseño de la familia subrayado. Lo reporto sin arreglarlo (inconsistencia #9).
+1. **"Los fondos son dos y distintos: el del panel y el del formulario de propiedades" — son el mismo.** Los dos son `mist` (#EAE4DC): el formulario vive dentro del layout del panel y no tiene fondo propio. Los fondos **distintos** son tres: `mist` (panel y formulario), `paper` (filtro del mapa) y blanco (dentro de la tarjeta de operación marcada). El color elegido se midió contra los tres (4,31 / 4,90 / 5,07).
+2. **"Las otras cuatro casillas usan otro borde, que se ve" — se ve poco.** `stone` medía **1,42:1** sobre `mist` (filtros de admin) y 1,71:1 sobre `paper` (filtro del mapa): perceptible, pero lejos del 3:1. El prompt sí dice que tampoco llegaba al mínimo, y eso es correcto.
+3. **Decisión 3, "de una sola vez para todas" — son dos líneas, no una**, porque el panel tiene dos layouts separados (`dashboard` y `admin`). No son diez ajustes página por página: son los dos únicos contenedores de las diez páginas, y cada uno documenta al otro.
+4. **Decisión 1, "si el arreglo las vuelve redundantes, sacales el override" — se sacó solo la parte redundante.** El `border-stone` quedó redundante y se quitó. Las clases del estado marcado en terracota **no** quedaron redundantes, porque el componente marca en casi negro, y se mantuvieron (inconsistencia #3).
+
+**Limitación de la evidencia:** salvo el filtro del mapa, medido en la pantalla real, las mediciones de casillas, tarjetas, botón de menú y filtros de admin son **reproducciones con las clases reales**. Esas pantallas exigen sesión y no inicié ninguna.

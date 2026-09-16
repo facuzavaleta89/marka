@@ -342,10 +342,20 @@ function OperationField({
       name={flagName}
       control={control}
       render={({ field: flagField }) => (
+        // ⚠ EL CONTENEDOR EXISTE SIEMPRE, marcada o no, con el MISMO relleno.
+        // Antes solo la marcada tenía tarjeta (borde, fondo y `p-4`) y la sin
+        // marcar no tenía nada: al marcarla la casilla saltaba 16px a la derecha,
+        // y las opciones sin marcar se leían como texto suelto, no como opciones
+        // del mismo conjunto. Ahora cambia solo el tratamiento:
+        //   · marcada    → borde terracota + fondo blanco (estado activo, DESIGN §2);
+        //   · sin marcar → borde stone sobre el fondo de la sección.
+        // El relleno y el radio no cambian con el estado: la casilla no se mueve.
         <div
           className={cn(
-            "rounded-md border transition-colors",
-            flagField.value ? "border-stone bg-white p-4" : "border-transparent"
+            "rounded-md border p-4 transition-colors",
+            flagField.value
+              ? "border-terracota bg-white"
+              : "border-stone bg-transparent"
           )}
         >
           <div className="flex items-center gap-2">

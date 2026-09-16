@@ -59,7 +59,10 @@ export default async function AdminLayout({
           el containing block de los descendientes position:absolute de los forms
           internos de Radix/shadcn; sin él se anclan al viewport y generan un scroll
           fantasma en páginas altas. No quitar. */}
-      <main className="relative flex-1 overflow-y-auto">{children}</main>
+      {/* ⚠ `pt-14 md:pt-0`: el botón fijo del menú en celular tapaba el título.
+          Mismo ajuste y mismo motivo que dashboard/layout.tsx; los dos layouts
+          son los únicos contenedores de las diez páginas del panel. */}
+      <main className="relative flex-1 overflow-y-auto pt-14 md:pt-0">{children}</main>
     </div>
   );
 }

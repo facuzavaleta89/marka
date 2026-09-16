@@ -67,8 +67,10 @@ import {
 
 // Override del Checkbox de shadcn a terracota en estado marcado (mismo patrón
 // que FilterPanel/PropertyForm, para consistencia en toda la app).
+// ⚠ Sin color de borde para el estado SIN marcar: lo pone el componente
+// (`ui/checkbox.tsx`). Acá había `border-stone`, que daba 1,42:1 sobre mist.
 const CHECKBOX_TERRACOTA =
-  "border-stone data-[state=checked]:bg-terracota data-[state=checked]:border-terracota data-[state=checked]:text-paper";
+  "data-[state=checked]:bg-terracota data-[state=checked]:border-terracota data-[state=checked]:text-paper";
 
 // ─── Tipos ───────────────────────────────────────────────────
 
@@ -819,12 +821,25 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
   return (
     <>
       {/* Barra de filtros: dos ejes separados visualmente para que se lea que
-          son preguntas distintas. Dentro de cada eje, las cajas son aditivas (OR). */}
-      <div className="mb-4 space-y-2">
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-          <span className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite">
+          son preguntas distintas. Dentro de cada eje, las cajas son aditivas (OR).
+
+          ⚠ El título de cada eje va en SU PROPIA columna (arriba en celular, a
+          la izquierda desde `sm`) y las opciones en un contenedor aparte. Antes
+          título y opciones compartían un solo flex-wrap: las opciones que bajaban
+          de línea arrancaban en el margen, DEBAJO DEL TÍTULO, y la separación
+          entre ejes (8px) era la misma que entre líneas de un eje, así que en un
+          teléfono los dos grupos se mezclaban. Ahora:
+            · entre ejes: 16px (`space-y-4`), el doble que entre líneas (8px);
+            · las opciones que bajan de línea se alinean con la primera opción;
+            · desde `sm`, el título tiene un ancho fijo (`w-24`) y las opciones
+              de los dos ejes arrancan en la misma x. `leading-5` le da al título
+              el mismo alto de línea que una opción (20px), así quedan centrados. */}
+      <div className="mb-4 space-y-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-5">
+          <span className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite leading-5 sm:w-24 sm:shrink-0">
             Aprobación
           </span>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
           {APPROVAL_FILTERS.map(({ key, label }) => (
             <label
               key={key}
@@ -842,11 +857,13 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
               <span className="font-sans text-sm text-black">{label}</span>
             </label>
           ))}
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-          <span className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-5">
+          <span className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite leading-5 sm:w-24 sm:shrink-0">
             Suscripción
           </span>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
           {PLAN_FILTERS.map(({ key, label }) => (
             <label
               key={key}
@@ -864,6 +881,7 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
               <span className="font-sans text-sm text-black">{label}</span>
             </label>
           ))}
+          </div>
         </div>
       </div>
 
