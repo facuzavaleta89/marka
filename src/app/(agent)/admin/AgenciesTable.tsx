@@ -65,13 +65,6 @@ import {
   restoreSubscriptionAction,
 } from "./actions";
 
-// Override del Checkbox de shadcn a terracota en estado marcado (mismo patrón
-// que FilterPanel/PropertyForm, para consistencia en toda la app).
-// ⚠ Sin color de borde para el estado SIN marcar: lo pone el componente
-// (`ui/checkbox.tsx`). Acá había `border-stone`, que daba 1,42:1 sobre mist.
-const CHECKBOX_TERRACOTA =
-  "data-[state=checked]:bg-terracota data-[state=checked]:border-terracota data-[state=checked]:text-paper";
-
 // ─── Tipos ───────────────────────────────────────────────────
 
 // Suscripción de una agencia tal como la muestra el panel. Es OPCIONAL en la
@@ -852,7 +845,6 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
                 onCheckedChange={() =>
                   setActiveApproval((prev) => ({ ...prev, [key]: !prev[key] }))
                 }
-                className={CHECKBOX_TERRACOTA}
               />
               <span className="font-sans text-sm text-black">{label}</span>
             </label>
@@ -876,7 +868,6 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
                 onCheckedChange={() =>
                   setActivePlan((prev) => ({ ...prev, [key]: !prev[key] }))
                 }
-                className={CHECKBOX_TERRACOTA}
               />
               <span className="font-sans text-sm text-black">{label}</span>
             </label>
