@@ -269,7 +269,7 @@ function TeamList({
                     <button
                       onClick={() => onDeleteRequest(m)}
                       disabled={pendingId === m.id}
-                      className="inline-flex items-center justify-center p-1.5 rounded-md text-graphite hover:text-error hover:bg-terracota-subtle transition-colors disabled:opacity-40"
+                      className="inline-flex size-9 items-center justify-center rounded-md text-graphite hover:text-error hover:bg-terracota-subtle transition-colors disabled:opacity-40"
                       aria-label={`Eliminar a ${m.full_name}`}
                     >
                       <Trash2 size={16} />
@@ -306,7 +306,7 @@ function TeamList({
                   <button
                     onClick={() => onDeleteRequest(m)}
                     disabled={pendingId === m.id}
-                    className="inline-flex items-center justify-center p-1.5 rounded-md text-graphite hover:text-error hover:bg-terracota-subtle transition-colors disabled:opacity-40"
+                    className="inline-flex size-9 items-center justify-center rounded-md text-graphite hover:text-error hover:bg-terracota-subtle transition-colors disabled:opacity-40"
                     aria-label={`Eliminar a ${m.full_name}`}
                   >
                     <Trash2 size={16} />

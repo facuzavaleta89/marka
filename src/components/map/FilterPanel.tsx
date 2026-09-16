@@ -90,7 +90,7 @@ function ToggleBtn({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex-1 py-2 font-sans text-sm font-medium rounded-md transition-colors duration-100",
+        "flex-1 h-9 font-sans text-sm font-medium rounded-md transition-colors duration-100",
         active ? "bg-terracota text-paper" : "bg-mist text-graphite hover:bg-stone/60"
       )}
     >
@@ -412,7 +412,7 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
                   type="button"
                   onClick={() => togglePropertyType(value)}
                   className={cn(
-                    "py-1.5 px-3 font-sans text-sm rounded-md border transition-colors text-left",
+                    "h-9 px-3 font-sans text-sm rounded-md border transition-colors text-left",
                     active
                       ? "border-terracota bg-terracota-subtle text-terracota"
                       : "border-stone bg-white text-graphite hover:border-graphite"
@@ -435,7 +435,7 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
                 disabled={!priceEnabled}
                 onClick={() => setFilter("currency", c)}
                 className={cn(
-                  "flex-1 py-1.5 font-sans text-sm font-medium rounded-md transition-colors",
+                  "flex-1 h-9 font-sans text-sm font-medium rounded-md transition-colors",
                   !priceEnabled
                     ? "bg-mist text-stone cursor-not-allowed"
                     : filters.currency === c
@@ -505,7 +505,7 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
                   type="button"
                   onClick={() => setFilter("bedrooms_min", active ? null : value)}
                   className={cn(
-                    "flex-1 py-2 font-sans text-sm font-medium rounded-md transition-colors",
+                    "flex-1 h-9 font-sans text-sm font-medium rounded-md transition-colors",
                     active
                       ? "bg-terracota text-paper"
                       : "bg-mist text-graphite hover:bg-stone/60"
@@ -574,7 +574,7 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
               resetFilters();
               setPriceMin(""); setPriceMax(""); setAreaMin(""); setAreaMax("");
             }}
-            className="w-full py-2.5 font-sans text-sm font-medium text-error border border-error rounded-md hover:bg-terracota-subtle transition-colors"
+            className="w-full h-11 font-sans text-sm font-medium text-error border border-error rounded-md hover:bg-terracota-subtle transition-colors"
           >
             Limpiar filtros ({activeCount})
           </button>

@@ -337,7 +337,9 @@ function ModalContent({
             `paper/85 + backdrop-blur` que los otros tres botones flotantes. */}
         <Link
           href={`/propiedades/${property.slug}`}
-          className="absolute bottom-2.5 left-3 inline-flex items-center gap-1.5 rounded-md bg-paper/85 px-2.5 py-1.5 font-sans text-xs font-medium text-graphite shadow-sm backdrop-blur-sm transition-colors hover:bg-paper hover:text-black"
+          // S (28px): sobre la foto, por debajo del mínimo táctil. El
+          // pseudo-elemento extiende el área de toque a 44px sin ocupar más alto.
+          className="absolute bottom-2.5 left-3 inline-flex h-7 items-center gap-1.5 rounded-md bg-paper/85 px-2.5 font-sans text-xs font-medium text-graphite shadow-sm backdrop-blur-sm after:absolute after:-inset-x-2 after:-inset-y-2 transition-colors hover:bg-paper hover:text-black"
         >
           Ver ficha completa
           <ArrowUpRight size={14} />
@@ -372,7 +374,16 @@ function ModalContent({
             sola, el bloque queda idéntico al de antes de que una propiedad
             pudiera tener varias. El precio sigue siendo el elemento dominante
             (DESIGN §5: Noto Serif 32px bold terracota). */}
-        <div className="space-y-2.5">
+        {/* ⚠ UN SOLO título para todo el bloque, no uno por operación: cada
+            línea ya dice a qué operación corresponde. Sin él, una propiedad sin
+            precio cargado mostraba solo "A convenir", sin nada que dijera de qué
+            se estaba hablando. Mismo tratamiento que los otros títulos de sección
+            de esta pantalla ("Requisitos para alquilar"). */}
+        <div className="space-y-1.5">
+          <p className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite">
+            Precio
+          </p>
+          <div className="space-y-2.5">
           {operations.map((o) => (
             <div key={o.operation}>
               {operations.length > 1 && (
@@ -385,6 +396,7 @@ function ModalContent({
               </p>
             </div>
           ))}
+          </div>
         </div>
 
         {/* Ubicación */}

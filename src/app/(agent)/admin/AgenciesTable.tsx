@@ -669,7 +669,7 @@ function RowActions({
           <DropdownMenuTrigger asChild>
             <button
               disabled={loading}
-              className="p-1.5 rounded-md text-graphite hover:text-black hover:bg-mist transition-colors disabled:opacity-40"
+              className="inline-flex size-9 items-center justify-center rounded-md text-graphite hover:text-black hover:bg-mist transition-colors disabled:opacity-40"
               aria-label="Más acciones"
             >
               <MoreHorizontal size={16} />

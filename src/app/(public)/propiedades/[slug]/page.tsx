@@ -237,7 +237,15 @@ export default async function PropertyPage({
             acá tiene toda la columna para lograrlo: 40px contra los 32 del
             modal, donde compite con un botón a 200px. La etiqueta de la
             operación solo aparece cuando hay más de una. */}
-        <div className="mt-4 space-y-3">
+        <div className="mt-4">
+          {/* ⚠ UN SOLO título para todo el bloque: cada línea ya dice su
+              operación. Sin él, una propiedad sin precio mostraba solo "A
+              convenir". Mismo tratamiento que los otros títulos de sección de
+              esta página ("Comodidades", "Requisitos para alquilar"). */}
+          <h2 className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite">
+            Precio
+          </h2>
+          <div className="mt-2 space-y-3">
           {operations.map((o) => (
             <div key={o.operation}>
               {operations.length > 1 && (
@@ -250,6 +258,7 @@ export default async function PropertyPage({
               </p>
             </div>
           ))}
+          </div>
         </div>
 
         {/* ── 5. Ubicación ──────────────────────────────────────── */}

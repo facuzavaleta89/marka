@@ -185,7 +185,12 @@ export default function LocationPicker({
         <button
           type="button"
           onClick={resetToCity}
-          className="absolute top-3 right-3 z-[500] inline-flex items-center gap-1.5 h-8 px-2.5 font-sans text-xs font-medium text-graphite bg-paper border border-stone rounded-md shadow-sm hover:bg-mist hover:text-black transition-colors"
+          // S (28px): va sobre el mapa, así que no puede robarle alto. Está por debajo
+          // del mínimo táctil, y el pseudo-elemento le extiende el área de toque a
+          // 44px sin mover el dibujo (mismo recurso que ui/checkbox.tsx y el tamaño
+          // xs de ui/button.tsx). No es la única forma de recentrar: arrastrar el
+          // pin también funciona.
+          className="absolute top-3 right-3 z-[500] inline-flex items-center gap-1.5 h-7 px-2.5 font-sans text-xs font-medium text-graphite bg-paper border border-stone rounded-md shadow-sm after:absolute after:-inset-x-2 after:-inset-y-2 hover:bg-mist hover:text-black transition-colors"
           aria-label="Centrar el pin en la ciudad"
         >
           <Crosshair size={14} />
