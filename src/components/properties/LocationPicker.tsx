@@ -153,8 +153,13 @@ export default function LocationPicker({
         dirección más arriba y ajustalo desde ahí.
       </p>
 
+      {/* ⚠ `isolate` crea un contexto de apilamiento propio: los z-index de
+          Leaflet (panes 400 y controles 401 en globals.css, "Centrar" 500)
+          quedan encerrados acá. Sin eso competían en el contexto raíz y se
+          pintaban por encima del cajón del menú (z-50), de su velo (z-40) y de
+          los desplegables de Radix (z-50). */}
       <div
-        className={`relative rounded-md overflow-hidden border shadow-sm ${
+        className={`relative isolate rounded-md overflow-hidden border shadow-sm ${
           error ? "border-error" : "border-stone"
         }`}
         style={{ height: 280 }}

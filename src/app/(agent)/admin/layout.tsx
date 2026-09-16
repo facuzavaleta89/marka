@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { Sidebar } from "@/components/dashboard/Sidebar";
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { getPlanUsage } from "@/lib/utils/getPlanUsage";
 import { resolveAgentSession } from "@/lib/utils/resolveAgentSession";
 
@@ -43,26 +43,20 @@ export default async function AdminLayout({
   const isAppAdmin = true;
   const isAgencyAdmin = agent.role === "admin";
 
+  // Estructura (barra lateral + main scrolleable): la misma del dashboard, ver
+  // DashboardShell.
   return (
-    <div className="flex h-dvh bg-mist overflow-hidden">
-      <Sidebar
-        agent={{
-          full_name: agent.full_name,
-          avatar_url: agent.avatar_url,
-          agency: { name: agency.name },
-        }}
-        planUsage={planUsage}
-        isAppAdmin={isAppAdmin}
-        isAgencyAdmin={isAgencyAdmin}
-      />
-      {/* relative: load-bearing (mismo motivo que dashboard/layout.tsx). El main es
-          el containing block de los descendientes position:absolute de los forms
-          internos de Radix/shadcn; sin él se anclan al viewport y generan un scroll
-          fantasma en páginas altas. No quitar. */}
-      {/* ⚠ `pt-14 md:pt-0`: el botón fijo del menú en celular tapaba el título.
-          Mismo ajuste y mismo motivo que dashboard/layout.tsx; los dos layouts
-          son los únicos contenedores de las diez páginas del panel. */}
-      <main className="relative flex-1 overflow-y-auto pt-14 md:pt-0">{children}</main>
-    </div>
+    <DashboardShell
+      agent={{
+        full_name: agent.full_name,
+        avatar_url: agent.avatar_url,
+        agency: { name: agency.name },
+      }}
+      planUsage={planUsage}
+      isAppAdmin={isAppAdmin}
+      isAgencyAdmin={isAgencyAdmin}
+    >
+      {children}
+    </DashboardShell>
   );
 }

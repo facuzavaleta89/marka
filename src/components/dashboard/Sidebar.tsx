@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -29,7 +29,7 @@ type SidebarAgent = {
   agency: { name: string } | null;
 };
 
-interface SidebarProps {
+export interface SidebarProps {
   agent: SidebarAgent;
   planUsage: PlanUsage;
   // true solo si el usuario logueado es el dueño de la plataforma (calculado en
@@ -173,22 +173,72 @@ function NavContent({
   );
 }
 
+// id del cajón de celular: lo referencia el `aria-controls` del botón de menú.
+const MOBILE_NAV_ID = "dashboard-mobile-nav";
+
 export function Sidebar({ agent, planUsage, isAppAdmin, isAgencyAdmin }: SidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+
+  // ⚠ EL CAJÓN SE CIERRA AL CAMBIAR DE RUTA POR CUALQUIER CAMINO, no solo al
+  // tocar un enlace del menú: también con "atrás" del navegador. Se resuelve
+  // durante el render, comparando con la ruta anterior guardada en estado (el
+  // patrón de React para ajustar estado cuando cambia una prop), y NO con un
+  // efecto que mire `pathname`: un setState dentro de un efecto pinta un cuadro
+  // con el cajón todavía abierto sobre la pantalla nueva.
+  const [renderedPath, setRenderedPath] = useState(pathname);
+  if (renderedPath !== pathname) {
+    setRenderedPath(pathname);
+    setMobileOpen(false);
+  }
 
   const close = () => setMobileOpen(false);
 
+  // Cerrar a pedido (✕ o Escape) devuelve el foco al botón que abrió el cajón.
+  // Sin esto el foco quedaría adentro de un aside que pasa a `inert`, o sea en
+  // ningún lado, y quien navega con teclado pierde su lugar.
+  const closeAndRestoreFocus = () => {
+    setMobileOpen(false);
+    menuButtonRef.current?.focus();
+  };
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setMobileOpen(false);
+      menuButtonRef.current?.focus();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [mobileOpen]);
+
   return (
     <>
-      {/* Botón hamburguesa (mobile) */}
-      <button
-        onClick={() => setMobileOpen(true)}
-        className="md:hidden fixed top-4 left-4 z-50 p-2 rounded-md bg-black text-paper shadow-md"
-        aria-label="Abrir menú"
-      >
-        <Menu size={20} />
-      </button>
+      {/* Barra superior (celular).
+          ⚠ ESTÁ EN EL FLUJO, NO ES FIJA. Antes el botón de menú era `fixed` y el
+          `main` —que es el que scrollea— solo le dejaba un relleno arriba: al
+          bajar, el contenido pasaba por debajo del botón. Como parte del flujo,
+          el área que scrollea arranca debajo de la barra y nunca pasa por detrás.
+          Sin z-index a propósito: el velo y el cajón (fixed) la cubren al abrirse.
+          Solo la marca: agencia, agente y plan ya están en el cajón. */}
+      <div className="md:hidden flex h-14 shrink-0 items-center gap-1 border-b border-white/10 bg-black px-4">
+        {/* 44×44 reales (mínimo táctil, DESIGN §6): en la barra sobra alto. El
+            `-ml-3` alinea el ícono con el margen de 16px de la barra. */}
+        <button
+          ref={menuButtonRef}
+          type="button"
+          onClick={() => setMobileOpen(true)}
+          className="-ml-3 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-paper transition-colors duration-100 hover:bg-white/5"
+          aria-label="Abrir menú"
+          aria-expanded={mobileOpen}
+          aria-controls={MOBILE_NAV_ID}
+        >
+          <Menu size={20} />
+        </button>
+        <Wordmark size="md" variant="light" />
+      </div>
 
       {/* Overlay oscuro (mobile) */}
       {mobileOpen && (
@@ -199,16 +249,25 @@ export function Sidebar({ agent, planUsage, isAppAdmin, isAgencyAdmin }: Sidebar
         />
       )}
 
-      {/* Sidebar mobile */}
+      {/* Sidebar mobile.
+          Cerrado es `inert`: queda fuera de pantalla por el translate, y sin
+          esto sus enlaces seguían en el orden de tabulación y el lector de
+          pantalla los leía. */}
       <aside
+        id={MOBILE_NAV_ID}
+        inert={!mobileOpen}
         className={[
           "md:hidden fixed inset-y-0 left-0 w-64 bg-black z-50 transition-transform duration-[220ms] ease-out",
           mobileOpen ? "translate-x-0" : "-translate-x-full",
         ].join(" ")}
       >
+        {/* Dibujo de 28px con el área de toque extendida a 44px por el
+            pseudo-elemento (mismo recurso que ui/checkbox.tsx): más grande
+            empujaría el encabezado del cajón. */}
         <button
-          onClick={close}
-          className="absolute top-4 right-4 p-1 text-stone hover:text-paper"
+          type="button"
+          onClick={closeAndRestoreFocus}
+          className="absolute top-4 right-4 p-1 text-stone hover:text-paper after:absolute after:-inset-2"
           aria-label="Cerrar menú"
         >
           <X size={20} />
