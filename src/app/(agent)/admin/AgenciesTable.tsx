@@ -22,6 +22,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FIELD_BOX, FIELD_BOX_ERROR } from "@/components/forms/fieldStyles";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -66,15 +67,10 @@ import {
 
 // Override del Checkbox de shadcn a terracota en estado marcado (mismo patrón
 // que FilterPanel/PropertyForm, para consistencia en toda la app).
-// Mismo tratamiento de campo que el resto de los formularios del proyecto
-// (DESIGN §6: fondo white, borde stone, rounded-md, foco terracota). El Input
-// base del preset es de borde inferior, así que se lo sobreescribe igual que en
-// PropertyForm y AgencyIdentityForm.
-const FIELD =
-  "rounded-md border border-stone border-b-stone bg-white px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracota/20 focus-visible:ring-offset-1 focus-visible:border-graphite focus-visible:border-b-graphite";
-
+// ⚠ Sin color de borde para el estado SIN marcar: lo pone el componente
+// (`ui/checkbox.tsx`). Acá había `border-stone`, que daba 1,42:1 sobre mist.
 const CHECKBOX_TERRACOTA =
-  "border-stone data-[state=checked]:bg-terracota data-[state=checked]:border-terracota data-[state=checked]:text-paper";
+  "data-[state=checked]:bg-terracota data-[state=checked]:border-terracota data-[state=checked]:text-paper";
 
 // ─── Tipos ───────────────────────────────────────────────────
 
@@ -673,7 +669,7 @@ function RowActions({
           <DropdownMenuTrigger asChild>
             <button
               disabled={loading}
-              className="p-1.5 rounded-md text-graphite hover:text-black hover:bg-mist transition-colors disabled:opacity-40"
+              className="inline-flex size-9 items-center justify-center rounded-md text-graphite hover:text-black hover:bg-mist transition-colors disabled:opacity-40"
               aria-label="Más acciones"
             >
               <MoreHorizontal size={16} />
@@ -825,12 +821,25 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
   return (
     <>
       {/* Barra de filtros: dos ejes separados visualmente para que se lea que
-          son preguntas distintas. Dentro de cada eje, las cajas son aditivas (OR). */}
-      <div className="mb-4 space-y-2">
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-          <span className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite">
+          son preguntas distintas. Dentro de cada eje, las cajas son aditivas (OR).
+
+          ⚠ El título de cada eje va en SU PROPIA columna (arriba en celular, a
+          la izquierda desde `sm`) y las opciones en un contenedor aparte. Antes
+          título y opciones compartían un solo flex-wrap: las opciones que bajaban
+          de línea arrancaban en el margen, DEBAJO DEL TÍTULO, y la separación
+          entre ejes (8px) era la misma que entre líneas de un eje, así que en un
+          teléfono los dos grupos se mezclaban. Ahora:
+            · entre ejes: 16px (`space-y-4`), el doble que entre líneas (8px);
+            · las opciones que bajan de línea se alinean con la primera opción;
+            · desde `sm`, el título tiene un ancho fijo (`w-24`) y las opciones
+              de los dos ejes arrancan en la misma x. `leading-5` le da al título
+              el mismo alto de línea que una opción (20px), así quedan centrados. */}
+      <div className="mb-4 space-y-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-5">
+          <span className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite leading-5 sm:w-24 sm:shrink-0">
             Aprobación
           </span>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
           {APPROVAL_FILTERS.map(({ key, label }) => (
             <label
               key={key}
@@ -848,11 +857,13 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
               <span className="font-sans text-sm text-black">{label}</span>
             </label>
           ))}
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-          <span className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-5">
+          <span className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite leading-5 sm:w-24 sm:shrink-0">
             Suscripción
           </span>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
           {PLAN_FILTERS.map(({ key, label }) => (
             <label
               key={key}
@@ -870,6 +881,7 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
               <span className="font-sans text-sm text-black">{label}</span>
             </label>
           ))}
+          </div>
         </div>
       </div>
 
@@ -1513,7 +1525,7 @@ function RejectPanel({
               ? "Ej: el colegio no admite ese nombre por su parecido con otra matriculada."
               : "Ej: la matrícula no figura a nombre de la agencia."
           }
-          className={tooLong ? "border-error" : undefined}
+          className={`${FIELD_BOX} py-2 ${tooLong ? FIELD_BOX_ERROR : ""}`}
         />
         <p
           className={`font-sans text-xs ${tooLong ? "text-error" : "text-graphite"}`}
@@ -1619,7 +1631,7 @@ function ActivatePlanPanel({
           value={periodEnd}
           min={minDate}
           onChange={(e) => setPeriodEnd(e.target.value)}
-          className={`${FIELD} ${isPastDate ? "border-error border-b-error" : ""}`}
+          className={`${FIELD_BOX} ${isPastDate ? FIELD_BOX_ERROR : ""}`}
         />
         <p
           className={`font-sans text-xs ${isPastDate ? "text-error" : "text-graphite"}`}
@@ -1723,7 +1735,7 @@ function DeleteAgencyPanel({
           onChange={(e) => setTyped(e.target.value)}
           placeholder={row.name}
           autoComplete="off"
-          className={FIELD}
+          className={FIELD_BOX}
         />
       </div>
 
@@ -1892,7 +1904,7 @@ function ChangePlanPanel({
           value={periodEnd}
           min={minDate}
           onChange={(e) => setPeriodEnd(e.target.value)}
-          className={`${FIELD} ${isPastDate ? "border-error border-b-error" : ""}`}
+          className={`${FIELD_BOX} ${isPastDate ? FIELD_BOX_ERROR : ""}`}
         />
         <p
           className={`font-sans text-xs ${isPastDate ? "text-error" : "text-graphite"}`}

@@ -46,7 +46,15 @@ export default async function DashboardLayout({
           (internos de Radix/shadcn) quedan anclados a él y no al viewport — si no,
           en páginas altas (nueva/editar) escapan al ICB y generan un segundo scroll
           fantasma en el documento por debajo del form. */}
-      <main className="relative flex-1 overflow-y-auto">{children}</main>
+      {/* ⚠ `pt-14 md:pt-0`: en celular el botón que abre el menú lateral es FIJO
+          (arriba a la izquierda, 16px de margen y 36px de alto: termina en
+          y=52) y tapaba el título de TODAS las páginas, que arrancan con su
+          propio `p-6` o `p-8`. Estos 56px de más, solo debajo de `md`, dejan el
+          título por debajo del botón en las diez páginas a la vez. Va acá y no
+          en cada página: diez copias del mismo ajuste es el patrón que más caro
+          le salió a este proyecto. La misma línea está en admin/layout.tsx, que
+          monta el mismo Sidebar. */}
+      <main className="relative flex-1 overflow-y-auto pt-14 md:pt-0">{children}</main>
     </div>
   );
 }

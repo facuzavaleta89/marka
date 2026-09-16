@@ -1,20 +1,30 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useForm } from "react-hook-form";
+import { useMemo, useState, useTransition } from "react";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { updateAgencyPhoneAction } from "@/app/(agent)/dashboard/preferencias/actions";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  PhoneWaInput,
+  PhoneWaReviewNotice,
+} from "@/components/forms/PhoneWaInput";
+import {
+  PHONE_WA_HELP,
+  phoneWaField,
+  splitStoredPhoneWa,
+} from "@/lib/utils/phoneWa";
 
-const schema = z.object({
-  phone_wa: z
-    .string()
-    .regex(/^\d{10,}$/, "Solo números, sin + ni espacios. Ej: 5491112345678"),
-});
+// El esquema depende del número guardado: si es uno viejo sin el formato
+// esperado, ese valor exacto se acepta sin reformatear (ver `phoneWaField`).
+function makeSchema(preservedPhone: string | null) {
+  return z.object({
+    phone_wa: phoneWaField(preservedPhone),
+  });
+}
 
-type Values = z.infer<typeof schema>;
+type Values = z.infer<ReturnType<typeof makeSchema>>;
 
 // Editor del teléfono de WhatsApp de la AGENCIA. Se renderiza solo si el user es
 // admin (la página lo gatea); la action revalida el rol server-side igual.
@@ -23,15 +33,22 @@ export function AgencyPhoneForm({ initialPhone }: { initialPhone: string }) {
   const [success, setSuccess] = useState(false);
   const [pending, startTransition] = useTransition();
 
+  // ⚠ Un número guardado sin el formato esperado se muestra TAL CUAL y no se
+  // corrige solo. Ver `splitStoredPhoneWa`.
+  const storedPhone = splitStoredPhoneWa(initialPhone);
+  const preservedPhone = storedPhone.recognized ? null : initialPhone;
+  const schema = useMemo(() => makeSchema(preservedPhone), [preservedPhone]);
+
   const form = useForm<Values>({
     resolver: zodResolver(schema),
-    defaultValues: { phone_wa: initialPhone },
+    defaultValues: { phone_wa: storedPhone.national },
   });
 
   function onSubmit(values: Values) {
     setError(null);
     setSuccess(false);
     startTransition(async () => {
+      // `values.phone_wa` ya es el número COMPLETO: lo armó el esquema.
       const result = await updateAgencyPhoneAction({ phone_wa: values.phone_wa });
       if (result?.error) {
         setError(result.error);
@@ -61,14 +78,34 @@ export function AgencyPhoneForm({ initialPhone }: { initialPhone: string }) {
           >
             Número de WhatsApp de la agencia
           </Label>
-          <Input
-            id="agency_phone_wa"
-            placeholder="5491112345678"
-            {...form.register("phone_wa")}
-            className="bg-white border-stone focus-visible:ring-terracota"
+          <Controller
+            control={form.control}
+            name="phone_wa"
+            render={({ field, fieldState }) => (
+              <>
+                <PhoneWaInput
+                  id="agency_phone_wa"
+                  name={field.name}
+                  value={field.value ?? ""}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  inputRef={field.ref}
+                  variant="box"
+                  invalid={!!fieldState.error}
+                  preservedValue={preservedPhone}
+                  describedBy="agency_phone_wa_help"
+                />
+                {preservedPhone !== null && field.value === preservedPhone && (
+                  <PhoneWaReviewNotice stored={preservedPhone} />
+                )}
+              </>
+            )}
           />
-          <p className="font-sans text-xs text-graphite">
-            Solo números, sin + ni espacios. Ejemplo: 5491112345678
+          <p
+            id="agency_phone_wa_help"
+            className="font-sans text-xs text-graphite"
+          >
+            {PHONE_WA_HELP}
           </p>
           {form.formState.errors.phone_wa && (
             <p className="font-sans text-xs text-error">

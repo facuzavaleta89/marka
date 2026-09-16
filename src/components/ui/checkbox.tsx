@@ -6,6 +6,15 @@ import { Checkbox as CheckboxPrimitive } from "radix-ui"
 import { cn } from "@/lib/utils"
 import { CheckIcon } from "lucide-react"
 
+// ⚠ EL BORDE POR DEFECTO ES `graphite/80`, NO EL `border-input` DEL PRESET.
+// `--input` es un gris casi blanco: sobre el `mist` del panel y del formulario de
+// propiedades daba un contraste de ≈1:1 y la casilla sin marcar NO SE VEÍA (lo
+// único visible de una opción era su texto suelto, y una propiedad que también se
+// alquilaba terminaba cargada solo en venta). `stone`, el otro borde que usaban
+// algunas pantallas, tampoco alcanzaba (1,42:1 sobre mist).
+// `graphite/80` da 4,31:1 sobre mist, 4,88:1 sobre paper y 5,07:1 sobre blanco:
+// por encima del 3:1 que pide WCAG 1.4.11 para el borde de un control en los tres
+// fondos donde viven casillas. No pisar el color del borde desde una pantalla.
 function Checkbox({
   className,
   ...props
@@ -14,7 +23,7 @@ function Checkbox({
     <CheckboxPrimitive.Root
       data-slot="checkbox"
       className={cn(
-        "peer relative flex size-4.5 shrink-0 items-center justify-center rounded-none border border-input bg-transparent transition-shadow outline-none group-has-disabled/field:opacity-50 after:absolute after:-inset-x-3 after:-inset-y-2 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 aria-invalid:aria-checked:border-primary dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground dark:data-checked:bg-primary",
+        "peer relative flex size-4.5 shrink-0 items-center justify-center rounded-sm border border-graphite/80 bg-transparent transition-shadow outline-none group-has-disabled/field:opacity-50 after:absolute after:-inset-x-3 after:-inset-y-2 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 aria-invalid:aria-checked:border-primary dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground dark:data-checked:bg-primary",
         className
       )}
       {...props}

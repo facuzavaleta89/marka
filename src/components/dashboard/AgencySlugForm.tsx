@@ -9,6 +9,11 @@ import { updateAgencySlugAction } from "@/app/(agent)/dashboard/preferencias/act
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Notice } from "@/components/feedback/Notice";
+import {
+  FIELD_BOX_GROUP,
+  FIELD_BOX_GROUP_INPUT,
+  FIELD_GROUP_PREFIX,
+} from "@/components/forms/fieldStyles";
 import { agencyUrl, SITE_URL } from "@/lib/utils/siteUrl";
 import {
   AGENCY_SLUG_MAX_LENGTH,
@@ -174,10 +179,14 @@ export function AgencySlugForm({ initialSlug }: { initialSlug: string }) {
               const preview = normalizeAgencySlug(field.value ?? "");
               return (
                 <>
-                  <div className="flex items-center rounded-md border border-stone bg-white focus-within:ring-2 focus-within:ring-terracota focus-within:ring-offset-1">
+                  {/* Campo con prefijo fijo: la caja la dibuja el contenedor y
+                      el input va adentro sin borde. Las clases salen de la
+                      definición única (components/forms/fieldStyles), la misma
+                      que usa el teléfono. */}
+                  <div className={FIELD_BOX_GROUP}>
                     {/* El dominio a la izquierda, fijo: deja claro que lo que se
                         escribe es el final de una dirección, no un nombre. */}
-                    <span className="pl-3 font-sans text-sm text-stone select-none whitespace-nowrap">
+                    <span className={FIELD_GROUP_PREFIX}>
                       {SITE_URL.replace(/^https?:\/\//, "")}/
                     </span>
                     <Input
@@ -193,7 +202,7 @@ export function AgencySlugForm({ initialSlug }: { initialSlug: string }) {
                       autoCapitalize="none"
                       autoCorrect="off"
                       spellCheck={false}
-                      className="border-0 bg-transparent pl-0 shadow-none focus-visible:ring-0"
+                      className={FIELD_BOX_GROUP_INPUT}
                     />
                   </div>
 

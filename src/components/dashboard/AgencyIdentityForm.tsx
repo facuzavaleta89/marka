@@ -9,6 +9,7 @@ import { updateAgencyIdentityAction } from "@/app/(agent)/dashboard/preferencias
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Notice } from "@/components/feedback/Notice";
+import { FIELD_BOX } from "@/components/forms/fieldStyles";
 import type { ApprovalStatus } from "@/types";
 import {
   LICENSE_NUMBER_ERROR,
@@ -187,7 +188,7 @@ export function AgencyIdentityForm({
                 name={field.name}
                 ref={field.ref}
                 maxLength={AGENCY_NAME_MAX_LENGTH}
-                className="bg-white border-stone focus-visible:ring-terracota"
+                className={FIELD_BOX}
               />
             )}
           />
@@ -232,7 +233,7 @@ export function AgencyIdentityForm({
                 id="agency_license_number"
                 placeholder="1234"
                 {...form.register("license_number")}
-                className="bg-white border-stone focus-visible:ring-terracota"
+                className={FIELD_BOX}
               />
               <p className="font-sans text-xs text-graphite">
                 El número con el que figura tu inmobiliaria en el colegio.

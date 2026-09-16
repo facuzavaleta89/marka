@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { UserPlus, X, Mail, Phone, Trash2 } from "lucide-react";
@@ -23,6 +23,9 @@ import {
 } from "@/app/(agent)/dashboard/equipo/actions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FIELD_BOX } from "@/components/forms/fieldStyles";
+import { PhoneWaInput } from "@/components/forms/PhoneWaInput";
+import { PHONE_WA_HELP, phoneWaField } from "@/lib/utils/phoneWa";
 import type { Agent } from "@/types";
 
 // ─── Tipos ───────────────────────────────────────────────────
@@ -266,7 +269,7 @@ function TeamList({
                     <button
                       onClick={() => onDeleteRequest(m)}
                       disabled={pendingId === m.id}
-                      className="inline-flex items-center justify-center p-1.5 rounded-md text-graphite hover:text-error hover:bg-terracota-subtle transition-colors disabled:opacity-40"
+                      className="inline-flex size-9 items-center justify-center rounded-md text-graphite hover:text-error hover:bg-terracota-subtle transition-colors disabled:opacity-40"
                       aria-label={`Eliminar a ${m.full_name}`}
                     >
                       <Trash2 size={16} />
@@ -303,7 +306,7 @@ function TeamList({
                   <button
                     onClick={() => onDeleteRequest(m)}
                     disabled={pendingId === m.id}
-                    className="inline-flex items-center justify-center p-1.5 rounded-md text-graphite hover:text-error hover:bg-terracota-subtle transition-colors disabled:opacity-40"
+                    className="inline-flex size-9 items-center justify-center rounded-md text-graphite hover:text-error hover:bg-terracota-subtle transition-colors disabled:opacity-40"
                     aria-label={`Eliminar a ${m.full_name}`}
                   >
                     <Trash2 size={16} />
@@ -333,9 +336,9 @@ function TeamList({
 const createAgentSchema = z.object({
   full_name: z.string().min(1, "El nombre es requerido"),
   email: z.string().email("Email inválido"),
-  phone_wa: z
-    .string()
-    .regex(/^\d{10,}$/, "Solo números, sin + ni espacios. Ej: 5491112345678"),
+  // La persona escribe característica y número; lo que viaja a la action es el
+  // número COMPLETO. Mismo criterio que la action (lib/utils/phoneWa).
+  phone_wa: phoneWaField(),
   password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
 });
 
@@ -399,7 +402,7 @@ function CreateAgentForm({ onClose }: { onClose: () => void }) {
           <Input
             id="agent_full_name"
             {...form.register("full_name")}
-            className="bg-white border-stone focus-visible:ring-terracota"
+            className={FIELD_BOX}
           />
           {form.formState.errors.full_name && (
             <p className="font-sans text-xs text-error">
@@ -421,7 +424,7 @@ function CreateAgentForm({ onClose }: { onClose: () => void }) {
             type="email"
             placeholder="agente@ejemplo.com"
             {...form.register("email")}
-            className="bg-white border-stone focus-visible:ring-terracota"
+            className={FIELD_BOX}
           />
           {form.formState.errors.email && (
             <p className="font-sans text-xs text-error">
@@ -430,7 +433,10 @@ function CreateAgentForm({ onClose }: { onClose: () => void }) {
           )}
         </div>
 
-        {/* WhatsApp */}
+        {/* WhatsApp. ⚠ Controller y NO watch(): el campo es controlado (limpia
+            lo que se pega) y `watch()` dispara el warning
+            react-hooks/incompatible-library (CLAUDE.md → ESLint). Un agente
+            nuevo no tiene número guardado, así que no hay nada que preservar. */}
         <div className="space-y-1.5">
           <Label
             htmlFor="agent_phone_wa"
@@ -438,14 +444,25 @@ function CreateAgentForm({ onClose }: { onClose: () => void }) {
           >
             Número de WhatsApp
           </Label>
-          <Input
-            id="agent_phone_wa"
-            placeholder="5491112345678"
-            {...form.register("phone_wa")}
-            className="bg-white border-stone focus-visible:ring-terracota"
+          <Controller
+            control={form.control}
+            name="phone_wa"
+            render={({ field, fieldState }) => (
+              <PhoneWaInput
+                id="agent_phone_wa"
+                name={field.name}
+                value={field.value ?? ""}
+                onChange={field.onChange}
+                onBlur={field.onBlur}
+                inputRef={field.ref}
+                variant="box"
+                invalid={!!fieldState.error}
+                describedBy="agent_phone_wa_help"
+              />
+            )}
           />
-          <p className="font-sans text-xs text-graphite">
-            Solo números, sin + ni espacios. Ejemplo: 5491112345678
+          <p id="agent_phone_wa_help" className="font-sans text-xs text-graphite">
+            {PHONE_WA_HELP}
           </p>
           {form.formState.errors.phone_wa && (
             <p className="font-sans text-xs text-error">
@@ -466,7 +483,7 @@ function CreateAgentForm({ onClose }: { onClose: () => void }) {
             id="agent_password"
             type="text"
             {...form.register("password")}
-            className="bg-white border-stone focus-visible:ring-terracota"
+            className={FIELD_BOX}
           />
           {form.formState.errors.password && (
             <p className="font-sans text-xs text-error">

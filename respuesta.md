@@ -1,225 +1,308 @@
-# Cierre documental del contador de visitas
+# Tanda: unificación de formas
 
-> **Modo ejecución, solo documentación.** Se modificaron **únicamente `CLAUDE.md` y
-> `PENDIENTES.md`** (más este informe). No se tocó `src/`, `scripts/`, el archivo de migración ni
-> `DESIGN.md`. No se ejecutó ningún comando de git ni SQL de escritura: la base se leyó con el MCP
-> (catálogo, datos y logs) y la documentación de Postgres con una lectura web.
+> **Modo ejecución.** Se modificaron 14 archivos de `src/`. No se ejecutó ningún comando de git. No se tocó la base. `CLAUDE.md` y `PENDIENTES.md` no se tocaron.
 >
-> 14 sep 2026. Todo lo documentado sale del código y de la base, no del prompt.
+> **Cómo se midió:** los píxeles de cada clase de radio salen del **CSS compilado del build**, antes y después. Las pantallas públicas (inicio de sesión, registro, home, filtros, detalle de propiedad, ficha pública) se midieron **en el navegador** con Chrome headless. Los diálogos, los menús y los desplegables exigen sesión: se reprodujeron con **las clases reales del componente** sobre la misma hoja de estilos. Servidor y Chrome apagados al terminar.
 
 ---
 
-## Lo primero: dos cosas que se pudieron verificar y cambian el tono del cierre
+## 1. Archivos modificados
 
-1. **La guarda de `updated_at` FUNCIONA en el camino real.** Después de aplicarla (16:32 UTC) hubo
-   **5 visitas reales** desde el navegador (logs: POST a `increment_views` a las 16:36:15, 16:36:39,
-   16:38:52, 16:47:48 y 16:49:28). En la base: **"Casa Largo" pasó de 2 a 5 visitas y su
-   `updated_at` sigue en 16:22:25**, y **"Casa demo" pasó de 0 a 2 conservando `2026-09-03`**. En el
-   informe anterior eso estaba sin probar; ahora está probado.
-2. **La trampa de las columnas generadas está confirmada por la documentación oficial de Postgres
-   17**, no solo por inferencia. Citas textuales en el punto 1.8. La columna es
-   `properties.location` (medido: `attgenerated = 's'`, la única de la tabla).
-
----
-
-## 1. `CLAUDE.md`: qué agregué, modifiqué y corregí
-
-### Agregado
-
-| # | Dónde | Qué |
-|---|---|---|
-| 1.1 | **Nueva sección "Visitas y consultas por propiedad"** (en Convenciones de Dominio, después de "Favoritos y visitados") | Cinco subsecciones: **dónde se cuenta** (tabla de los tres lugares con archivo y línea: `ClusterLayer.tsx:137`, `PropertyList.tsx:140`, `PropertyViewTracker.tsx:68` montado en `propiedades/[slug]/page.tsx:196`) y **por qué NO en el modal**; **la deduplicación** (el código de `markVisited`, por qué la señal sale de una lectura síncrona y no del actualizador de estado, por qué el estado se actualiza aparte, persistencia, y **sin `localStorage` cada apertura cuenta**); **la ficha pública** (por qué no al montar ni en el servidor, tabla de los cuatro eventos, por qué no `scroll` ni `mousemove`, captura + `passive`, **`keydown` como el evento más flojo**, y las tres capas de "una sola vez por apertura" más la `key`); **`registerView`** (el parámetro `property_id` literal, no espera, no lanza); **las dos métricas del listado** (la consulta `leads(count)`, por qué service role, que la barrera es el filtro, el `null` → "—" y la trampa del `?? 0`, la diferencia con `/dashboard/leads` para un agente común, y las ventanas distintas de `/dashboard`) |
-| 1.2 | **Base de Datos → nueva subsección "La guarda de `updated_at` ante el contador de visitas — dos funciones ACOPLADAS"** | Qué resuelve (`updated_at` = `lastModified` del mapa del sitio); tabla de las dos funciones con lo que escribe una y lo que lee la otra; **el acople por string y que romperlo se apaga en silencio**, en las dos direcciones; **por qué la variable es local a la transacción** (conexión reutilizada por PostgREST y el pooler); **el trigger compartido con `subscriptions`** y cómo lo afecta; que está **verificada con visitas reales**; y el aviso de no volver a la comparación de filas |
-| 1.3 | **Método de Diagnóstico → nueva subsección "Dos observaciones ciertas que parecen contradecirse: columnas generadas y triggers BEFORE"** | La trampa con las dos citas de la documentación de Postgres 17, la columna nombrada (`properties.location`), el `IF` del primer intento textual, por qué la verificación sobre filas guardadas y el trigger decían cosas distintas siendo las dos ciertas, la regla ("verificar que midan el mismo objeto en el mismo momento"), y el aviso de que el comentario de la migración todavía la llama hipótesis |
-| 1.4 | **Estado** (Resumen del Proyecto) | Un bloque "**El contador de visitas cuenta** (14 sep 2026, tres tandas)" con las tres tandas y el puntero a las secciones |
-| 1.5 | **Visibilidad pública → sub-bullet** | La regla *"si leés propiedades con service role, la regla de cobro es tuya"* es de los caminos **públicos**: el listado del panel también usa service role para contar consultas y **no invoca la regla, correctamente**, porque su barrera es el alcance de la sesión |
-| 1.6 | **Infraestructura de buscadores → sub-bullet del mapa del sitio** | El `lastModified` es `properties.updated_at` (`sitemap.ts:111`), por qué una visita no puede moverlo, puntero a la guarda y las 7 propiedades ya afectadas |
-| 1.7 | **Decisiones de Arquitectura** | Seis filas nuevas: contar donde se marca y no en el modal; señal síncrona; primera interacción en la ficha; número crudo en todos los planes; consultas con service role acotado; guarda por variable local y no por comparación de filas |
-| 1.8 | **Estructura de Carpetas** | Entradas nuevas `PropertyViewTracker.tsx` y `registerView.ts` |
-
-Las dos citas de Postgres 17 (`trigger-definition.html`), leídas y transcriptas textuales:
-> *"Stored generated columns are computed after `BEFORE` triggers and before `AFTER` triggers."*
-> *"In `BEFORE` triggers, the `OLD` row contains the old generated value, as one would expect, but the `NEW` row does not yet contain the new generated value and should not be accessed."*
-
-### Modificado (estaba incompleto)
-
-- **Resumen → planes**: agregué que "métricas" en premium **es una promesa de catálogo, no un gate**.
-- **Estructura → `propiedades/`, `ClusterLayer.tsx`, `PropertyList.tsx`, `PropertiesTable.tsx`,
-  `useVisitedProperties.ts`**: cada una dice ahora lo que hace respecto del contador.
-- **Base de Datos → fila `properties`**: `views_count` (solo lo incrementa `increment_views`,
-  acumulado, sin fechas) y que `location` es la única columna generada.
-- **Triggers de `properties`**: el paréntesis *"Hay además dos `trg_*_updated_at`"* apunta ahora a la
-  guarda.
-- **Baseline**: fecha 13 → 14 sep 2026.
-
-### Corregido (era falso)
-
-Ver punto 3.
-
----
-
-## 2. `PENDIENTES.md`: qué cerré, abrí y ajusté
-
-### Cerrado
-
-- **El ítem de `increment_views`** (estaba en "Deuda técnica") pasó a `[x]` con lo que quedó y una
-  tabla de **lo descartado**:
-  - **contar desde el modal**: el pin marca antes, así que los pines no contarían nunca; moverlo al
-    modal obligaba a sincronizar las instancias del hook o el tono visitado quedaría viejo;
-  - **contar al montar la ficha**: el renderizador de los buscadores ejecuta JS sin `localStorage` y
-    el mapa del sitio lo trae seguido;
-  - **contar en el render del servidor**: además contaría a los robots de vista previa;
-  - **esconder el número crudo detrás del plan**;
-  - **la primera versión de la guarda y por qué falló**, con la cita de Postgres.
-- **Entrada nueva en "Cerrados recientemente"**: "CONTADOR DE VISITAS — CERRADO", con el método que
-  dejó.
-
-### Abierto: los cuatro pedidos, cada uno verificado antes de escribirlo
-
-| Ítem | Verificación |
+| Archivo | Qué cambió |
 |---|---|
-| **Un agente logueado suma visitas sobre sus propias propiedades** | Ninguno de los tres lugares que cuentan mira la sesión (`ClusterLayer.tsx:137`, `PropertyList.tsx:140`, `PropertyViewTracker.tsx:68`). Anotado para cuando haya tráfico real. Aclara que detectar que hay **una** sesión no alcanza —el encabezado ya lo hace—: habría que comparar la agencia del agente contra la de cada propiedad |
-| **`increment_views` sin ninguna barrera** | `SECURITY DEFINER`, `EXECUTE` a `anon` y `authenticated`, cuerpo sin validación; el advisor de Supabase la marca |
-| **La lista no repinta los pines hasta recargar** | El mapa queda montado y oculto con CSS (`(public)/page.tsx:137`, `AgencyMapView.tsx:103`), y el hook lee el almacenamiento una sola vez al montar sin ninguna sincronización. El conteo es correcto; lo viejo es el color |
-| **7 propiedades con `updated_at` falso** | Medido: las 7 con fecha del 14 sep entre 16:18 y 16:26 UTC, cada una coincidiendo con un POST de los logs anteriores a la guarda. Anotado que se resuelve con la limpieza de datos de prueba y que no vale la pena recuperar nada |
-
-### Abierto: dos más que aparecieron verificando (no estaban en el prompt)
-
-- **"Vistas totales" y "Leads este mes" están juntas en `/dashboard` con ventanas distintas** (acumulado
-  sin filtro de estado contra últimos 30 días), medido en `dashboard/page.tsx`.
-- **Dos documentos que esta tanda no podía tocar quedaron desfasados**: el comentario de la migración
-  todavía dice "HIPÓTESIS NO VERIFICADA", y `DESIGN.md` §7 no describe las columnas nuevas.
-
-### Ajustado (cifras re-medidas)
-
-| Dónde | Antes | Ahora |
-|---|---|---|
-| Encabezado "Última actualización" | 13 sep | 14 sep, con el cierre |
-| Calendario → datos de prueba | 13 consultas | **14 consultas** + **17 visitas en 8 propiedades** |
-| Calendario → consultas desvinculadas | "1 de las 13" | **"1 de las 14"** |
-| Limpieza de datos → propiedades en el mapa del sitio | 17 propiedades / 16 activas / 16 ofrecidas | **18 / 17 / 17** |
-| Limpieza de datos → tabla de títulos de relleno | 5 filas | **4**: `casa prueba22` ya no existe en la base (medido) |
-| Limpieza de datos | — | Nota de las 7 fechas movidas, que la limpieza resuelve |
-| B1 → propiedades sin precio | 6 de 17 | **7 de 18** |
-| Baseline | re-medido el 13 sep | **14 sep** |
-| Vencimiento cargado | 1 de las 9 filas | **1 de las 3** |
-| Multi-agente | 10 agencias con 1 agente | **3 agencias con 1 agente, los tres `admin`; 0 con rol `agent`** |
-| Índice de `leads.agent_id` | 13 consultas | **14**, y que el listado del panel no ejercita esa policy |
-| Matrícula | 1 de 4 sin matrícula, 3 filas en el índice | **1 de 3, 2 filas** |
-| V2 → Dashboard analytics | "plan premium" | Aclara que el número crudo ya se muestra en todos los planes, que `has_metrics` no gatea nada y que `views_count` no guarda fechas |
+| `src/app/globals.css` | Los radios del tema pasan a valores fijos en píxeles: 4 / 6 / 8. `--radius-xl` queda en 14 px, documentado como la excepción de las hojas |
+| `src/components/ui/button.tsx` | Deja de ser recto y de ir en mayúsculas: 6 px, minúsculas, 14 px de texto. Escala de altos 44 / 36 / 28 y área de toque en el tamaño chico |
+| `src/components/ui/alert-dialog.tsx` | Caja del diálogo y del ícono a 8 px; el título deja las mayúsculas |
+| `src/components/ui/dialog.tsx` | Ídem (sin uso hoy, misma familia) |
+| `src/components/ui/dropdown-menu.tsx` | Menú y submenú a 8 px; los cuatro tipos de ítem a 6 px |
+| `src/components/ui/select.tsx` | Desplegable a 8 px; ítem a 6 px. El disparador subrayado no se tocó |
+| `src/components/ui/checkbox.tsx` | Radio a 4 px (marca chica). **El color del borde no se tocó** |
+| `src/components/map/FilterPanel.tsx` | Los cuatro grupos de botones a 36 px; "Limpiar filtros" a 44 |
+| `src/components/properties/PropertyList.tsx` | "Limpiar filtros" del estado vacío: 40 → 44 px |
+| `src/components/properties/LocationPicker.tsx` | "Centrar" sobre el mapa: 32 → 28 px + área de toque de 44 |
+| `src/components/map/PropertyModal.tsx` | "Ver ficha completa" a 28 px + área de toque de 44 · **título "Precio"** |
+| `src/app/(public)/propiedades/[slug]/page.tsx` | **Título "Precio"** |
+| `src/app/(agent)/admin/AgenciesTable.tsx` · `src/components/dashboard/PropertiesTable.tsx` · `src/components/dashboard/TeamContent.tsx` | Los botones de solo ícono de las tablas: 30 → 36 px |
 
 ---
 
-## 3. Afirmaciones falsas que encontré
+## 2. Los radios, leídos del CSS compilado
 
-### En `CLAUDE.md`
+| Clase | Antes | Después | Qué viste |
+|---|---|---|---|
+| `.rounded-none` | `border-radius:0` | `border-radius:0` | sin cambio |
+| `.rounded-sm` | `calc(var(--radius) * .6)` = **6 px** | `.25rem` = **4 px** | chips, etiquetas de estado, **casillas** |
+| `.rounded-md` | `calc(var(--radius) * .8)` = **8 px** | `.375rem` = **6 px** | botones, campos, selectores, ítems de menú |
+| `.rounded-lg` | `var(--radius)` = **10 px** | `.5rem` = **8 px** | tarjetas, secciones, paneles, diálogos, menús, avisos |
+| `.rounded-t-xl` | `calc(var(--radius) * 1.4)` = **14 px** | `.875rem` = **14 px** | **excepción**: las dos hojas que suben desde abajo |
+| `.rounded-full` | círculo | círculo | sin cambio |
+| `.rounded` (sin sufijo) | `.25rem` = **4 px** | `.25rem` = **4 px** | literal de Tailwind, no pasa por los tokens: 4 esqueletos |
 
-1. **"Favoritos y visitados"** decía que **los dos hooks** *"se reflejan en vivo en el mapa, el modal
-   y las cards (sync entre instancias vía CustomEvent + storage)"*. **Falso para los visitados**:
-   `useVisitedProperties` lee el almacenamiento una vez al montar y **no escucha nada**; solo
-   `useFavorites` sincroniza. Es la causa del ítem de los pines que no se repintan.
-2. **"Funciones y RPC"** decía *"`increment_views` … ⚠ existe pero NO se la llama desde ningún lado, así
-   que `views_count` es 0 en todas las propiedades"*. Falso desde el 14 sep: se llama desde tres
-   lugares y suma 17. Además estaba descripta sin `plpgsql`, `search_path` fijo ni el acople.
-3. **Resumen → planes**: *"premium (… + métricas)"* se leía como un gate. **`has_metrics` no lo
-   consume ningún componente** y ninguna agencia lo tiene en `true`.
-4. **Visibilidad pública**: *"si leés propiedades con service role, la regla de cobro es tuya"*
-   quedaba desmentido por el listado del panel, que lee `properties` con service role sin
-   invocarla, y está bien que no lo haga. Aclarado su alcance.
-5. **Estructura**: `useVisitedProperties.ts` = *"Pines visitados en localStorage"* y `PropertyList.tsx`
-   = *"Lista mobile"*: incompletos al punto de ocultar que son la deduplicación del contador y uno
-   de los lugares que cuenta.
+**La variable base:** `--radius` pasó de `0.625rem` (10 px) a `0.5rem` (8 px), alineada con el radio de contenedor.
 
-### En `PENDIENTES.md`
+⚠ **Elementos que usaban el valor base directamente: ninguno.** Verificado por búsqueda: `var(--radius)` solo aparecía dentro de las definiciones de los tokens, que ahora son valores fijos. Los seis `border-radius` literales de `globals.css` **no dependían del tema y no se tocaron**: el pin del mapa (8 px, línea 231), tres círculos del pin (50 %), el control de zoom de Leaflet (8 px) y su caja de atribución (6 px).
 
-6. El ítem *"`increment_views` … NO se la llama desde ningún lado"* y su comentario sobre el modal.
-7. Las **nueve cifras** de la tabla del punto 2, la más relevante: **`casa prueba22` figuraba como
-   dirección que se indexaría y ya no existe**.
-
-### Fuera de los dos archivos (no tocados, anotados en PENDIENTES)
-
-8. **`supabase/migrations/…initial_schema.sql`**: el comentario del primer intento de la guarda dice
-   **"HIPÓTESIS NO VERIFICADA"**. Está confirmada.
-9. **`DESIGN.md` §7** no describe las columnas "Visitas" y "Consultas".
+**Antes de esta tanda, ningún elemento cumplía el número de la tabla de DESIGN §4 aunque usara la clase correcta. Ahora los tres valores coinciden.**
 
 ---
 
-## 4. Números medidos
+## 3. El componente de botón
 
-Todos el 14 sep 2026, por MCP (solo lectura), salvo donde se indica.
-
-| Qué | Valor |
-|---|---|
-| Agencias / agentes / agentes con rol `agent` | **3 / 3 / 0** (1 agente por agencia, los tres `admin`) |
-| Propiedades (activas / pausadas) | **18 (17 / 1)** |
-| Visitas totales / propiedades con visitas | **17 / 8** |
-| Consultas / desvinculadas | **14 / 1** |
-| Imágenes / propiedades con alguna foto | **7 / 7** |
-| Ciudades activas | **1** |
-| En venta y alquiler a la vez | **3** |
-| Con alguna operación sin precio | **7** |
-| Propiedades que ofrece el mapa del sitio (activas + agencia visible) | **17** |
-| Agencias con logo | **1 de 3** |
-| Agencias con `has_metrics = true` | **0** |
-| Agencias sin matrícula / filas en el predicado del índice único | **1 / 2** |
-| Suscripciones con vencimiento cargado | **1 de 3** |
-| Propiedades sin agente | **0** |
-| Objetos del bucket de Storage | **9 / 723.872 bytes** (sin cambios) |
-| Columnas generadas de `properties` | **1: `location`** |
-| Triggers que usan `update_updated_at()` | **2: `trg_properties_updated_at` y `trg_subscriptions_updated_at`** |
-| **Propiedades con `updated_at` movido por visitas antes de la guarda** | **7**: Casa Centenario, casa puente, Casa gaio, Casa Largo, casa lugones, Casa Autonomia y Campo |
-| Visitas anteriores a la guarda (logs) | **12** POST, entre 16:17:22 y 16:26:05 UTC |
-| Visitas posteriores a la guarda (logs) | **5** POST, entre 16:36:15 y 16:49:28 UTC |
-| Guarda aplicada (logs) | **16:32:19 UTC** |
-| Prueba de la guarda en camino real | Casa Largo 2 → 5 visitas, `updated_at` sin cambio · Casa demo 0 → 2, `updated_at` = 2026-09-03 |
-| Placeholders de la tabla de limpieza que siguen en la base | **4 de 5** (falta `casa-prueba2-taf8a3`) |
-
----
-
-## 5. Baseline de calidad
-
-Corrido con los `.md` ya editados (ninguno de los tres chequeos lee archivos `.md`):
+**Antes** (`ui/button.tsx`, base):
 
 ```
-### tsc
-EXIT_TSC=0
-### lint
+"group/button inline-flex shrink-0 items-center justify-center rounded-none border border-transparent bg-clip-padding text-xs font-semibold tracking-widest whitespace-nowrap uppercase transition-all …"
+default: "h-10 gap-1.5 px-6 has-data-[icon=inline-end]:pr-4 has-data-[icon=inline-start]:pl-4"
+```
 
+**Después:**
+
+```
+"group/button relative inline-flex shrink-0 items-center justify-center rounded-md border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all …"
+default: "h-11 gap-1.5 px-4 has-data-[icon=inline-end]:pr-3 has-data-[icon=inline-start]:pl-3"
+```
+
+Cambió: **recto → 6 px**, **MAYÚSCULAS con espaciado ancho → minúsculas**, **12 px → 14 px**, **negrita → medio**, **40 px → 44 px de alto** (el mínimo táctil de DESIGN §6) y **24 → 16 px de relleno**. El `relative` es para anclar el área de toque del tamaño chico.
+
+**Medido en pantalla:** "Ingresar" (inicio de sesión) y "Crear cuenta" (registro) miden ahora **44 px de alto, radio 6 px, texto de 14 px, `text-transform: none`, espaciado normal, relleno 16 px**. Antes: 40 px, radio 0, 12 px, mayúsculas, relleno 24.
+
+### Dónde se va a notar
+
+| Pantalla | Qué cambia |
+|---|---|
+| **`/login`** | "Ingresar": de rectángulo en MAYÚSCULAS a botón redondeado en minúsculas, más alto |
+| **`/register`** | "Crear cuenta": ídem |
+| **`/register/plan`** | "Continuar": ídem |
+| **8 diálogos de confirmación** (5 en `/admin`, 1 en Propiedades, 1 en Suscripción, 1 en Equipo) | La caja del diálogo pasa a 8 px, **el título deja las mayúsculas** y sus dos botones (confirmar y cancelar) cambian igual que los de arriba |
+| **2 menús `⋯`** (Propiedades y `/admin`) | La caja del menú a 8 px y sus 12 ítems a 6 px |
+| **4 desplegables de ciudad / tipo / estado / agente** (registro y formulario de propiedades) | La caja a 8 px y sus ítems a 6 px |
+| **8 casillas** (filtros del mapa, filtros de admin, formulario de propiedades) | De cuadrado perfecto a 4 px |
+| **Todo lo que tenga radio** (247 elementos en 43 archivos) | 2 px menos: tarjetas y secciones 10 → 8, botones y campos 8 → 6, chips 6 → 4 |
+
+---
+
+## 4. La escala de altos
+
+| Tamaño | Alto | Relleno | Texto | Para qué |
+|---|---|---|---|---|
+| **L** | **44** | 16 | 14 px | Acción principal de una pantalla o de un formulario, CTAs, FABs, WhatsApp |
+| **M** | **36** | 12 | 14 px | Contexto denso: filas de tabla, encabezado, filtros |
+| **S** | **28** | 10 | 12 px | Sobre una imagen o un mapa. ⚠ Bajo el mínimo táctil: lleva área de toque extendida |
+| Íconos | 44 / 36 / 28 | — | — | Botones de solo ícono, en la misma escala |
+
+En `ui/button.tsx`: `default` = L, `sm` = M, `xs` = S, `lg` = L con más ancho (`px-8`).
+
+**Qué se movió** (medido donde la pantalla es pública):
+
+| Botón | Antes | Después |
+|---|---|---|
+| `Button` por defecto (inicio de sesión, registro, plan, diálogos) | 40 | **44 (L)** |
+| `Button` `icon` | 40 | **44** |
+| Filtros del mapa · operación (Venta/Alquiler/Temporal) | 36 (`py-2`) | **36 (M)**, ahora por alto explícito |
+| Filtros del mapa · tipo de propiedad | **34** | **36 (M)** |
+| Filtros del mapa · moneda USD/ARS | **32** | **36 (M)** |
+| Filtros del mapa · dormitorios | 36 | **36 (M)** |
+| Filtros del mapa · "Limpiar filtros" | ~42 (`py-2.5`) | **44 (L)** |
+| Lista de propiedades · "Limpiar filtros" del estado vacío | **40** | **44 (L)** |
+| Mapa de ubicación · "Centrar" | **32** | **28 (S)** + área de toque |
+| Detalle · "Ver ficha completa" | 28 (`py-1.5`) | **28 (S)** + área de toque |
+| Tablas · menú `⋯` y eliminar agente (×4) | **30** (`p-1.5`) | **36 (M)** |
+
+**Medido después, en pantalla:** FABs 44 · WhatsApp del detalle 44 · "Compartir" y "Ver todas las propiedades" de la ficha 44 · los cuatro grupos de filtros 36 · "Limpiar filtros" 44 · "Ver ficha completa" 28.
+
+---
+
+## 5. El área de toque de los tamaños chicos
+
+El recurso ya estaba en el proyecto: **`ui/checkbox.tsx`** extiende el área con un pseudo-elemento (`after:absolute after:-inset-x-3 after:-inset-y-2`) sin cambiar el dibujo. Se siguió ese molde en los tres lugares con tamaño S:
+
+- `ui/button.tsx`, tamaño `xs` e `icon-xs`: `after:absolute after:-inset-x-2 after:-inset-y-2`.
+- `PropertyModal`, "Ver ficha completa".
+- `LocationPicker`, "Centrar".
+
+**Medido sobre el detalle de propiedad abierto en un teléfono (390 px):**
+
+```
+"Ver ficha completa": alto dibujado 28 px · ancho 146,6
+  área de toque ::after → top -8px, bottom -8px
+  alto efectivo 44 px · ancho efectivo 162,6 px
+```
+
+Y en "Centrar" queda además escrito en el código que **no es la única forma de hacer lo mismo**: arrastrar el pin también recentra.
+
+---
+
+## 6. La lista de exclusiones, una por una
+
+| Exclusión | Estado | Evidencia |
+|---|---|---|
+| Botones de solo ícono circulares sobre fotos y mapa | **Intactos** | Los 19 `rounded-full` siguen en sus 10 archivos. Medido: "Cerrar" y "Compartir" del detalle siguen círculos de 36 px |
+| Avatares, interruptor, puntos del carrusel, barras de progreso, franjas | **Intactos** | Mismos `rounded-full`; `PreferencesContent` (interruptor), `Sidebar` y `ProfileForm` (avatares), `PlanBadge` y `SubscriptionContent` (progreso) sin cambios |
+| **Esquinas superiores de las hojas** | **Intactas, y nombrado como excepción** | `--radius-xl: 0.875rem; /* 14px — solo las hojas */` con el motivo escrito en `globals.css`. Medido: hoja de filtros y hoja del detalle, **14 px arriba y 0 abajo** |
+| Campos subrayados de inicio de sesión y registro | **Intactos** | El disparador de `Select` y el `Textarea` conservan `rounded-none`; `Input` no tiene clase de radio. Medido en `/login` y `/register`: **radio 0, alto 40, relleno izquierdo 0** |
+| Pines del mapa y cromo de Leaflet | **Intactos** | Literales de `globals.css`: pin 8 px, círculos 50 %, zoom 8 px, atribución 6 px. No dependen del tema |
+| Esqueletos de carga | **Intactos** | Siguen con `rounded-sm` y `rounded` sueltos; el único efecto es el −2 px general del token |
+| **Etiquetas de formulario (punto 7)** | **NO SE TOCARON** | `ui/label.tsx` conserva `text-xs font-semibold tracking-wide uppercase`. **Siguen en MAYÚSCULAS a 12 px** (14 donde el formulario las pisa), incluidos los 25 usos. Queda como decisión aparte |
+| Tanda anterior: color del borde de las casillas | **Intacto** | `border border-graphite/80` sigue en `ui/checkbox.tsx` |
+| Tanda anterior: opciones de operación | **Estructura intacta** | Siguen `border-terracota bg-white` / `border-stone bg-transparent` con el mismo `p-4`. ⚠ Su radio pasó de 8 a 6 px **por la regla general del tema**, no por un cambio en ese archivo |
+| Tanda anterior: relleno del panel en celular | **Intacto** | `pt-14 md:pt-0` en los dos layouts |
+| Tanda anterior: filtros de administración | **Intacto** | `space-y-4` y la estructura de dos columnas siguen igual |
+
+---
+
+## 7. El título del bloque de precios
+
+**De dónde salió el tratamiento:** de los títulos de sección que ya existen en cada pantalla, no de uno nuevo.
+- **Detalle de propiedad:** "Requisitos para alquilar" (`PropertyModal.tsx`) → `<p className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite">`.
+- **Ficha pública:** "Comodidades" (`propiedades/[slug]/page.tsx:304`) → mismo juego de clases, en `<h2>`.
+
+**Detalle de propiedad** (`src/components/map/PropertyModal.tsx`):
+
+```tsx
+        {/* ⚠ UN SOLO título para todo el bloque, no uno por operación: cada
+            línea ya dice a qué operación corresponde. Sin él, una propiedad sin
+            precio cargado mostraba solo "A convenir", sin nada que dijera de qué
+            se estaba hablando. Mismo tratamiento que los otros títulos de sección
+            de esta pantalla ("Requisitos para alquilar"). */}
+        <div className="space-y-1.5">
+          <p className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite">
+            Precio
+          </p>
+          <div className="space-y-2.5">
+          {operations.map((o) => (
+            <div key={o.operation}>
+              {operations.length > 1 && (
+                <p className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite">
+                  {OPERATION_TYPE_LABELS[o.operation]}
+                </p>
+              )}
+              <p className="font-serif text-3xl font-bold text-terracota">
+                {formatPrice(o.price, o.currency)}
+              </p>
+            </div>
+          ))}
+          </div>
+        </div>
+```
+
+**Ficha pública** (`src/app/(public)/propiedades/[slug]/page.tsx`):
+
+```tsx
+        <div className="mt-4">
+          {/* ⚠ UN SOLO título para todo el bloque: cada línea ya dice su
+              operación. Sin él, una propiedad sin precio mostraba solo "A
+              convenir". Mismo tratamiento que los otros títulos de sección de
+              esta página ("Comodidades", "Requisitos para alquilar"). */}
+          <h2 className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite">
+            Precio
+          </h2>
+          <div className="mt-2 space-y-3">
+          {operations.map((o) => (
+            <div key={o.operation}>
+              {operations.length > 1 && (
+                <p className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite">
+                  {OPERATION_TYPE_LABELS[o.operation]}
+                </p>
+              )}
+              <p className="font-serif text-[40px] font-bold leading-none text-terracota">
+                {formatPrice(o.price, o.currency)}
+              </p>
+            </div>
+          ))}
+          </div>
+        </div>
+```
+
+**Medido:** en las dos pantallas el título sale en **11 px, mayúsculas, color `graphite` (rgb 78,74,70)**, con 6 px hasta el precio en el detalle y 16 px de separación del bloque anterior en la ficha. La etiqueta por operación (solo cuando hay más de una) se conservó.
+
+---
+
+## 8. ⚠ Qué mirar para evaluar el cambio de aspecto
+
+De mayor a menor impacto visible:
+
+1. **`/login` y `/register`.** El botón principal: antes rectángulo gris oscuro con "INGRESAR" en mayúsculas apretadas a 12 px; ahora redondeado, "Ingresar" en minúsculas a 14 px y 4 px más alto. **Es el cambio más grande de la tanda y lo primero que ve una inmobiliaria.**
+2. **`/register/plan`.** Mismo botón en "Continuar", debajo de las tres tarjetas de plan.
+3. **Un diálogo de confirmación.** En Propiedades, el menú `⋯` de cualquier fila → "Eliminar". Mirar tres cosas juntas: la **caja ya no es recta**, el **título dejó las mayúsculas** y los **dos botones** cambiaron de forma y de texto.
+4. **El menú `⋯` de una fila** (Propiedades o `/admin`): caja redondeada y cada ítem con su propio redondeo al pasar el mouse. ⚠ Los ítems **siguen en mayúsculas**: es deliberado, el prompt solo pedía la forma.
+5. **El panel de filtros del mapa** (home, escritorio): los cuatro grupos de botones ahora miden todos 36 px —antes 36, 34 y 32— y "Limpiar filtros" 44. Es el lugar donde más se nota la escala de altos.
+6. **Las casillas** (filtros del mapa, y en el formulario de propiedades): cuadrados con 4 px de esquina en vez de esquina viva.
+7. **El detalle de una propiedad** (tocar un pin): el título **"Precio"** arriba del número, y "Ver ficha completa" sobre la foto.
+8. **La ficha pública de una propiedad sin precio** (`/propiedades/...`): ahí se ve para qué sirve el título, porque abajo dice solo "A convenir".
+9. **Las tarjetas y secciones del panel**: 2 px menos de esquina. Es el cambio más sutil; conviene mirarlo comparando una tarjeta con el borde de la pantalla, no de memoria.
+10. **Lo que NO tiene que haber cambiado:** los botones circulares sobre la foto del detalle, las esquinas superiores de las hojas al abrirlas desde abajo en el celular, y los campos de inicio de sesión y registro, que siguen siendo una línea sin caja.
+
+---
+
+## 9. Inconsistencias nuevas (sin arreglar)
+
+Se suman a las 46 + 6 abiertas de las tandas anteriores.
+
+1. **Los ítems de menú siguen en MAYÚSCULAS a 12 px con espaciado ancho** (`ui/dropdown-menu.tsx`), ahora que los botones dejaron ese tratamiento. Dentro del mismo panel conviven dos voces: un botón "Eliminar agente" en minúsculas y un ítem de menú "ELIMINAR". El prompt pedía solo la forma de los ítems.
+2. **El tamaño `lg` del botón quedó con la misma altura que el `default`** (44): se diferencian solo por el relleno (32 contra 16). Es un tamaño redundante en la escala; hoy no lo usa nadie.
+3. **`icon-lg` quedó igual que `icon`** (44 px) por el mismo motivo; tampoco tiene usos.
+4. **`Badge` y `Card` del preset siguen rectos** (`rounded-none`) y sin ningún consumidor. Si alguien los usa, entran fuera de la regla sin que nada avise.
+5. **El área de toque extendida de "Ver ficha completa" llega a 162,6 px de ancho** sobre la foto del detalle, y los puntos del carrusel están centrados en esa misma franja inferior. Hoy no se tocan (medido en 390 px), pero en una pantalla más angosta podrían quedar a pocos píxeles.
+6. **`ui/button.tsx` ganó `relative` en su base.** Es lo que ancla el área de toque del tamaño chico, pero cambia el bloque contenedor de cualquier hijo posicionado en absoluto dentro de un botón. No encontré ninguno hoy (por lectura), así que queda anotado como algo a vigilar.
+
+---
+
+## 10. Baseline de calidad
+
+Borré `.next/` y `tsconfig.tsbuildinfo` antes de correr.
+
+### `npx tsc --noEmit`
+
+```
+TSC_EXIT=0
+```
+
+Sin salida: **0 errores, exit 0.**
+
+### `npm run lint`
+
+```
 > marka@0.1.0 lint
 > eslint
 
 
 /home/facuzavaleta89/dev/marka/src/components/properties/PropertyForm.tsx
-  808:30  warning  Compilation Skipped: Use of incompatible library
+  814:30  warning  Compilation Skipped: Use of incompatible library
 
 This API returns functions which cannot be memoized without leading to stale UI. To prevent this, by default React Compiler will skip memoizing this component/hook. However, you may see issues if values from this API are passed to other components/hooks that are memoized.
 
-/home/facuzavaleta89/dev/marka/src/components/properties/PropertyForm.tsx:808:30
-  806 |   });
-  807 |
-> 808 |   const selectedAmenities = (watch("amenities") ?? []) as string[];
+/home/facuzavaleta89/dev/marka/src/components/properties/PropertyForm.tsx:814:30
+  812 |   });
+  813 |
+> 814 |   const selectedAmenities = (watch("amenities") ?? []) as string[];
       |                              ^^^^^ React Hook Form's `useForm()` API returns a `watch()` function which cannot be memoized safely.
-  809 |   const lat = watch("lat");
-  810 |   const lng = watch("lng");
-  811 |   const address = watch("address") ?? "";  react-hooks/incompatible-library
+  815 |   const lat = watch("lat");
+  816 |   const lng = watch("lng");
+  817 |   const address = watch("address") ?? "";  react-hooks/incompatible-library
 
 ✖ 1 problem (0 errors, 1 warning)
 
-EXIT_LINT=0
-### build
+LINT_EXIT=0
+```
+
+**0 errores, 1 warning (el conocido, `react-hooks/incompatible-library`), exit 0.** Misma llamada `watch("amenities")`, misma línea que en la tanda anterior (814).
+
+### `npx next build`
+
+```
 ▲ Next.js 16.2.6 (Turbopack)
 - Environments: .env.local
 
   Creating an optimized production build ...
-✓ Compiled successfully in 7.2s
+✓ Compiled successfully in 11.4s
   Running TypeScript ...
-  Finished TypeScript in 8.6s ...
+  Finished TypeScript in 9.6s ...
   Collecting page data using 3 workers ...
   Generating static pages using 3 workers (0/20) ...
   Generating static pages using 3 workers (5/20) 
   Generating static pages using 3 workers (10/20) 
   Generating static pages using 3 workers (15/20) 
-✓ Generating static pages using 3 workers (20/20) in 1285ms
+✓ Generating static pages using 3 workers (20/20) in 1264ms
   Finalizing page optimization ...
 
 Route (app)
@@ -252,41 +335,21 @@ Route (app)
 ○  (Static)   prerendered as static content
 ƒ  (Dynamic)  server-rendered on demand
 
-EXIT_BUILD=0
+BUILD_EXIT=0
 ```
 
-| Chequeo | Resultado |
-|---|---|
-| `npx tsc --noEmit` | 0 errores, **exit 0** ✅ |
-| `npm run lint` | 0 errores, **1 warning** (`PropertyForm.tsx:808`, `react-hooks/incompatible-library`), **exit 0** ✅ |
-| `npx next build` | verde, **exit 0**, **22 rutas** ✅ |
-
-No hizo falta borrar `.next`.
+**Verde, exit 0, 22 rutas**, mismos nombres y tipos. **Sin cambios en el baseline.**
 
 ---
 
-## 6. ¿Algo del prompt resultó falso?
+## 11. Lo que resultó falso o imposible
 
-**Casi todo coincidió con lo medido.** Tres matices, dicho derecho:
+**Ninguna decisión resultó imposible.** Las ocho se implementaron como estaban descritas.
 
-1. **(e) "comparar la fila nueva contra la vieja NUNCA da iguales"**: coincide con la documentación,
-   con una precisión de wording. Postgres no dice qué **valor** tiene la columna generada en `NEW`:
-   dice que *"does not yet contain the new generated value and should not be accessed"*. El efecto
-   es el descripto, porque `OLD.location` sí tiene valor, así que lo documenté con la cita textual
-   en vez de afirmar un valor concreto. *"Costó dos intentos"* es exacto según los logs: uno que
-   falló (16:27) y el actual (16:32).
-2. **(c) "un atajo del navegador o del sistema lo dispara sin que nadie esté mirando la ficha"**: es
-   cierto con una condición que conviene saber. `keydown` solo llega a la pestaña **que tiene el
-   foco**, así que alguien tiene que estar en el teclado. Lo que ocurre es que **la tecla
-   modificadora con la que empieza un atajo** (el Ctrl de Ctrl+Tab, el Alt de Alt+Tab) llega a la
-   página antes de que el navegador o el sistema se la lleven, y cuenta aunque la persona se esté
-   yendo. Lo documenté así. **No lo verifiqué navegador por navegador**: qué atajos reservados llegan
-   a la página varía.
-3. **(f) "cualquier afirmación sobre que las métricas estén detrás de un plan"**: la sospecha era
-   correcta, y **es falso hoy en los dos documentos**. `has_metrics` no gatea nada y ninguna agencia
-   lo tiene activo. Quedó corregido en `CLAUDE.md` y en el ítem de analytics de `PENDIENTES.md`.
+**Precisiones sobre lo que afirma el prompt:**
 
-Todo lo demás es cierto contra el código y la base: los tres lugares, la señal síncrona, la
-consecuencia sin `localStorage`, los eventos, el trigger compartido (con **`subscriptions`**), el
-mapa que no se desmonta, la función sin barrera, la columna generada (**`location`**) y que la
-limpieza de datos de prueba ya estaba anotada.
+1. **"Hoy las tres variables derivan de una sola y dan dos píxeles más que la tabla documentada" — exacto**, y verificado en el CSS compilado antes y después: 6/8/10 → 4/6/8.
+2. **"Verificá si hay elementos que usan el valor base directamente y quedarían descolgados" — no hay ninguno.** `var(--radius)` solo se usaba dentro de las definiciones de los tokens. Sí encontré **seis `border-radius` literales** en `globals.css` (pin del mapa, sus tres círculos, el control de zoom y la caja de atribución de Leaflet): **no dependen del tema y son justamente parte de las exclusiones**, así que quedaron intactos. El único que quedaría "descolgado" en teoría es el pin, a 8 px literales, que hoy coincide con el radio de contenedor.
+3. **"Su alto por defecto queda por debajo del mínimo táctil" — cierto:** el `Button` medía 40 px y DESIGN §6 pide 44. Corregido y medido.
+4. **Una consecuencia que conviene tener presente:** el radio de **las opciones de operación** (tanda anterior) pasó de 8 a 6 px. No toqué ese archivo para eso: es la regla general del tema aplicándose a una clase `rounded-md` que ya estaba. Su estructura, su relleno y sus colores siguen exactamente como los dejó la tanda anterior.
+5. **Sobre el punto 7 (etiquetas):** quedaron **sin tocar** y siguen en mayúsculas. Vale anotar que ahora son, junto con los ítems de menú, lo último que conserva el tratamiento en mayúsculas del preset dentro de los formularios.

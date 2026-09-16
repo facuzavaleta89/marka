@@ -109,7 +109,7 @@ export function PropertyList({ city, agencyId }: PropertyListProps) {
           {filtered && (
             <button
               onClick={resetFilters}
-              className="inline-flex h-10 items-center rounded-md bg-terracota px-5 font-sans text-sm font-medium text-paper transition-colors hover:bg-terracota-hover"
+              className="inline-flex h-11 items-center rounded-md bg-terracota px-4 font-sans text-sm font-medium text-paper transition-colors hover:bg-terracota-hover"
             >
               Limpiar filtros
             </button>

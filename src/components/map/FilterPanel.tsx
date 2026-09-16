@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { useMapFilters, selectActiveFiltersCount } from "@/store/mapFiltersStore";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -14,8 +14,10 @@ import {
 
 // Override para que el Checkbox de shadcn use terracota en estado marcado
 // (mismo patrón que PropertyForm, para consistencia en todo el form).
+// ⚠ Sin color de borde para el estado SIN marcar: lo pone el componente
+// (`ui/checkbox.tsx`). Acá había `border-stone`, que daba 1,71:1 sobre paper.
 const CHECKBOX_TERRACOTA =
-  "border-stone data-[state=checked]:bg-terracota data-[state=checked]:border-terracota data-[state=checked]:text-paper";
+  "data-[state=checked]:bg-terracota data-[state=checked]:border-terracota data-[state=checked]:text-paper";
 
 // ─── Constantes ───────────────────────────────────────────────
 
@@ -43,6 +45,14 @@ const FILTER_AMENITIES: Amenity[] = [
   "jardin",
   "terraza",
 ];
+
+// Arrastre para cerrar la hoja (mobile). Por debajo de DRAG_SLOP_PX de
+// movimiento el gesto es un TOQUE y no mueve nada: es lo que deja funcionar la
+// ✕, que vive en la misma zona que se arrastra. DRAG_CLOSE_PX es el mismo
+// umbral que usa la hoja del detalle de propiedad (PropertyModal), para que las
+// dos franjas, que son idénticas a la vista, respondan igual al tacto.
+const DRAG_SLOP_PX = 8;
+const DRAG_CLOSE_PX = 120;
 
 // ─── Sub-componentes internos ─────────────────────────────────
 
@@ -80,7 +90,7 @@ function ToggleBtn({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex-1 py-2 font-sans text-sm font-medium rounded-md transition-colors duration-100",
+        "flex-1 h-9 font-sans text-sm font-medium rounded-md transition-colors duration-100",
         active ? "bg-terracota text-paper" : "bg-mist text-graphite hover:bg-stone/60"
       )}
     >
@@ -171,6 +181,134 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
     setAreaMax(filters.area_max?.toString() ?? "");
   }
 
+  // ── Cierre de la hoja (solo mobile) ────────────────────────────
+  //
+  // Escape: solo la instancia mobile y solo con la hoja abierta. La instancia
+  // de escritorio está montada siempre, y escuchar la tecla ahí cerraría algo
+  // que no existe.
+  useEffect(() => {
+    if (!mobile || !isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose?.();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [mobile, isOpen, onClose]);
+
+  // Arrastre hacia abajo para cerrar.
+  //
+  // ⚠ SE ESCUCHA SOLO EN LA ZONA QUE NO SCROLLEA: la franja y el encabezado.
+  // NUNCA en la hoja entera. Arrastrar para cerrar y scrollear el contenido son
+  // dos gestos verticales; si el arrastre se escuchara en el cuerpo, un intento
+  // de volver al principio de la lista cerraría el panel. La hoja del detalle de
+  // propiedad (PropertyModal) escucha la hoja entera sin mirar el scroll: de ahí
+  // se tomó el mecanismo (desplazamiento en vivo + umbral), NO el alcance. La
+  // garantía es estructural: los manejadores se montan en la franja y en el
+  // encabezado, y el cuerpo scrolleable no es descendiente de ninguno de los dos.
+  //
+  // ⚠ LA HOJA SE MUEVE CON LA PROPIEDAD CSS `translate`, NO CON `transform`.
+  // Tailwind v4 escribe `translate-y-0` / `translate-y-full` como `translate`
+  // (medido: `transform` da `none` con la hoja abierta y cerrada). Escribir
+  // `transform` en línea SUMARÍA un segundo desplazamiento en vez de reemplazar
+  // el de la clase. El estilo en línea de abajo pisa la misma propiedad.
+  //
+  // El desplazamiento se escribe directo en el DOM y no en un estado de React:
+  // un setState por `pointermove` re-renderizaría el panel entero —todos los
+  // filtros— en cada píxel del gesto.
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{
+    pointerId: number;
+    startY: number;
+    dy: number;
+    dragging: boolean;
+  } | null>(null);
+  // Un arrastre que empezó sobre la ✕ no tiene que terminar en un click sobre
+  // ella. Se limpia en cada `pointerdown`, así que nunca se come el click de un
+  // toque posterior.
+  const suppressClickRef = useRef(false);
+
+  const setSheetOffset = (dy: number | null) => {
+    const el = sheetRef.current;
+    if (!el) return;
+    if (dy === null) {
+      // Al soltar se devuelve el control a la clase: su `transition` anima la
+      // vuelta a `translate-y-0` o, si se cerró, la salida a `translate-y-full`
+      // desde donde quedó el dedo.
+      el.style.translate = "";
+      el.style.transition = "";
+    } else {
+      el.style.translate = `0 ${dy}px`;
+      el.style.transition = "none";
+    }
+  };
+
+  const handleDragStart = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!e.isPrimary || (e.pointerType === "mouse" && e.button !== 0)) return;
+    suppressClickRef.current = false;
+    dragRef.current = {
+      pointerId: e.pointerId,
+      startY: e.clientY,
+      dy: 0,
+      dragging: false,
+    };
+    // Capturar de entrada, salvo que el gesto empiece sobre un botón: capturar
+    // redirige el `pointerup` a esta zona, el click dejaría de caer en la ✕ y el
+    // botón no cerraría con un toque. Sobre un botón se captura recién cuando el
+    // movimiento pasa a ser arrastre.
+    if (!(e.target as Element).closest("button")) {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    }
+  };
+
+  const handleDragMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    const delta = e.clientY - drag.startY;
+    if (!drag.dragging) {
+      // Toque vs. arrastre: hasta DRAG_SLOP_PX de movimiento es un toque (el
+      // temblor natural de un dedo no mueve la hoja ni anula el click).
+      if (Math.abs(delta) < DRAG_SLOP_PX) return;
+      drag.dragging = true;
+      if (!e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      }
+    }
+    // Solo hacia abajo: hacia arriba la hoja ya está en su tope.
+    drag.dy = Math.max(0, delta);
+    setSheetOffset(drag.dy);
+  };
+
+  const handleDragEnd = (e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    dragRef.current = null;
+    if (!drag.dragging) return; // fue un toque: el click sigue su curso
+    suppressClickRef.current = true;
+    setSheetOffset(null);
+    // `pointercancel` (el sistema se llevó el gesto) vuelve la hoja a su lugar
+    // sin cerrarla.
+    if (e.type === "pointerup" && drag.dy > DRAG_CLOSE_PX) onClose?.();
+  };
+
+  const handleDragClickCapture = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!suppressClickRef.current) return;
+    suppressClickRef.current = false;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  // `touch-none` en las dos zonas: sin eso el navegador puede reclamar el gesto
+  // táctil para sí (desplazamiento, recarga al tirar hacia abajo) y cancelarlo
+  // con `pointercancel` a mitad de camino. Esas zonas no scrollean, así que no
+  // se pierde nada.
+  const dragZoneProps = {
+    onPointerDown: handleDragStart,
+    onPointerMove: handleDragMove,
+    onPointerUp: handleDragEnd,
+    onPointerCancel: handleDragEnd,
+    onClickCapture: handleDragClickCapture,
+  };
+
   const commitPrice = (field: "price_min" | "price_max", raw: string) => {
     const n = raw === "" ? null : parseFloat(raw);
     setFilter(field, isNaN(n ?? NaN) ? null : n);
@@ -225,10 +363,19 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
   };
 
   const content = (
-    <div className="flex flex-col h-full">
-      {/* Header del panel (solo mobile) */}
+    // ⚠ `flex-1 min-h-0` y NO `h-full`. En la hoja mobile este contenedor tiene
+    // un hermano arriba (la franja, 20px): con `h-full` pedía el 100% del alto de
+    // la hoja, y como el `min-height: auto` de un ítem flex no lo deja achicarse
+    // por debajo de ese 100%, sobresalía 20px por debajo del borde de la pantalla
+    // (medido: la hoja terminaba en y=667 y este contenedor en y=687). En
+    // escritorio no hay hermano y las dos formas miden lo mismo.
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* Header del panel (solo mobile). Es parte de la zona de arrastre. */}
       {mobile && (
-        <div className="flex items-center justify-between px-5 py-4 border-b border-stone shrink-0">
+        <div
+          {...dragZoneProps}
+          className="flex items-center justify-between px-5 py-4 border-b border-stone shrink-0 touch-none"
+        >
           <span className="font-sans text-base font-medium text-black">Filtros</span>
           <button onClick={onClose} className="text-graphite hover:text-black">
             <X size={20} />
@@ -265,7 +412,7 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
                   type="button"
                   onClick={() => togglePropertyType(value)}
                   className={cn(
-                    "py-1.5 px-3 font-sans text-sm rounded-md border transition-colors text-left",
+                    "h-9 px-3 font-sans text-sm rounded-md border transition-colors text-left",
                     active
                       ? "border-terracota bg-terracota-subtle text-terracota"
                       : "border-stone bg-white text-graphite hover:border-graphite"
@@ -288,7 +435,7 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
                 disabled={!priceEnabled}
                 onClick={() => setFilter("currency", c)}
                 className={cn(
-                  "flex-1 py-1.5 font-sans text-sm font-medium rounded-md transition-colors",
+                  "flex-1 h-9 font-sans text-sm font-medium rounded-md transition-colors",
                   !priceEnabled
                     ? "bg-mist text-stone cursor-not-allowed"
                     : filters.currency === c
@@ -358,7 +505,7 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
                   type="button"
                   onClick={() => setFilter("bedrooms_min", active ? null : value)}
                   className={cn(
-                    "flex-1 py-2 font-sans text-sm font-medium rounded-md transition-colors",
+                    "flex-1 h-9 font-sans text-sm font-medium rounded-md transition-colors",
                     active
                       ? "bg-terracota text-paper"
                       : "bg-mist text-graphite hover:bg-stone/60"
@@ -427,7 +574,7 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
               resetFilters();
               setPriceMin(""); setPriceMax(""); setAreaMin(""); setAreaMax("");
             }}
-            className="w-full py-2.5 font-sans text-sm font-medium text-error border border-error rounded-md hover:bg-terracota-subtle transition-colors"
+            className="w-full h-11 font-sans text-sm font-medium text-error border border-error rounded-md hover:bg-terracota-subtle transition-colors"
           >
             Limpiar filtros ({activeCount})
           </button>
@@ -455,14 +602,19 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
         />
       )}
       <div
+        ref={sheetRef}
         className={cn(
           "fixed bottom-0 inset-x-0 z-[610] bg-paper rounded-t-xl shadow-xl transition-transform duration-220 ease-out",
           "h-[85vh] flex flex-col",
           isOpen ? "translate-y-0" : "translate-y-full"
         )}
       >
-        {/* Handle visual */}
-        <div className="flex justify-center pt-3 pb-1 shrink-0">
+        {/* Handle de arrastre — junto con el encabezado, la zona desde la que
+            se cierra la hoja arrastrando hacia abajo (ver dragZoneProps). */}
+        <div
+          {...dragZoneProps}
+          className="flex justify-center pt-3 pb-1 shrink-0 touch-none"
+        >
           <div className="w-10 h-1 bg-stone rounded-full" />
         </div>
         {content}

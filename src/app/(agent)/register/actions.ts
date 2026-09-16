@@ -10,6 +10,7 @@ import {
   LICENSE_NUMBER_PATTERN,
   normalizeLicenseNumber,
 } from "@/lib/utils/licenseNumber";
+import { PHONE_WA_ERROR, resolvePhoneWaForSave } from "@/lib/utils/phoneWa";
 
 type RegisterData = {
   fullName: string;
@@ -33,6 +34,20 @@ export async function registerAction(
   const licenseNumber = normalizeLicenseNumber(data.licenseNumber ?? "");
   if (!LICENSE_NUMBER_PATTERN.test(licenseNumber)) {
     return { error: "Matrícula inválida" };
+  }
+
+  // ⚠ EL TELÉFONO TAMBIÉN SE VALIDA ACÁ, y ANTES de crear el usuario de Auth
+  // (fallar después obligaría a un rollback). Esta action lo escribía crudo: el
+  // formulario ya lo valida, pero el cliente no es una barrera.
+  //
+  // ⚠ Y SE RESUELVE UNA SOLA VEZ, EN ESTA VARIABLE, que es la que reciben LAS DOS
+  // escrituras de abajo (`agencies.phone_wa` y `agents.phone_wa`). Normalizarlo en
+  // una sola de las dos haría nacer a la agencia y a su admin con teléfonos
+  // distintos.
+  const phoneWa =
+    typeof data.phoneWa === "string" ? resolvePhoneWaForSave(data.phoneWa) : null;
+  if (phoneWa === null) {
+    return { error: PHONE_WA_ERROR };
   }
 
   const supabase = await createClient();
@@ -82,7 +97,7 @@ export async function registerAction(
         // contacto natural de la agencia recién creada. Es editable después en
         // Preferencias si la agencia tiene otro número. phone_wa es NOT NULL en la
         // base, así que setearlo acá es obligatorio (sin esto el insert fallaría).
-        phone_wa: data.phoneWa,
+        phone_wa: phoneWa,
       })
       .select("id")
       .single();
@@ -118,7 +133,7 @@ export async function registerAction(
     agency_id: agency.id,
     role: "admin",
     full_name: data.fullName,
-    phone_wa: data.phoneWa,
+    phone_wa: phoneWa,
     email: data.email, // denormalizado para mostrarlo en la UI (lista de equipo)
   });
 

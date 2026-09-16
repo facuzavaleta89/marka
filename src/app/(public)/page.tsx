@@ -160,8 +160,14 @@ export default function PublicPage() {
 
       {/* ── FABs mobile (par coherente) ──────────────────────────
           Se ocultan cuando el PropertyModal está abierto para no competir
-          con el botón de WhatsApp del bottom sheet. Respetan el safe-area. */}
-      {!selectedPropertyId && (
+          con el botón de WhatsApp del bottom sheet. Respetan el safe-area.
+          ⚠ Y TAMBIÉN con la hoja de filtros abierta: están en su misma capa
+          (z-[610]) y después en el documento, así que se pintaban ENCIMA del
+          final del contenido de la hoja ("Destacadas", o "Limpiar filtros" con
+          filtros activos). Con la hoja abierta no cumplen ninguna función: uno
+          abre lo que ya está abierto y el otro cambia una vista que está tapada.
+          La misma condición vive en AgencyMapView, que duplica estos botones. */}
+      {!selectedPropertyId && !filterPanelOpen && (
         <>
           {/* Filtros — secundario: paper + borde stone + texto graphite */}
           <button

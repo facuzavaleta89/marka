@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { loginAction } from "./actions";
 import { AuthLayout } from "@/components/auth/AuthLayout";
+import { FIELD_UNDERLINE_ERROR } from "@/components/forms/fieldStyles";
 import { cn } from "@/lib/utils";
 
 // Claim del panel de identidad (voz DESIGN §10: directo, sin marketing). Fácil de cambiar.
@@ -26,6 +27,9 @@ type LoginForm = z.infer<typeof schema>;
 // Formulario de login (client: react-hook-form + estado de envío).
 // `notice` llega ya resuelto desde el Server Component: es un texto FIJO del
 // server, nunca lo que venga en la URL (ver login/page.tsx).
+//
+// Campos de la familia SUBRAYADO (ver components/forms/fieldStyles). El error
+// colorea solo el borde inferior: no convierte el campo en caja.
 export function LoginForm({ notice }: { notice?: string }) {
   const [serverError, setServerError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -76,7 +80,7 @@ export function LoginForm({ notice }: { notice?: string }) {
                 autoComplete="email"
                 placeholder="tu@email.com"
                 {...register("email")}
-                className={cn(errors.email && "border-error focus-visible:ring-error")}
+                className={cn(errors.email && FIELD_UNDERLINE_ERROR)}
               />
               {errors.email && (
                 <p className="font-sans text-xs text-error">{errors.email.message}</p>
@@ -96,9 +100,7 @@ export function LoginForm({ notice }: { notice?: string }) {
                 autoComplete="current-password"
                 placeholder="••••••••"
                 {...register("password")}
-                className={cn(
-                  errors.password && "border-error focus-visible:ring-error"
-                )}
+                className={cn(errors.password && FIELD_UNDERLINE_ERROR)}
               />
               {errors.password && (
                 <p className="font-sans text-xs text-error">

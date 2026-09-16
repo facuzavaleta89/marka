@@ -18,16 +18,9 @@ import {
   normalizeAgencyName,
   validateAgencyName,
 } from "@/lib/utils/agencyName";
+import { PHONE_WA_ERROR, resolvePhoneWaForSave } from "@/lib/utils/phoneWa";
 
 type ActionResult = { error: string } | undefined;
-
-// Mismo formato de phone_wa que en el resto (perfil, alta de agente): solo
-// dígitos, mínimo 10, sin + ni espacios. Obligatorio (NOT NULL en la base).
-const agencyPhoneSchema = z.object({
-  phone_wa: z
-    .string()
-    .regex(/^\d{10,}$/, "Solo números, sin + ni espacios. Ej: 5491112345678"),
-});
 
 // El logo se sube client-side a Storage (bucket público); acá solo persistimos la
 // URL pública ya resultante. Validamos que sea una URL no vacía.
@@ -40,14 +33,16 @@ const agencyLogoSchema = z.object({
 // role y el agency_id se leen del server (fila agents por auth.uid()), nunca del
 // cliente. Como no hay policy de UPDATE de agencies para usuarios, se escribe con
 // service role acotando el UPDATE a la agencia del caller.
+//
+// FORMATO: el de lib/utils/phoneWa, el mismo que el formulario y que los otros
+// tres caminos que escriben un teléfono. ⚠ Acá decía "mismo formato que en el
+// resto (perfil, alta de agente)", y perfil no validaba nada en el servidor.
 export async function updateAgencyPhoneAction(input: {
   phone_wa: string;
 }): Promise<ActionResult> {
-  const parsed = agencyPhoneSchema.safeParse(input);
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
+  if (typeof input?.phone_wa !== "string") {
+    return { error: PHONE_WA_ERROR };
   }
-  const { phone_wa } = parsed.data;
 
   // Es una action: ante sesión inválida devuelve error, NO redirige (redirigir
   // desde un submit rompe el manejo de errores del formulario que la llama).
@@ -58,6 +53,24 @@ export async function updateAgencyPhoneAction(input: {
   if (caller.role !== "admin") return { error: "No autorizado" };
 
   const admin = createAdminClient();
+
+  // El número guardado HOY, de la fila real y no del cliente: es el único valor
+  // que se acepta sin reformatear, para que guardar sin tocar un número viejo
+  // con otro formato no lo cambie. La validación va después de la sesión porque
+  // necesita saber de qué agencia es el número guardado.
+  const { data: current, error: readError } = await admin
+    .from("agencies")
+    .select("phone_wa")
+    .eq("id", caller.agency_id)
+    .single();
+
+  if (readError || !current) {
+    return { error: "No se pudo actualizar el teléfono de la agencia. Intentá de nuevo." };
+  }
+
+  const phone_wa = resolvePhoneWaForSave(input.phone_wa, current.phone_wa ?? null);
+  if (phone_wa === null) return { error: PHONE_WA_ERROR };
+
   const { error } = await admin
     .from("agencies")
     .update({ phone_wa })

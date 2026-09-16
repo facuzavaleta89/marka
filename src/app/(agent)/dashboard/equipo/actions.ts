@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { resolveAgentSession } from "@/lib/utils/resolveAgentSession";
 import { PROPERTY_IMAGES_BUCKET } from "@/lib/utils/storagePath";
 import { z } from "zod";
+import { phoneWaField } from "@/lib/utils/phoneWa";
 
 type ActionResult = { error: string } | undefined;
 
@@ -15,9 +16,9 @@ type ActionResult = { error: string } | undefined;
 const createAgentSchema = z.object({
   full_name: z.string().min(1, "El nombre es requerido"),
   email: z.string().email("Email inválido"),
-  phone_wa: z
-    .string()
-    .regex(/^\d{10,}$/, "Solo números, sin + ni espacios. Ej: 5491112345678"),
+  // Mismo campo que el formulario (lib/utils/phoneWa): normaliza y valida el
+  // largo, y entrega el número COMPLETO. Lo que se escribe es `parsed.data`.
+  phone_wa: phoneWaField(),
   password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
 });
 
