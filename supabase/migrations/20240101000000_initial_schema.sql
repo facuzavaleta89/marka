@@ -95,6 +95,24 @@
 --     el lastModified del mapa del sitio, y cada visita lo movía. Las dos
 --     funciones están ACOPLADAS y el trigger es COMPARTIDO con subscriptions:
 --     ver la sección "TRIGGER: updated_at automático + CONTADOR DE VISITAS".
+--   * Permisos de agents, properties y property_images endurecidos: YA MIGRADOS
+--     (16 sep 2026, aplicados a mano en el SQL Editor; transcriptos acá con
+--     pg_policy, has_column_privilege y pg_class.relacl). Tres cambios:
+--       - agents: se eliminó la policy de INSERT "Agent creates own profile", la
+--         de UPDATE ganó WITH CHECK, y anon/authenticated perdieron INSERT,
+--         UPDATE, DELETE y TRUNCATE sobre la tabla; authenticated conserva UPDATE
+--         solo sobre (full_name, phone_wa, avatar_url).
+--       - properties: "Agent manages own properties" ganó WITH CHECK que fija la
+--         agencia y la ciudad a las del propio agente.
+--       - property_images: "Agent manages own property images" ganó WITH CHECK
+--         idéntico a su USING (mismo comportamiento, escrito en las dos
+--         direcciones).
+--     Cierra que un usuario autenticado pudiera cambiarse role y agency_id, que
+--     un usuario de Auth SIN fila en agents se insertara como 'admin' de
+--     cualquier agencia, y que un agente insertara o moviera una propiedad
+--     propia hacia otra agencia. Ver la sección ROW LEVEL SECURITY.
+--     Se intentó además revocar la escritura sobre spatial_ref_sys y NO tuvo
+--     efecto: ver la nota al final de esa sección.
 --   * ⚠ DISCREPANCIA CONOCIDA Y NO RESUELTA en UNA clave foránea
 --     (properties.agent_id: NOT NULL + ON DELETE CASCADE, cuando el modelo
 --     escrito pretendía nullable + SET NULL): ver la nota en esa tabla. Este
@@ -688,6 +706,26 @@ CREATE TABLE agency_reviews (
 -- ─── FUNCIÓN: límite de propiedades por plan ─────────────────
 -- Impide que una agencia supere el property_limit de su suscripción.
 -- Se valida a nivel de DB para que no dependa solo del frontend.
+--
+-- ⚠ TRAMPA: ESTA FUNCIÓN NO ES SECURITY DEFINER (medido: prosecdef = false, y
+-- tampoco check_agency_subscription() ni check_agency_approved()). Corre con los
+-- permisos de QUIEN ESCRIBE, así que su SELECT sobre `subscriptions` pasa por la
+-- RLS del usuario (policy "Agency members read own subscription"). Si el usuario
+-- no ve la fila de suscripción de NEW.agency_id:
+--   * acá max_allowed queda NULL → se convierte en 0 → el alta se rechaza con
+--     "Límite de propiedades alcanzado para el plan actual (máximo: 0)", aunque
+--     la agencia tenga cupo;
+--   * check_agency_subscription() recibe sub_status NULL, `NULL IN (...)` da NULL
+--     y el IF no dispara: DEJA PASAR.
+-- Se vio en las pruebas del 16 sep 2026: antes de endurecer la policy de
+-- properties, un INSERT con agency_id ajeno fallaba con ese "máximo: 0" (el
+-- usuario no veía la suscripción de la agencia ajena) y, abriendo a propósito
+-- la lectura de subscriptions, el mismo insert pasaba.
+-- Consecuencia viva: si alguien restringe la lectura de `subscriptions` (por
+-- ejemplo, solo para admins), LOS AGENTES COMUNES DEJAN DE PODER PUBLICAR con
+-- el error de "máximo: 0". No es la barrera contra escribir en otra agencia
+-- —esa es el WITH CHECK de "Agent manages own properties"—, y no hay que
+-- tratarla como tal.
 CREATE OR REPLACE FUNCTION check_property_limit()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -1039,7 +1077,13 @@ $$;
 -- ─── FUNCIÓN: agencia del usuario autenticado ────────────────
 -- Devuelve el agency_id del agente logueado, o NULL si el uid no resuelve
 -- ninguna fila de `agents`. La consumen LAS CUATRO POLICIES DE STORAGE (ver
--- "STORAGE BUCKET" al final del archivo); no la usa nada más.
+-- "STORAGE BUCKET" al final del archivo) y, desde el 16 sep 2026, el WITH CHECK
+-- de la policy "Agent manages own properties".
+--
+-- ⚠ Su resultado es confiable SOLO porque agents.agency_id no es escribible por
+-- el propio usuario (ver los REVOKE/GRANT de agents). Si esa columna volviera a
+-- ser escribible, un agente se mudaría de agencia y esta función devolvería la
+-- agencia que él eligió, para Storage y para properties a la vez.
 --
 -- ⚠ POR QUÉ SECURITY DEFINER. Las policies de storage necesitan responder "¿de
 -- qué agencia es este usuario?", y eso obliga a leer `public.agents` desde
@@ -1331,18 +1375,44 @@ CREATE POLICY "Agency members read own subscription"
 -- Nota: la escritura de subscriptions la hace el backend (service role),
 -- nunca el cliente. No se define policy de INSERT/UPDATE para usuarios.
 
--- AGENTS: lectura pública, edición solo del propio agente, insert en registro
+-- AGENTS: lectura pública; el propio agente edita SOLO tres columnas de su
+-- perfil. Sin INSERT ni DELETE para usuarios.
 CREATE POLICY "Public read agents"
   ON agents FOR SELECT USING (true);
 
+-- USING y WITH CHECK iguales: el USING dice qué fila se puede tocar (la propia)
+-- y el WITH CHECK impide que el UPDATE la deje apuntando a otro id. Qué columnas
+-- se pueden tocar no lo decide la policy sino el GRANT por columna de abajo.
 CREATE POLICY "Agent manages own profile"
-  ON agents FOR UPDATE USING (id = auth.uid());
-
--- Necesario para el registro: el insert de agents usa service role (admin.ts),
--- pero esta policy cubre el caso de edición del propio perfil con sesión activa.
-CREATE POLICY "Agent creates own profile"
-  ON agents FOR INSERT
+  ON agents FOR UPDATE TO authenticated
+  USING (id = auth.uid())
   WITH CHECK (id = auth.uid());
+
+-- ⚠ PERMISOS DE agents (16 sep 2026).
+--
+-- Por qué: `role` y `agency_id` gobiernan la autorización de TODA la app
+-- —resolveAgentSession, auth_agency_id() y, a través de ella, las policies de
+-- Storage y el WITH CHECK de properties—, así que no pueden ser escribibles por
+-- el propio usuario. Antes la tabla entera era escribible por anon y
+-- authenticated y la policy de UPDATE no tenía WITH CHECK: un agente podía
+-- hacerse admin o mudarse de agencia. Y la policy de INSERT "Agent creates own
+-- profile" (WITH CHECK id = auth.uid()) dejaba que un usuario de Auth SIN fila
+-- en agents se insertara como 'admin' de cualquier agencia; como el registro
+-- usa supabase.auth.signUp con la anon key y la autoconfirmación de email está
+-- activa, cualquiera podía conseguir ese usuario.
+--
+-- Las ALTAS de agents se hacen SOLO con service role (registerAction y
+-- createAgentAction), por eso no hay permiso ni policy de INSERT para usuarios.
+-- Los borrados, también con service role (deleteAgentAction borra el usuario de
+-- Auth y la fila cae por CASCADE).
+--
+-- ⚠ TRAMPA: agregar una columna nueva a agents que el usuario deba editar con su
+-- sesión EXIGE un `GRANT UPDATE (columna) ON public.agents TO authenticated`.
+-- Sin él, esa escritura falla con 42501 "permission denied for table agents",
+-- aunque la policy de UPDATE la permita: la policy filtra filas, el GRANT
+-- habilita columnas, y hacen falta las dos cosas.
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public.agents FROM anon, authenticated;
+GRANT UPDATE (full_name, phone_wa, avatar_url) ON public.agents TO authenticated;
 
 -- PROPERTIES: lectura pública solo 'active' Y de agencia visible; CRUD solo del
 -- agente dueño.
@@ -1361,8 +1431,29 @@ CREATE POLICY "Public read active properties"
     status = 'active' AND agency_is_publicly_visible(agency_id)
   );
 
+-- ⚠ EL WITH CHECK FIJA LA AGENCIA Y LA CIUDAD A LAS DEL PROPIO AGENTE (16 sep
+-- 2026). Antes la policy no tenía WITH CHECK y el USING se reusaba como check:
+-- solo exigía agent_id = auth.uid(), así que un agente podía INSERTAR una
+-- propiedad a su nombre en otra agencia, o MOVER una propia (UPDATE agency_id,
+-- city_id). Los triggers de publicación no lo frenaban: evalúan NEW.agency_id,
+-- o sea que validan a la agencia DESTINO.
+--
+-- Confía en auth_agency_id(), que a su vez es confiable solo porque
+-- agents.agency_id NO es escribible por el usuario (ver los permisos de agents).
+--
+-- No afecta a los caminos del admin de agencia: reasignar agent_id o publicar a
+-- nombre de otro agente va por service role, que saltea las policies.
 CREATE POLICY "Agent manages own properties"
-  ON properties FOR ALL USING (agent_id = auth.uid());
+  ON properties FOR ALL TO authenticated
+  USING (agent_id = auth.uid())
+  WITH CHECK (
+    agent_id = auth.uid()
+    AND agency_id = public.auth_agency_id()
+    AND city_id = (
+      SELECT ag.city_id FROM public.agencies ag
+      WHERE ag.id = public.auth_agency_id()
+    )
+  );
 
 -- Permite que agentes vean propiedades de toda su agencia (active/paused/sold).
 -- Necesario para que getPlanUsage() cuente correctamente en agencias multi-agente.
@@ -1387,8 +1478,17 @@ CREATE POLICY "Public read property images"
     )
   );
 
+-- USING y WITH CHECK idénticos (16 sep 2026): mismo comportamiento que antes,
+-- cuando el USING se reusaba como check, ahora escrito en las dos direcciones.
 CREATE POLICY "Agent manages own property images"
-  ON property_images FOR ALL USING (
+  ON property_images FOR ALL TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM properties p
+      WHERE p.id = property_images.property_id AND p.agent_id = auth.uid()
+    )
+  )
+  WITH CHECK (
     EXISTS (
       SELECT 1 FROM properties p
       WHERE p.id = property_images.property_id AND p.agent_id = auth.uid()
@@ -1469,6 +1569,21 @@ CREATE POLICY "Public insert lead"
         AND agency_is_publicly_visible(p.agency_id)
     )
   );
+
+-- ⚠ spatial_ref_sys: SE INTENTÓ REVOCAR LA ESCRITURA Y NO TUVO EFECTO (16 sep
+-- 2026). Se corrió:
+--
+--   REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public.spatial_ref_sys
+--     FROM anon, authenticated;
+--
+-- y después has_table_privilege('anon', 'public.spatial_ref_sys', 'UPDATE')
+-- siguió en true (medido; también INSERT y DELETE, y lo mismo authenticated).
+-- Motivo: la tabla la crea PostGIS y su dueño es supabase_admin (medido:
+-- relowner = supabase_admin, y los grants de anon/authenticated los otorgó
+-- supabase_admin); el rol postgres, que es con el que se corre el SQL Editor, no
+-- puede cambiar sus permisos. NO se incluye el REVOKE como sentencia en este
+-- archivo porque no describe el estado real. Queda como pedido al soporte de
+-- Supabase: ver PENDIENTES.md.
 
 -- ─── STORAGE BUCKET ─────────────────────────────────────────
 -- Un solo bucket para todo el proyecto. Tres tipos de path conviven adentro,
@@ -1704,15 +1819,24 @@ CREATE POLICY "Agency deletes own storage files"
   );
 
 -- ⚠ EL SERVICE ROLE SALTEA TODO ESTO. storage.objects tiene RLS habilitada pero
--- NO forzada (relforcerowsecurity = false), así que removeAgencyFiles()
--- —el único código del proyecto que borra logos y avatares— sigue funcionando
--- igual y no lo afecta ninguna de estas cuatro policies.
+-- NO forzada (relforcerowsecurity = false), así que el código que borra
+-- logos y avatares con service role —removeAgencyFiles() (admin/actions.ts:
+-- logo + avatares al eliminar una agencia), removeAgentAvatar()
+-- (equipo/actions.ts: avatar al borrar un agente) y scripts/storage-orphans.ts
+-- (huérfanos, con --borrar)— sigue funcionando igual y no lo afecta ninguna de
+-- estas cuatro policies. (Las fotos de propiedad las borran además
+-- removePropertyFiles(), con service role, e ImageUploader desde el navegador,
+-- este último sí sujeto a estas policies.)
 --
 -- ⚠ EFECTO COLATERAL ACEPTADO: los archivos huérfanos quedan INALCANZABLES. Un
 -- archivo bajo la carpeta de un agente que ya no existe no matchea ninguna
 -- rama —no hay fila de `agents` contra la cual comparar—, así que ningún
--- usuario puede borrarlo. Solo service role, y hoy ningún código del proyecto
--- los alcanza. Ver PENDIENTES.md.
+-- usuario puede borrarlo. Solo service role: por eso la limpieza es
+-- scripts/storage-orphans.ts, que con la service role key lista el bucket
+-- entero, detecta los archivos cuya fila ya no existe (o no los referencia) y,
+-- solo con --borrar, los borra por la API de Storage, salteando los de menos
+-- de 24 horas (por defecto es una simulación que no borra nada).
+-- Ver CLAUDE.md → "Auditoría y limpieza de huérfanos".
 
 -- ─── SEED: datos de prueba ────────────────────────────────────
 -- Después de crear un usuario con Supabase Auth, reemplazar el UUID:

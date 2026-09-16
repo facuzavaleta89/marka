@@ -61,9 +61,12 @@ export async function registerAction(
   if (!authData.user) return { error: "No se pudo crear el usuario" };
 
   // El aprovisionamiento del agente y su suscripción se hace con service role.
-  // Motivo: si "Confirm email" está activo, después de signUp no hay sesión, así
-  // que el client normal correría como anon (auth.uid() = null) y la policy
-  // "Agent creates own profile" (WITH CHECK id = auth.uid()) rechazaría el insert.
+  // Motivo: las altas en `agents` se hacen EXCLUSIVAMENTE con service role.
+  // `authenticated` no tiene permiso de INSERT sobre `agents` ni hay policy de
+  // INSERT, a propósito: `role` y `agency_id` gobiernan la autorización de toda
+  // la app y el usuario no puede elegirlos. Con el client normal este insert
+  // rebotaría por falta de permiso, haya sesión o no.
+  // Ver CLAUDE.md → "Base de Datos" → "Permisos de escritura del usuario".
   const admin = createAdminClient();
 
   // Crea una agencia nueva para este registro (ya no se cuelga de una demo).

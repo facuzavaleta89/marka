@@ -44,7 +44,7 @@ Consecuencias directas sobre el orden: la **autosugerencia de ubicación** subí
 
 ---
 
-## ⚠ INCONSISTENCIAS ACUMULADAS — 42 abiertas (volcadas el 15 sep 2026)
+## ⚠ INCONSISTENCIAS ACUMULADAS — 47 abiertas (volcadas el 15 sep 2026; la P0 se resolvió y se sumaron 6 de seguridad el 16 sep 2026)
 
 > **De dónde salen.** A lo largo de las seis tandas del grupo de pulido se fueron anotando sin arreglar,
 > en informes que se sobrescriben. **Acá quedan por escrito por primera vez.** Al relevamiento de formas
@@ -64,7 +64,7 @@ septiembre y publicidad en octubre. Así que **no ordena el costo de arreglarlo 
 si se deja**:
 
 - **P0 — antes de que entre el primer cliente que no controlamos.** Puede comprometer los datos de una
-  agencia frente a otra. Es una sola.
+  agencia frente a otra. Era una sola, y quedó resuelta el 16 sep 2026.
 - **P1 — la primera semana.** Una inmobiliaria o un visitante lo ve y **cambia lo que hace o lo que
   carga**. Acá entra lo que produce datos mal cargados, aunque el arreglo sea una clase de color: ver
   `CLAUDE.md` → "Un defecto visual sobre un control no es visual".
@@ -79,69 +79,11 @@ Dentro de cada nivel, primero lo que ven más personas.
 
 ### 🔴 P0 — Seguridad
 
-#### 1. ⚠⚠ UN AGENTE LOGUEADO PUEDE CAMBIARSE EL ROL Y LA AGENCIA CON LA CLAVE PÚBLICA
+#### 1. ~~UN AGENTE LOGUEADO PUEDE CAMBIARSE EL ROL Y LA AGENCIA CON LA CLAVE PÚBLICA~~ — ✅ RESUELTO (16 sep 2026)
 
-**Es lo más urgente que queda abierto en todo el proyecto.** Medido contra la base el 15 sep 2026.
+**Qué se hizo:** en `agents` se revocaron INSERT/UPDATE/DELETE/TRUNCATE a `anon` y `authenticated`, se dejó `GRANT UPDATE (full_name, phone_wa, avatar_url)` a `authenticated`, se eliminó la policy de INSERT `Agent creates own profile` y la de UPDATE ganó `WITH CHECK`; además `Agent manages own properties` ganó un `WITH CHECK` que fija `agency_id` y `city_id` a los del propio agente, y `Agent manages own property images` quedó con `WITH CHECK` explícito. Aplicado a mano, probado simulando el JWT de un agente común (antes pasaba / ahora `42501`) y verificado en el navegador. Detalle y trampas en `CLAUDE.md` → "Base de Datos" → "Permisos de escritura del usuario".
 
-**Qué permite, exactamente.** Tres cosas que se dan a la vez:
-
-| # | Medido | Valor |
-|---|---|---|
-| 1 | La policy de escritura de `agents` | `Agent manages own profile` · `UPDATE` · `USING (id = auth.uid())` · **`WITH CHECK` en NULL** |
-| 2 | Permisos de tabla | `authenticated=arwdDxtm` — **UPDATE sobre la tabla entera**, y **cero ACL por columna** (las nueve columnas tienen `attacl` nulo), así que el permiso alcanza a todas |
-| 3 | Triggers sobre `agents` | **ninguno** (la consulta devuelve vacío) |
-
-⚠ **Sin `WITH CHECK`, PostgreSQL usa el `USING` también para la fila NUEVA.** Y la condición es sobre
-`id`, que no cambia — así que **se cumple con cualquier `role` y cualquier `agency_id` nuevos**. Un
-`PATCH /rest/v1/agents?id=eq.<su propio id>` con `{"role":"admin"}` o `{"agency_id":"<otra agencia>"}`,
-con la **clave pública** (la que viaja en el bundle de JavaScript) y su **propio** token de sesión,
-no lo frena nada.
-
-⚠ **Hace falta una sesión válida, y eso acota quién puede: un agente de una inmobiliaria que nosotros
-dimos de alta, no un visitante anónimo.** `anon` también tiene el permiso de tabla, pero la policy exige
-`auth.uid()`, que para un anónimo es nulo. **No es consuelo: el modelo es multi-tenant y el vecino de
-tabla es la competencia de la misma ciudad.**
-
-**Qué habilita cambiarse esas dos columnas** — y es lo que lo vuelve P0, porque el panel **autoriza por
-ellas**, leídas de la base:
-
-| Con `role: 'admin'` | Camino | Escribe con |
-|---|---|---|
-| Gestionar **todas** las propiedades de la agencia (editar, borrar, cambiar estado, reasignar) | `authorizePropertyAccess`, modo admin (`propiedades/actions.ts:107-153`) | **SERVICE ROLE** (`:148`) |
-| Crear agentes (usuarios de Auth reales) | `createAgentAction` (`equipo/actions.ts:47`) | **SERVICE ROLE** |
-| Borrar agentes y **reasignarse sus propiedades** | `deleteAgentAction` (`equipo/actions.ts:129`) | **SERVICE ROLE** |
-| Leer las consultas de toda la agencia | policy `Admin reads agency leads` | RLS |
-
-**Y cambiándose además `agency_id`, todo eso apunta a OTRA agencia.** O sea: leer las consultas de la
-competencia —nombre, teléfono y qué propiedad miraron— y gestionar sus propiedades, por caminos que
-saltean la RLS porque confían en esas dos columnas.
-
-⚠ **`resolveAgentSession` no protege:** es justamente el que lee `role` y `agency_id` de la fila y los
-reparte al resto. Está bien escrito —los saca del servidor, nunca del cliente— pero **la fila ya está
-manipulada**.
-
-**Qué haría falta para cerrarla.** La forma corta es **permisos por columna**, y está verificada como
-segura: el **único** `UPDATE` a `agents` con el client de sesión es `updateProfileAction`, que escribe
-`full_name`, `phone_wa` y `avatar_url` (`perfil/actions.ts:45-58`). Todos los demás caminos usan
-**service role, que no pasa por los permisos de columna**, así que no se ven afectados.
-
-```sql
--- Cambio de schema: lo ejecuta el dueño en el SQL Editor (el MCP es de solo lectura).
-REVOKE UPDATE ON public.agents FROM authenticated, anon;
-GRANT  UPDATE (full_name, phone_wa, avatar_url) ON public.agents TO authenticated;
-```
-
-⚠ **Un `WITH CHECK` en la policy NO alcanza por sí solo**: una expresión de policy **no puede
-referirse a la fila vieja**, así que no hay forma de escribir "que `role` siga valiendo lo mismo". La
-alternativa equivalente es un **trigger `BEFORE UPDATE`** que fuerce `NEW.role := OLD.role` y
-`NEW.agency_id := OLD.agency_id` salvo para service role — más código, misma garantía, y con el
-precedente de los otros triggers del proyecto.
-
-**Por qué es lo más urgente:** las otras 41 se pagan en imagen, en accesibilidad o en tiempo nuestro.
-**Ésta se paga con los datos de un cliente frente a otro**, no deja rastro en ninguna pantalla, y el
-calendario dice que en septiembre entran inmobiliarias reales y en octubre se abre el registro a
-cualquiera. Hoy las 3 agencias de la base son de prueba: **es literalmente el momento más barato de
-cerrarla.**
+⚠ **El agujero era más grande que lo que describía este ítem**, y se cerró entero en la misma tanda: (1) la policy `Agent creates own profile` (`WITH CHECK id = auth.uid()`) dejaba que **un usuario de Auth sin fila en `agents` se insertara como `admin` de cualquier agencia**, y con la autoconfirmación de email activa ese usuario lo consigue cualquiera con `signUp`; (2) `Agent manages own properties` sin `WITH CHECK` dejaba **insertar o mover una propiedad propia hacia otra agencia**. Este ítem decía también que *"hace falta una sesión válida, y eso acota quién puede: un agente de una inmobiliaria que nosotros dimos de alta"*: **era falso** por (1) — la sesión no la da el alta de la agencia, la da `signUp`.
 
 ---
 
@@ -164,6 +106,7 @@ cerrarla.**
 | 5 | **En celular, el contenido del panel pasa por debajo del botón de menú al scrollear.** El `pt-14` libera la posición inicial del título, pero el botón es `fixed` y el `main` es el que scrollea | `Sidebar.tsx:187` + `dashboard/layout.tsx:57` y `admin/layout.tsx:65` | El panel se ve roto en el teléfono de cada inmobiliaria. Lo resolvería de raíz una barra superior en el flujo |
 | 6 | **`agencies.phone_wa` se exige en el alta y se edita en Preferencias, pero NADIE lo usa para contactar**: los dos caminos de WhatsApp arman la URL con `agents.phone_wa` | `preferencias/page.tsx:37` y `AgencyPhoneForm.tsx:23,52` vs `PropertyContact.tsx:42,59` y `PropertyModal.tsx:198,220` | Una inmobiliaria cambia "su WhatsApp" y **las consultas siguen llegando al número del agente**. Es una decisión de producto (¿fallback? ¿se saca el campo?), no un bug de código |
 | 7 | **El aviso de "revisá este número" dice que "el enlace de WhatsApp puede no llegar a destino" también en el teléfono de la AGENCIA**, cuyo número no arma ningún enlace | `PhoneWaInput.tsx` (`PhoneWaReviewNotice`) usado en `AgencyPhoneForm.tsx:99` | El texto es cierto en perfil y **exagerado** ahí. Sale gratis: depende del ítem 6 |
+| 43 | **`spatial_ref_sys`: `anon` y `authenticated` conservan INSERT/UPDATE/DELETE.** El dueño de la tabla es `supabase_admin` (la crea PostGIS) y el rol `postgres` no puede revocar: el `REVOKE` del 16 sep 2026 se corrió y **no tuvo efecto** (medido: `has_table_privilege('anon', …, 'UPDATE')` sigue en `true`). **Acción:** pedido al soporte de Supabase para que revoquen la escritura (PostGIS solo necesita SELECT) | base (`public.spatial_ref_sys`) | Sabotaje de las definiciones de coordenadas, no fuga de datos |
 | 8 | **Una línea fija no se puede cargar**: el campo antepone siempre `549` y un `543854000000` se guarda con el 9 agregado (verificado) | `phoneWa.ts:139-150` | Una inmobiliaria que atienda WhatsApp Business desde una línea fija **no puede cargar su número**, y el campo se lo "corrige" mientras escribe. Decisión de producto tomada a conciencia; lo que falta es saber si alguna fundadora está en ese caso |
 
 ---
@@ -181,6 +124,13 @@ cerrarla.**
 | 13 | **`aria-invalid` solo en dos campos** de toda la app: el selector de ciudad del registro y el teléfono | `RegisterForm.tsx:197`, `PhoneWaInput.tsx:121` | Un lector de pantalla **no anuncia** que un campo está en error |
 | 14 | El **anillo de foco** de la familia caja está al **20 %** y la familia subrayado **no tiene anillo**; `DESIGN.md` pide sólido para todos | `fieldStyles.ts:35`, `:66`, `:71-72` | Foco poco visible al navegar con teclado |
 | 15 | **`viewportFit: "cover"` no está declarado**, así que `env(safe-area-inset-*)` **vale 0 en todos los dispositivos** y la regla de zona segura de DESIGN §13 está escrita, aplicada y sin efecto | `src/app/layout.tsx:65-67` | Los FABs y las hojas pueden quedar bajo la barra de gestos en teléfonos con notch. **Es una línea** |
+
+**Seguridad — endurecimiento pendiente** (anotado el 16 sep 2026, al cerrar la P0):
+
+| # | Qué | Dónde | Riesgo |
+|---|---|---|---|
+| 44 | **`is_featured` es escribible por el agente con su sesión**: el gate de `has_featured` vive solo en las server actions. No se puso en el `WITH CHECK` de `Agent manages own properties` porque rompería la edición de las propiedades destacadas de una agencia que baja de plan; requiere un trigger que compare `OLD` y `NEW` | base (`properties`) + `propiedades/actions.ts` | Una agencia sin `has_featured` se marca destacada hablando con la API directo |
+| 45 | **`views_count` es escribible por el agente sobre sus propiedades** (además de la RPC pública `increment_views`, ya anotada en "Deuda técnica") | base (`properties`) | El número de visitas del panel se puede inflar a mano |
 
 **Coherencia visible:**
 
@@ -219,6 +169,9 @@ cerrarla.**
 | 39 | Comentario que dice que los botones de operación **"comparten una fila de 320px"** — es el ancho del panel de escritorio; en la hoja de un teléfono de 320 px la fila tiene 280 | `FilterPanel.tsx:27-29` | Un número escrito que no describe el caso que importa |
 | 40 | **Indentación irregular** en el formulario de inicio de sesión (hijos a 12 espacios, `</Button>` desalineado) | `LoginForm.tsx:69-124` | Cosmético, previo al grupo |
 | 41 | **Indentación irregular** en el bloque de filtros del panel de plataforma (el `.map` al mismo nivel que su contenedor) | `admin/AgenciesTable.tsx:842-843`, `:866-867` | Cosmético; **lo introdujo la tanda de los cuatro defectos** |
+| 46 | **`property_images.url` es texto libre**: un agente puede apuntar una imagen a cualquier dominio | base (`property_images`) | Una ficha pública cargando imágenes de un tercero |
+| 47 | **Los default privileges de `public` otorgan INSERT/UPDATE/DELETE a `anon` y `authenticated` en toda tabla nueva** (medido en `pg_default_acl`: `arwdDxtm` para los dos, de `postgres` y de `supabase_admin`). Hoy la protección de `agencies`, `subscriptions`, `cities` y `agency_reviews` depende de que **no tengan policies de escritura** | base | Una policy de escritura agregada "por prolijidad" abre la tabla. Endurecerlo es una decisión de otra escala |
+| 48 | **Activar "Confirm email" en Supabase Auth** cuando exista el servicio de correo propio. Hoy la autoconfirmación está activa y `signUp` devuelve sesión en el acto | configuración de Auth | Cualquiera obtiene un JWT válido sin confirmar la dirección. |
 | 42 | **El usuario de solo lectura del MCP no puede ejecutar `agency_is_publicly_visible`** (`42501`) ni ve permisos en `information_schema.role_table_grants` / `column_privileges` (devuelven vacío) | herramienta | ⚠ **Quien audite permisos por MCP con `information_schema` va a concluir que NO HAY NINGUNO.** Hay que usar `pg_class.relacl` / `pg_attribute.attacl` o `has_*_privilege`. Fue exactamente así como se midió el ítem 1 |
 
 ---
@@ -704,7 +657,7 @@ botón que quedaron redundantes).
 
 - [ ] **`src/lib/geocoding/` es el mejor candidato del repo para estrenar pruebas automatizadas.** **El proyecto no tiene ningún marco de pruebas instalado** (no hay Vitest, Jest ni Playwright en `package.json`), y esa es la razón por la que este ítem es una deuda y no una tarea. El módulo es el mejor punto de entrada porque es **lógica pura**: sin interfaz, sin base de datos, con entradas simples y **desenlaces discretos** (`found` / `not_found` / `out_of_city` / `unavailable`) — o sea, se prueba con un proveedor falso y sin red. Lo que más valor tendría cubrir: que `geocodeAddress` **nunca lance** pase lo que pase del otro lado, que el descarte por distancia haga de umbral, que `unavailable` **no se cachee** nunca, que el limitador respete el intervalo, y que la consulta **no incluya el barrio**. Empezar por acá también evita la discusión de qué framework elegir para probar componentes de React.
 
-- [ ] **`public.spatial_ref_sys` sin RLS** (aviso del security advisor de Supabase) — tabla de catálogo de proyecciones de PostGIS, legible/escribible por `anon` y `authenticated`. Sin datos de negocio, riesgo real bajo, pero está expuesta. ⚠ **No basta con `ENABLE ROW LEVEL SECURITY`**: sin una policy de SELECT se romperían las transformaciones de coordenadas de PostGIS. Si se toca, hay que hacerlo con la policy de lectura pública incluida.
+- [ ] **`public.spatial_ref_sys` sin RLS** (aviso del security advisor de Supabase) — tabla de catálogo de proyecciones de PostGIS, legible/escribible por `anon` y `authenticated`. Sin datos de negocio, riesgo real bajo, pero está expuesta. ⚠ **No basta con `ENABLE ROW LEVEL SECURITY`**: sin una policy de SELECT se romperían las transformaciones de coordenadas de PostGIS. Si se toca, hay que hacerlo con la policy de lectura pública incluida. ⚠ **Y no se puede tocar desde el SQL Editor** (medido el 16 sep 2026): el dueño es `supabase_admin` y un `REVOKE` corrido como `postgres` no tuvo efecto. Ver la inconsistencia **#43** (pedido al soporte).
 
 - [ ] **Multi-agente sigue sin millaje real, pero YA NO ES CERO.** Re-medido el 14 sep 2026: las **3** agencias tienen **exactamente 1 agente cada una**, los tres con rol `admin` (0 agencias con más de uno, y **0 agentes con rol `agent`** en toda la base; el 7 sep eran 10 agencias, también con 1 agente cada una), así que la maquinaria (`/dashboard/equipo`, roles admin/agent, reasignación de `agent_id`, policy `Admin reads agency leads`) sigue sin ejercitarse con una agencia de varios agentes **en estado estable**.
   **Lo que sí se recorrió (7 sep 2026):** el **ciclo completo de alta y baja de un agente**, de punta a punta y con datos reales — se creó un agente (`Luis Lescano`), se le generó una consulta desde el mapa público, y después se lo borró. Sobrevivieron las dos cosas que tenían que sobrevivir: la consulta quedó desvinculada con su nombre, y las propiedades pasaron al admin. Eso ejercitó de verdad `createAgentAction`, `deleteAgentAction`, el trigger `trg_set_lead_agent_name` y el `ON DELETE SET NULL`.
@@ -934,6 +887,8 @@ botón que quedaron redundantes).
 ---
 
 ## Cerrados recientemente (para referencia)
+
+- [x] **PERMISOS DE `agents` Y `properties` — CERRADO (16 sep 2026).** Era la P0 de las inconsistencias acumuladas. `agents` quedó sin INSERT/DELETE para usuarios y con UPDATE solo sobre `full_name`/`phone_wa`/`avatar_url`; las policies de UPDATE de `agents`, ALL de `properties` y ALL de `property_images` ganaron `WITH CHECK` (la de `properties` fija agencia y ciudad). Ver la P0 arriba y `CLAUDE.md`.
 
 - [x] **CONTADOR DE VISITAS — CERRADO (14 sep 2026), tres tandas.** `views_count` valía 0 en todas las propiedades: la función existía en la base y ningún camino del código la llamaba. **(1)** Visitas y consultas por propiedad en el listado del panel, separadas y en todos los planes, con las consultas en una sola consulta agregada. **(2)** El conteo desde tres lugares (pin, tarjeta de la lista, ficha pública con la primera interacción), una vez por propiedad por visitante, con `markVisited` devolviendo la señal. **(3)** La guarda de la base que impide que una visita mueva `updated_at`, que es lo que el mapa del sitio informa a los buscadores. El detalle, lo descartado y los seis ítems nuevos están en "Deuda técnica" → el ítem cerrado de `increment_views` y los que lo siguen.
 
