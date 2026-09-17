@@ -2,7 +2,7 @@
 
 > Lista viva de pendientes, deuda técnica y decisiones de producto abiertas.
 > Se actualiza a medida que se cierran piezas o aparecen cosas nuevas.
-> Última actualización: 15 sep 2026 (**GRUPO DE PULIDO VISUAL CERRADO**, seis tandas: dos relevamientos y cuatro de implementación — las hojas que suben desde abajo, los campos de formulario y el teléfono con prefijo, cuatro defectos de forma que rompían algo, y la unificación de formas. **Y la tanda de documentación que volcó las inconsistencias acumuladas**: de las 58 que seguían anotadas, **42 quedan abiertas** y encabezadas por una de **seguridad** — ver la sección nueva arriba de todo. Baseline re-medido: el warning de lint está en `PropertyForm.tsx:814`, no en `:808`). Antes: 14 sep 2026 (**CONTADOR DE VISITAS CERRADO**, tres tandas: visitas y consultas por propiedad en el listado del panel, el conteo desde tres lugares con deduplicación por visitante y disparo por interacción en la ficha pública, y la guarda de la base que impide que una visita mueva la fecha que el mapa del sitio informa a los buscadores. **Seis ítems nuevos abiertos**, los seis verificados (los cuatro que salieron del cierre más las dos tarjetas de `/dashboard` con ventanas distintas y los dos documentos que quedaron desfasados). **Cifras re-medidas**: 14 consultas, 17 visitas en 8 propiedades). Antes: 13 sep 2026 (**GRUPO DEL SITIO DE MARCA CERRADO**, cuatro tandas: direcciones reservadas + dirección editable, el sitio apagado le habla a su dueño, el cambio de nombre completo con dos formas de rechazo, y **el campo que faltaba** — las tres primeras tandas se habían construido sin punta en la interfaz, de donde salió la regla de método de recorrer de punta a punta. Cerró además las dos sub-piezas de white-label que llevaban meses en pausa. **Cifras re-medidas**: la base pasó de 4 agencias a 3). Antes: 12 sep 2026 (**GRUPO DE COHERENCIA DEL PANEL CERRADO**, cinco tandas: era chico —un cartel, un banner y una ruta— y **destapó el bug más caro medido hasta ahora**, que pedir un plan mayor sacaba a la agencia del mapa. Cuatro ítems nuevos abiertos, los cuatro aparecidos midiendo, y **todas las cifras de datos de prueba re-medidas**: la base se limpió y pasó de 10 agencias a 4). Y antes: grupo de captación y difusión cerrado el 10 sep; C2 y D2 el 8 sep; BLOQUE B entero el 3 sep; A1 y A2 hechas → el BLOQUE A está completo.
+> Última actualización: 16 sep 2026 (**CIERRE DEL PANEL Y LAS DESTACADAS**, tanda de documentación: casillas, panel en celular, hojas, blindaje de columnas, cupo de destacadas y menú del listado. **15 inconsistencias cerradas, 14 nuevas, 46 abiertas**, reagrupadas por tema dentro de cada prioridad; la zona segura quedó **decidida: no se activa por ahora**). Antes: 15 sep 2026 (**GRUPO DE PULIDO VISUAL CERRADO**, seis tandas: dos relevamientos y cuatro de implementación — las hojas que suben desde abajo, los campos de formulario y el teléfono con prefijo, cuatro defectos de forma que rompían algo, y la unificación de formas. **Y la tanda de documentación que volcó las inconsistencias acumuladas**: de las 58 que seguían anotadas, **42 quedan abiertas** y encabezadas por una de **seguridad** — ver la sección nueva arriba de todo. Baseline re-medido: el warning de lint está en `PropertyForm.tsx:814`, no en `:808`). Antes: 14 sep 2026 (**CONTADOR DE VISITAS CERRADO**, tres tandas: visitas y consultas por propiedad en el listado del panel, el conteo desde tres lugares con deduplicación por visitante y disparo por interacción en la ficha pública, y la guarda de la base que impide que una visita mueva la fecha que el mapa del sitio informa a los buscadores. **Seis ítems nuevos abiertos**, los seis verificados (los cuatro que salieron del cierre más las dos tarjetas de `/dashboard` con ventanas distintas y los dos documentos que quedaron desfasados). **Cifras re-medidas**: 14 consultas, 17 visitas en 8 propiedades). Antes: 13 sep 2026 (**GRUPO DEL SITIO DE MARCA CERRADO**, cuatro tandas: direcciones reservadas + dirección editable, el sitio apagado le habla a su dueño, el cambio de nombre completo con dos formas de rechazo, y **el campo que faltaba** — las tres primeras tandas se habían construido sin punta en la interfaz, de donde salió la regla de método de recorrer de punta a punta. Cerró además las dos sub-piezas de white-label que llevaban meses en pausa. **Cifras re-medidas**: la base pasó de 4 agencias a 3). Antes: 12 sep 2026 (**GRUPO DE COHERENCIA DEL PANEL CERRADO**, cinco tandas: era chico —un cartel, un banner y una ruta— y **destapó el bug más caro medido hasta ahora**, que pedir un plan mayor sacaba a la agencia del mapa. Cuatro ítems nuevos abiertos, los cuatro aparecidos midiendo, y **todas las cifras de datos de prueba re-medidas**: la base se limpió y pasó de 10 agencias a 4). Y antes: grupo de captación y difusión cerrado el 10 sep; C2 y D2 el 8 sep; BLOQUE B entero el 3 sep; A1 y A2 hechas → el BLOQUE A está completo.
 
 ---
 
@@ -44,20 +44,16 @@ Consecuencias directas sobre el orden: la **autosugerencia de ubicación** subí
 
 ---
 
-## ⚠ INCONSISTENCIAS ACUMULADAS — 47 abiertas (volcadas el 15 sep 2026; la P0 se resolvió y se sumaron 6 de seguridad el 16 sep 2026)
+## ⚠ INCONSISTENCIAS ACUMULADAS — 46 abiertas (4 P1 · 15 P2 · 27 P3; re-contadas el 16 sep 2026)
 
 > **De dónde salen.** A lo largo de las seis tandas del grupo de pulido se fueron anotando sin arreglar,
-> en informes que se sobrescriben. **Acá quedan por escrito por primera vez.** Al relevamiento de formas
-> seguían abiertas **46**; las dos últimas tandas sumaron **12**, o sea **58**. Hoy quedan **42**:
+> en informes que se sobrescriben, y se volcaron acá el 15 sep 2026 (**42** abiertas). El 16 sep 2026 se
+> resolvió la P0 y se sumaron 6 de seguridad (**47**); después las tandas de casillas, panel en celular,
+> hojas, blindaje de columnas, cupo de destacadas y menú del listado **cerraron 15** (ver "Cerradas el
+> 16 sep 2026", abajo) y se sumaron **14 nuevas** (49 a 62). Hoy quedan **46**.
 >
-> | | |
-> |---|---|
-> | **13 se resolvieron** en tandas posteriores a su anotación | radios, alturas de botón, contraste de las casillas, botones del alta, filtros de admin, forma de diálogos y menús, y los dos documentos desactualizados |
-> | **2 se descartaron al verificarlas** | ver "Las que se verificaron y NO existen", abajo |
-> | **1 dejó de ser inconsistencia y pasó a ser regla** | los ítems de menú en mayúsculas (ver `CLAUDE.md` → "Rótulo corto en mayúsculas, frase en minúsculas") |
->
-> ⚠ **Cada una se verificó contra el código actual antes de escribirla**, con su archivo y su línea de hoy.
-> Las líneas se corrieron mucho durante el grupo: si no coinciden, buscar por contenido.
+> ⚠ **Cada una se verificó contra el código o la base antes de escribirla.** Las líneas se corren: si no
+> coinciden, buscar por contenido. **Los números no se reusan**: un ítem cerrado conserva el suyo.
 
 **El criterio de orden, y por qué es ése.** El marco es el calendario: entran inmobiliarias reales en
 septiembre y publicidad en octubre. Así que **no ordena el costo de arreglarlo sino a quién le pasa algo
@@ -73,7 +69,8 @@ si se deja**:
 - **P3 — deuda interna, documentación y cosmético.** No lo nota nadie de afuera; se paga en tiempo
   nuestro más adelante.
 
-Dentro de cada nivel, primero lo que ven más personas.
+**Dentro de cada nivel se agrupan por tema** (16 sep 2026): *Campos: foco, error y estilo* · *Montar hojas
+y FABs una sola vez* · *WhatsApp de la agencia* · *Limpieza interna*, más los que no entran en ninguno.
 
 ---
 
@@ -91,88 +88,141 @@ Dentro de cada nivel, primero lo que ven más personas.
 
 > Lo que una inmobiliaria o un visitante ve y **cambia lo que hace o lo que carga**.
 
-**Datos mal cargados** (la familia de la lección del grupo):
+**WhatsApp de la agencia — ⚠ DECISIÓN PENDIENTE DEL DUEÑO** (16 sep 2026). Hoy **ninguna consulta llega a
+`agencies.phone_wa`**: los dos caminos de WhatsApp usan el número del agente. Opciones: (a) sacar el campo;
+(b) usarlo de reserva cuando el agente no tiene número; (c) que la agencia elija a qué número llegan.
+**Recomendación anotada: que la agencia elija, más adelante; mientras tanto, aclarar en Preferencias para
+qué sirve ese número.** Y preguntarles a las fundadoras si alguna atiende WhatsApp Business desde una línea
+fija: eso decide el ítem 8.
 
 | # | Qué | Dónde | Riesgo de dejarla |
 |---|---|---|---|
-| 2 | **La tarjeta de operación se ve tocable entera, pero solo responden la casilla y el texto.** El `Label` no ocupa el ancho del contenedor, así que tocar el relleno de `p-4` no marca nada | `PropertyForm.tsx:352-373` | Es **el mismo control** cuyo defecto de contraste ya produjo el agujero de datos: la tarjeta invita a tocar y no pasa nada, así que la operación queda sin marcar |
-| 3 | **Al enfocar una casilla con el teclado, su borde se ACLARA**: el componente mantiene `focus-visible:border-ring` y `--ring` (`globals.css:101`) es más claro que el `graphite/80` nuevo | `ui/checkbox.tsx:26` | Pierde contraste **justo en el foco**, que es cuando se la está por marcar. Deshace a medias lo que arregló la tanda de las casillas |
-
-**Funcional y de producto:**
-
-| # | Qué | Dónde | Riesgo de dejarla |
-|---|---|---|---|
-| 4 | **El detalle de propiedad se cierra al arrastrar hacia abajo desde el CUERPO, sin mirar el scroll** | `PropertyModal.tsx:788-790` | Un visitante que vuelve al principio del texto **pierde la ficha**. Es la única hoja que no sigue la regla de acotar el gesto (ver `CLAUDE.md`) |
-| 5 | **En celular, el contenido del panel pasa por debajo del botón de menú al scrollear.** El `pt-14` libera la posición inicial del título, pero el botón es `fixed` y el `main` es el que scrollea | `Sidebar.tsx:187` + `dashboard/layout.tsx:57` y `admin/layout.tsx:65` | El panel se ve roto en el teléfono de cada inmobiliaria. Lo resolvería de raíz una barra superior en el flujo |
 | 6 | **`agencies.phone_wa` se exige en el alta y se edita en Preferencias, pero NADIE lo usa para contactar**: los dos caminos de WhatsApp arman la URL con `agents.phone_wa` | `preferencias/page.tsx:37` y `AgencyPhoneForm.tsx:23,52` vs `PropertyContact.tsx:42,59` y `PropertyModal.tsx:198,220` | Una inmobiliaria cambia "su WhatsApp" y **las consultas siguen llegando al número del agente**. Es una decisión de producto (¿fallback? ¿se saca el campo?), no un bug de código |
 | 7 | **El aviso de "revisá este número" dice que "el enlace de WhatsApp puede no llegar a destino" también en el teléfono de la AGENCIA**, cuyo número no arma ningún enlace | `PhoneWaInput.tsx` (`PhoneWaReviewNotice`) usado en `AgencyPhoneForm.tsx:99` | El texto es cierto en perfil y **exagerado** ahí. Sale gratis: depende del ítem 6 |
-| 43 | **`spatial_ref_sys`: `anon` y `authenticated` conservan INSERT/UPDATE/DELETE.** El dueño de la tabla es `supabase_admin` (la crea PostGIS) y el rol `postgres` no puede revocar: el `REVOKE` del 16 sep 2026 se corrió y **no tuvo efecto** (medido: `has_table_privilege('anon', …, 'UPDATE')` sigue en `true`). **Acción:** pedido al soporte de Supabase para que revoquen la escritura (PostGIS solo necesita SELECT) | base (`public.spatial_ref_sys`) | Sabotaje de las definiciones de coordenadas, no fuga de datos |
 | 8 | **Una línea fija no se puede cargar**: el campo antepone siempre `549` y un `543854000000` se guarda con el 9 agregado (verificado) | `phoneWa.ts:139-150` | Una inmobiliaria que atienda WhatsApp Business desde una línea fija **no puede cargar su número**, y el campo se lo "corrige" mientras escribe. Decisión de producto tomada a conciencia; lo que falta es saber si alguna fundadora está en ese caso |
+
+**Base:**
+
+| # | Qué | Dónde | Riesgo de dejarla |
+|---|---|---|---|
+| 43 | **`spatial_ref_sys`: `anon` y `authenticated` conservan INSERT/UPDATE/DELETE.** El dueño de la tabla es `supabase_admin` (la crea PostGIS) y el rol `postgres` no puede revocar: el `REVOKE` del 16 sep 2026 se corrió y **no tuvo efecto** (medido: `has_table_privilege('anon', …, 'UPDATE')` sigue en `true`). **Acción (sigue pendiente al 16 sep 2026):** pedido al soporte de Supabase para que revoquen la escritura (PostGIS solo necesita SELECT) | base (`public.spatial_ref_sys`) | Sabotaje de las definiciones de coordenadas, no fuga de datos |
 
 ---
 
 ### 🟡 P2 — Accesibilidad y coherencia visible
 
-**Accesibilidad** (nadie de afuera la reporta, y deja gente afuera):
+**Montar hojas y FABs una sola vez:**
 
 | # | Qué | Dónde | Riesgo |
 |---|---|---|---|
-| 9 | Las hojas **no son diálogos accesibles**: sin `role="dialog"`, sin `aria-modal`, sin captura de foco, y **cerradas siguen montadas y tabulables** (sin `inert`/`aria-hidden`). ⚠ Incluye que **el detalle no cierra con Escape** (la de filtros sí, desde el 15 sep) | `FilterPanel.tsx:604-623`, `PropertyModal.tsx:757-803` | Navegación con teclado confusa; se tabula hacia controles que están fuera de pantalla |
+| 9 | Las hojas **no son diálogos accesibles**: sin `role="dialog"`, sin `aria-modal`, sin captura de foco, y **cerradas siguen montadas y tabulables** (sin `inert`/`aria-hidden`). (El detalle ya cierra con Escape desde el 16 sep 2026: eso no forma parte de este ítem.) | `FilterPanel.tsx:476-505`, `PropertyModal.tsx:770-825` | Navegación con teclado confusa; se tabula hacia controles que están fuera de pantalla |
 | 10 | Al cerrar la hoja de filtros **el foco no vuelve a ningún lado**: el botón que la abrió se desmonta mientras está abierta | `page.tsx:170-181`, `AgencyMapView.tsx:143-154` | El foco queda perdido fuera de pantalla. **Lo introdujo la tanda de las hojas** al ocultar los FABs |
 | 11 | **IDs duplicados**: el panel se monta dos veces y hay dos de cada `amenity-*` y `only-featured`; el `htmlFor` apunta al primero, que es el del panel de escritorio | `FilterPanel.tsx:533`, `:554`, montado en `page.tsx:131` y `:155` | Las casillas de la hoja de celular **quedan sin nombre accesible** |
 | 12 | La ✕ de la hoja de filtros **sin `aria-label` ni `type="button"`** (la del detalle sí los tiene) | `FilterPanel.tsx:380-382` | Un lector de pantalla anuncia "botón" sin nombre |
+| 21 | **`ModalContent` se monta DOS veces** por apertura (panel de escritorio + hoja de celular), con estado separado | `PropertyModal.tsx:784`, `:819` | El doble de DOM y de trabajo; dos estados que pueden divergir. Es lo que produjo la medición falsa de `alto: 0` al medir la copia oculta |
+
+**Campos: foco, error y estilo:**
+
+| # | Qué | Dónde | Riesgo |
+|---|---|---|---|
 | 13 | **`aria-invalid` solo en dos campos** de toda la app: el selector de ciudad del registro y el teléfono | `RegisterForm.tsx:197`, `PhoneWaInput.tsx:121` | Un lector de pantalla **no anuncia** que un campo está en error |
 | 14 | El **anillo de foco** de la familia caja está al **20 %** y la familia subrayado **no tiene anillo**; `DESIGN.md` pide sólido para todos | `fieldStyles.ts:35`, `:66`, `:71-72` | Foco poco visible al navegar con teclado |
-| 15 | **`viewportFit: "cover"` no está declarado**, así que `env(safe-area-inset-*)` **vale 0 en todos los dispositivos** y la regla de zona segura de DESIGN §13 está escrita, aplicada y sin efecto | `src/app/layout.tsx:65-67` | Los FABs y las hojas pueden quedar bajo la barra de gestos en teléfonos con notch. **Es una línea** |
-
-**Seguridad — endurecimiento pendiente** (anotado el 16 sep 2026, al cerrar la P0):
-
-| # | Qué | Dónde | Riesgo |
-|---|---|---|---|
-| 44 | **`is_featured` es escribible por el agente con su sesión**: el gate de `has_featured` vive solo en las server actions. No se puso en el `WITH CHECK` de `Agent manages own properties` porque rompería la edición de las propiedades destacadas de una agencia que baja de plan; requiere un trigger que compare `OLD` y `NEW` | base (`properties`) + `propiedades/actions.ts` | Una agencia sin `has_featured` se marca destacada hablando con la API directo |
-| 45 | **`views_count` es escribible por el agente sobre sus propiedades** (además de la RPC pública `increment_views`, ya anotada en "Deuda técnica") | base (`properties`) | El número de visitas del panel se puede inflar a mano |
-
-**Coherencia visible:**
-
-| # | Qué | Dónde | Riesgo |
-|---|---|---|---|
-| 16 | **El color del estado MARCADO de las casillas sigue sobrescrito a mano en 8 lugares** (`CHECKBOX_TERRACOTA` ×2 archivos + el literal repetido 4 veces) | `FilterPanel.tsx:19,536,559`; `admin/AgenciesTable.tsx:72,855,879`; `PropertyForm.tsx:366,652,1219,1265` | **Una casilla nueva sin el override se marca en casi negro**, porque el componente marca en `bg-primary`. Es el molde exacto de las duplicaciones que el proyecto ya se cobró |
+| 62 | **`ui/button.tsx` mantiene `focus-visible:border-ring`**: el mismo patrón que aclaraba el borde de las casillas al enfocarlas (ítem 3, cerrado) | `ui/button.tsx:8` | Foco que puede restar contraste en vez de sumarlo, en los botones con borde |
 | 17 | **Cuatro cajas de campo escritas a mano** fuera de la definición única, todas con `focus:` en vez de `focus-visible:` | `FilterPanel.tsx:129`, `PropertyContact.tsx:126`, `PropertyModal.tsx:616`, `ShareButton.tsx:217` | Se desincronizan de `fieldStyles.ts`, que existe justamente para eso |
 | 18 | **Las etiquetas de formulario son 12px SemiBold en MAYÚSCULAS** y `DESIGN.md` pide 13px Medium. ⚠ **Las mayúsculas ya NO son la inconsistencia** (son regla: rótulo corto); lo que no coincide es **el tamaño y el peso** | `ui/label.tsx:16` | Formularios levemente más "gritados" que el diseño documentado. Hay que decidir cuál de los dos se mueve |
 | 19 | **Campos de autenticación con fondo transparente**; DESIGN pide blanco | `ui/input.tsx:11` | O se corrige el código o se corrige el documento: hoy se contradicen |
-| 20 | **"Amenities" en el filtro y en el formulario, "Comodidades" en la ficha pública** | `FilterPanel.tsx:522`, `PropertyForm.tsx:1211`, `propiedades/[slug]/page.tsx:314` | El mismo concepto con dos nombres en dos pantallas públicas, uno en inglés |
-| 21 | **`ModalContent` se monta DOS veces** por apertura (panel de escritorio + hoja de celular), con estado separado | `PropertyModal.tsx:764-768`, `:797-801` | El doble de DOM y de trabajo; dos estados que pueden divergir. Es lo que produjo la medición falsa de `alto: 0` al medir la copia oculta |
-| 22 | **El área de toque extendida de "Ver ficha completa" puede solaparse con los puntos del carrusel** | `PropertyModal.tsx:342` vs `:96` | Medido a 390 px no se tocan, pero en una pantalla más angosta el toque puede caer en el botón equivocado |
-| 23 | Guardar un teléfono **preservado sin tocarlo** igual dice "Teléfono de la agencia actualizado" | `preferencias/actions.ts:71-79`, `AgencyPhoneForm.tsx:118-122` | El mensaje sugiere que algo se guardó cuando no cambió nada, **justo al lado del aviso de revisión** |
 | 24 | El **teléfono en variante subrayado mide 41 px** y los demás campos 40: el contenedor suma su borde al alto del input | `fieldStyles.ts:71` + `ui/input.tsx:11` | Un píxel; se ve al apilar campos |
+
+**Otros:**
+
+| # | Qué | Dónde | Riesgo |
+|---|---|---|---|
+| 20 | **"Amenities" en el filtro y en el formulario, "Comodidades" en la ficha pública** | `FilterPanel.tsx:522`, `PropertyForm.tsx:1211`, `propiedades/[slug]/page.tsx:314` | El mismo concepto con dos nombres en dos pantallas públicas, uno en inglés |
+| 23 | Guardar un teléfono **preservado sin tocarlo** igual dice "Teléfono de la agencia actualizado" | `preferencias/actions.ts:71-79`, `AgencyPhoneForm.tsx:118-122` | El mensaje sugiere que algo se guardó cuando no cambió nada, **justo al lado del aviso de revisión** |
+| 49 | **Verificar en un iPhone, con la app instalada, que los FABs y los pies de las hojas no queden bajo la barra de inicio.** La zona segura no se activó (ver el ítem 15, cerrado) y no hay iPhone con qué probar | `src/app/layout.tsx` (`viewport`) | Si en iOS algo queda bajo la barra de inicio, activar `viewportFit: "cover"` cambia todo lo que usa `env()` a la vez, y hay que probarlo en ese dispositivo |
 
 ---
 
 ### ⚪ P3 — Deuda interna, documentación y cosmético
 
+**Montar hojas y FABs una sola vez:**
+
 | # | Qué | Dónde | Riesgo |
 |---|---|---|---|
 | 25 | **Los dos FABs y el montaje del panel están duplicados carácter por carácter** entre la home y el sitio de marca | `page.tsx:129-203`, `AgencyMapView.tsx:129-176` | Todo arreglo hay que hacerlo dos veces, y es el patrón que el proyecto ya se cobró tres veces (`AgenciesTable`, `AgentCell`, el encabezado público) |
-| 26 | El detalle mueve la hoja con **`transform`** mientras su clase usa **`translate`**: se **suman** en vez de reemplazarse (la de filtros ya usa `translate`) | `PropertyModal.tsx:785` vs `:787` | Salto visual al cerrar por gesto |
-| 27 | **Hoja y velo de filtros sin `md:hidden`** (los del detalle lo tienen) | `FilterPanel.tsx:598-611` | Abrir la hoja en celular y agrandar la ventana deja la hoja encima del panel lateral |
-| 28 | **Dos hojas hermanas con dos altos** (`85vh` y `82vh`), y ninguna en `dvh` | `FilterPanel.tsx:608`, `PropertyModal.tsx:783` | Sin motivo escrito; `vh` es el viewport grande del celular |
-| 29 | **`top-14` fijo** en el panel lateral del detalle, acoplado por un número repetido al `h-14` de los dos encabezados | `PropertyModal.tsx:759` | Si un encabezado cambia de alto, el panel queda encima o deja un hueco, **sin ningún error** |
+| 29 | **`top-14` fijo** en el panel lateral del detalle, acoplado por un número repetido al `h-14` de los dos encabezados | `PropertyModal.tsx:776` | Si un encabezado cambia de alto, el panel queda encima o deja un hueco, **sin ningún error** |
 | 30 | **Los FABs desaparecen de golpe** mientras la hoja sube en 220 ms | `page.tsx:170` | Estético; las dos hojas son coherentes entre sí |
 | 31 | **Dos contenedores con scroll anidados** en el panel de filtros de escritorio | `page.tsx:130` + `FilterPanel.tsx:386` | — |
-| 32 | **`commitPrice` y `commitArea` son idénticas**, y `parseFloat` acepta `"12abc"` → 12 y negativos | `FilterPanel.tsx:312-320` | Filtros con valores raros, sin aviso |
 | 33 | **Estado local de los inputs por instancia** del panel: lo tipeado y no confirmado no se comparte | `FilterPanel.tsx:152-155` | Invisible hoy (nunca se ven las dos instancias a la vez) |
+
+**Campos: foco, error y estilo:**
+
+| # | Qué | Dónde | Riesgo |
+|---|---|---|---|
 | 34 | Dentro de la familia caja, **el error se muestra de tres formas**: el formulario de propiedades colorea el campo, el teléfono colorea el contenedor, y perfil/equipo/identidad solo ponen texto rojo debajo | `PropertyForm.tsx:971` vs `ProfileForm.tsx:266-268`, `TeamContent.tsx:467-469`, `AgencyIdentityForm.tsx:200-202` | El error es menos evidente en tres pantallas |
+
+**Destacadas y menú del listado** (anotados al cerrar el cupo y el menú, 16 sep 2026):
+
+| # | Qué | Dónde | Riesgo |
+|---|---|---|---|
+| 54 | **El diálogo de "Reactivar suscripción" de `/admin` no avisa que las destacadas no vuelven**: la baja las apaga (cupo a 0) y reactivar repone el cupo, no las estrellas | `admin/AgenciesTable.tsx:1296-1310` | La agencia descubre después que tiene que volver a marcarlas |
+| 55 | **`loading.tsx` del listado no reserva lugar para el chip de destacadas** | `dashboard/propiedades/loading.tsx` | Salto de layout al terminar de cargar en las agencias con cupo |
+| 57 | **`FeaturedQuotaChange` compara contra el CATÁLOGO**, no contra el `featured_limit` guardado de la agencia | `admin/AgenciesTable.tsx:1960-1963` | Si algún día una agencia tiene un cupo distinto del de su plan, el panel muestra un antes falso |
+| 58 | **Un agente común no puede ver qué propiedades de sus compañeros ocupan el cupo de destacadas**: su listado muestra solo las suyas (hay una nota que avisa que el cupo es de toda la inmobiliaria) | `dashboard/propiedades/page.tsx:165-170` | Ve "Cupo completo" sin saber quién lo ocupa |
+| 59 | **Pausar y eliminar devuelven texto fijo ante un error de la base**, sin traducirlo como el resto de las acciones del menú | `propiedades/actions.ts:206`, `:421` | Un rechazo con motivo se muestra como un "no se pudo" genérico |
+| 61 | **El badge "Destacada" de `PropertyCard` sigue en terracota**, mientras el resto de la marca de destacada es la estrella dorada. Falta decidir si debe coincidir | `PropertyCard.tsx:150-154` | Dos tratamientos para la misma marca en pantallas públicas |
+
+**Limpieza interna:**
+
+| # | Qué | Dónde | Riesgo |
+|---|---|---|---|
 | 35 | **`lg` quedó con la misma altura que `default`** (44) y **`icon-lg` igual que `icon`**; los dos con **cero usos** | `ui/button.tsx:30,37,38,41` | Tamaños redundantes en una escala que acaba de definirse. O se les da un rol o se sacan |
 | 36 | **Cuatro componentes del preset sin un solo consumidor**: `Badge`, `Card`, `Slider` y `Dialog`. Los dos primeros siguen en `rounded-none`, fuera de la regla de formas | `ui/badge.tsx:8`, `ui/card.tsx:15,28`, `ui/slider.tsx`, `ui/dialog.tsx` | Alguien los usa creyendo que siguen el diseño, y entran rectos sin que nada avise |
-| 37 | **Sin CHECK de formato en `agents.phone_wa` ni `agencies.phone_wa`** | base | Toda la garantía vive en el código. ⚠ **Mejoró mucho**: hoy los cuatro caminos validan en el servidor (verificado), así que es defensa en profundidad y no un agujero |
 | 38 | **`leads.contact_phone` es una columna muerta**: ningún camino la escribe | `types/index.ts:447` + la migración | Confusión para quien lea el modelo |
 | 39 | Comentario que dice que los botones de operación **"comparten una fila de 320px"** — es el ancho del panel de escritorio; en la hoja de un teléfono de 320 px la fila tiene 280 | `FilterPanel.tsx:27-29` | Un número escrito que no describe el caso que importa |
 | 40 | **Indentación irregular** en el formulario de inicio de sesión (hijos a 12 espacios, `</Button>` desalineado) | `LoginForm.tsx:69-124` | Cosmético, previo al grupo |
 | 41 | **Indentación irregular** en el bloque de filtros del panel de plataforma (el `.map` al mismo nivel que su contenedor) | `admin/AgenciesTable.tsx:842-843`, `:866-867` | Cosmético; **lo introdujo la tanda de los cuatro defectos** |
-| 46 | **`property_images.url` es texto libre**: un agente puede apuntar una imagen a cualquier dominio | base (`property_images`) | Una ficha pública cargando imágenes de un tercero |
-| 47 | **Los default privileges de `public` otorgan INSERT/UPDATE/DELETE a `anon` y `authenticated` en toda tabla nueva** (medido en `pg_default_acl`: `arwdDxtm` para los dos, de `postgres` y de `supabase_admin`). Hoy la protección de `agencies`, `subscriptions`, `cities` y `agency_reviews` depende de que **no tengan policies de escritura** | base | Una policy de escritura agregada "por prolijidad" abre la tabla. Endurecerlo es una decisión de otra escala |
-| 48 | **Activar "Confirm email" en Supabase Auth** cuando exista el servicio de correo propio. Hoy la autoconfirmación está activa y `signUp` devuelve sesión en el acto | configuración de Auth | Cualquiera obtiene un JWT válido sin confirmar la dirección. |
-| 42 | **El usuario de solo lectura del MCP no puede ejecutar `agency_is_publicly_visible`** (`42501`) ni ve permisos en `information_schema.role_table_grants` / `column_privileges` (devuelven vacío) | herramienta | ⚠ **Quien audite permisos por MCP con `information_schema` va a concluir que NO HAY NINGUNO.** Hay que usar `pg_class.relacl` / `pg_attribute.attacl` o `has_*_privilege`. Fue exactamente así como se midió el ítem 1 |
+| 51 | **`translatePropertyWriteError` trata cualquier 23514 que no reconoce como el límite del plan**: un CHECK de precio o moneda (`properties_<op>_price`) diría *"alcanzaste el límite"* | `propiedades/actions.ts:491` | Un error de datos se lee como un problema de plan. Es el mismo cajón de sastre que ya advierte el comentario de esa función |
+| 52 | **Comentarios viejos sobre permisos**: `propiedades/actions.ts:639` habla de un *"WITH CHECK implícito"* (la policy ya tiene `WITH CHECK` explícito) y `equipo/actions.ts:65` justifica el service role con *"la policy de INSERT solo deja id = auth.uid()"* (esa policy ya no existe) | esos dos archivos | Un comentario que describe una barrera que ya no es la real |
+| 53 | **`supabase/seed.sql` no se puede correr contra el schema de hoy**: inserta una agencia **sin `phone_wa`** (NOT NULL con CHECK de formato) y siembra una suscripción `free` con `property_limit` **5** (`PLANS.free` dice 1) | `supabase/seed.sql:19-30` | Quien arme un entorno desde cero choca con el primer INSERT, o se queda con un aterrizaje distinto del real |
+| 56 | **`PlanUsage.hasFeatured` se calcula y nadie lo lee** | `getPlanUsage.ts:94`, `types/index.ts:660` | Campo muerto que sugiere que el gate sigue siendo el booleano |
+| 60 | **"Recomendado ★" sigue usando el carácter ★**, que DM Sans no cubre (la estrella de destacada ya es SVG) | `SubscriptionContent.tsx:123` | Cada dispositivo la dibuja con otra fuente |
+
+**Otros:**
+
+| # | Qué | Dónde | Riesgo |
+|---|---|---|---|
+| 32 | **`commitPrice` y `commitArea` son idénticas**, y `parseFloat` acepta `"12abc"` → 12 y negativos | `FilterPanel.tsx:312-320` | Filtros con valores raros, sin aviso |
+| 50 | **En horizontal, en el navegador, la hoja del detalle deja poco lugar**: medido en un Samsung A21s (Chrome), el alto útil es **331 px** y la foto sola se lleva 220 | `PropertyModal.tsx` (carrusel `h-[220px]` dentro de `h-[85dvh]`) | Casi no queda cuerpo para leer con el teléfono acostado |
+
+**Seguridad — estacionados o bloqueados:**
+
+| # | Qué | Dónde | Riesgo |
+|---|---|---|---|
+| 47 | **Los default privileges de `public` otorgan INSERT/UPDATE/DELETE a `anon` y `authenticated` en toda tabla nueva** (medido en `pg_default_acl`: `arwdDxtm` para los dos, de `postgres` y de `supabase_admin`). Hoy la protección de `agencies`, `subscriptions`, `cities` y `agency_reviews` depende de que **no tengan policies de escritura** | base | Una policy de escritura agregada "por prolijidad" abre la tabla. Endurecerlo es una decisión de otra escala. **Estacionado** (16 sep 2026) |
+| 48 | **Activar "Confirm email" en Supabase Auth** cuando exista el servicio de correo propio. Hoy la autoconfirmación está activa y `signUp` devuelve sesión en el acto | configuración de Auth | Cualquiera obtiene un JWT válido sin confirmar la dirección. **Bloqueado por el dominio** (16 sep 2026): hace falta el correo propio |
+
+---
+
+### ✅ Cerradas el 16 sep 2026
+
+| # | Qué era | Cómo se cerró |
+|---|---|---|
+| 2 | La tarjeta de operación no era tocable entera | La franja superior de `OperationField` es un `<label>` de ancho completo; el bloque de precio queda afuera |
+| 3 | El foco de la casilla aclaraba su borde | Foco como contorno terracota de 2 px separado 2 px, sin tocar el borde (`ui/checkbox.tsx`) |
+| 4 | El detalle se cerraba al arrastrar desde el cuerpo | Arrastra solo desde la franja y el bloque de la foto (`useSheetDragToClose`) |
+| 5 | En celular el contenido pasaba bajo el botón de menú | Barra superior en el flujo (`DashboardShell` + `Sidebar`) |
+| 15 | `viewportFit: "cover"` sin declarar | **Decidido: no se activa por ahora** (medición en DESIGN §13). Lo que queda abierto es el ítem 49 |
+| 16 | Color de casilla marcada sobrescrito en 8 lugares | El color vive solo en `ui/checkbox.tsx`; `CHECKBOX_TERRACOTA` y los overrides se eliminaron |
+| 22 | "Ver ficha completa" solapado con los puntos del carrusel | Se sacaron los puntos; quedan flechas y contador |
+| 26 | `transform` contra `translate` en el detalle | Las dos hojas usan `style.translate` desde el hook compartido |
+| 27 | Hoja y velo de filtros sin `md:hidden` | Los dos llevan `md:hidden` |
+| 28 | Dos altos de hoja y ninguno en `dvh` | Las dos son `h-[85dvh]` (antes 85vh y 82vh) |
+| 37 | Sin CHECK de formato de teléfono | `agents_phone_wa_format` y `agencies_phone_wa_format` |
+| 42 | Limitaciones del usuario de solo lectura del MCP | **Documentado** en `CLAUDE.md` → "Acceso a la base": es de la herramienta, no del proyecto |
+| 44 | `is_featured` escribible sin control de plan | Cupo por plan en la base (`trg_featured_quota`, MKF01) |
+| 45 | `views_count` escribible por el agente | `trg_protect_views_count` (42501) |
+| 46 | `property_images.url` como texto libre | CHECK `property_images_url_storage` (y los de avatar y logo) |
 
 ---
 
@@ -426,7 +476,7 @@ de arreglar algo no dice nada sobre su prioridad.
 
 ### Lo que quedó ABIERTO
 
-**Las 42 inconsistencias de la sección de arriba**, encabezadas por la de seguridad — que **no es de este
+**Las 42 inconsistencias de la sección de arriba** (al cierre de este grupo; hoy son 46, ver arriba), encabezadas por la de seguridad — que **no es de este
 grupo**: apareció midiendo la base durante el relevamiento de los campos y se dejó aparte a propósito,
 porque es una tanda propia. De las demás, tres las **introdujo** este grupo y están marcadas como tales
 (el foco que no vuelve al cerrar la hoja, la indentación de los filtros de admin, y los dos tamaños de
@@ -888,6 +938,7 @@ botón que quedaron redundantes).
 
 ## Cerrados recientemente (para referencia)
 
+- [x] **CASILLAS, PANEL EN CELULAR, HOJAS, BLINDAJE DE COLUMNAS, CUPO DE DESTACADAS Y MENÚ DEL LISTADO — CERRADOS (16 sep 2026).** Cierran 15 inconsistencias (tabla "Cerradas el 16 sep 2026", arriba). **Casillas:** el color marcado vive solo en `ui/checkbox.tsx` y el foco es un contorno. **Panel en celular:** `DashboardShell` con barra superior en el flujo y cajón con Escape, `inert` y foco devuelto. **Hojas:** `useSheetDragToClose` compartido, las dos en `h-[85dvh]`, el detalle arrastra solo desde la franja y la foto, cierra con Escape y perdió los puntos del carrusel. **Blindaje:** `trg_protect_views_count` y CHECK de URL de Storage y de teléfono. **Destacadas:** cupo por plan en la base (free 0, inicial 0, profesional 3, premium 10). **Menú:** vendida/alquilada con confirmación, "Volver a publicar", "Destacar"/"Quitar destacada" y estrella SVG. Detalle en `CLAUDE.md` → "Base de Datos" y "Las hojas que suben desde abajo".
 - [x] **PERMISOS DE `agents` Y `properties` — CERRADO (16 sep 2026).** Era la P0 de las inconsistencias acumuladas. `agents` quedó sin INSERT/DELETE para usuarios y con UPDATE solo sobre `full_name`/`phone_wa`/`avatar_url`; las policies de UPDATE de `agents`, ALL de `properties` y ALL de `property_images` ganaron `WITH CHECK` (la de `properties` fija agencia y ciudad). Ver la P0 arriba y `CLAUDE.md`.
 
 - [x] **CONTADOR DE VISITAS — CERRADO (14 sep 2026), tres tandas.** `views_count` valía 0 en todas las propiedades: la función existía en la base y ningún camino del código la llamaba. **(1)** Visitas y consultas por propiedad en el listado del panel, separadas y en todos los planes, con las consultas en una sola consulta agregada. **(2)** El conteo desde tres lugares (pin, tarjeta de la lista, ficha pública con la primera interacción), una vez por propiedad por visitante, con `markVisited` devolviendo la señal. **(3)** La guarda de la base que impide que una visita mueva `updated_at`, que es lo que el mapa del sitio informa a los buscadores. El detalle, lo descartado y los seis ítems nuevos están en "Deuda técnica" → el ítem cerrado de `increment_views` y los que lo siguen.

@@ -20,13 +20,13 @@ Marketplace inmobiliario por ciudad llamado **Marka**. Una sola web pública don
 
 **Distribución:** web responsive + PWA instalable. No hay app nativa ni stores.
 
-**Estado:** Deployado en Vercel, **sin datos reales todavía** (lo cargado es de prueba; el lanzamiento con inmobiliarias fundadoras se apunta a octubre). MVP + multi-agente completos. **Fase White-label cerrada** en lo esencial: Sub-pieza A (ruta `/[slug]` + mapa filtrado + gate de plan), B1 (subir logo) y B2a (mostrar logo + nombre + "powered by Marka." en el header) hechas y probadas. **B2b (variante admin en `disabled`) y C (slug editable) estuvieron EN PAUSA meses y se cerraron el 12–13 sep 2026** — ver el grupo del sitio de marca, al final de este párrafo. **Fase de modelo de agencias CERRADA** (ago 2026): solo-agencias, matrícula + aprobación manual, bloqueo de publicación en la base, sesión unificada. Ver "Aprobación de agencias" abajo. **Fase de cobrabilidad CERRADA** (31 ago – 1 sep 2026): la visibilidad pública ahora depende de que la agencia esté al día (ver "Visibilidad pública de las propiedades") y el panel `/admin` dejó de ser de una sola vía —cancelar solicitud, vencimiento, baja/reactivación, eliminación y cambio de plan (ver "Panel de plataforma")—. **Ese era el bloqueante para poder cobrar y ya no lo es.** **Fase de modelo de la propiedad CERRADA** (3 sep 2026): una propiedad puede ofrecerse en **varias operaciones a la vez** con precio y moneda propios por operación, el **precio es opcional** ("a convenir") y las propiedades en alquiler llevan **requisitos para el inquilino**. Ver "Operaciones, precios y requisitos de la propiedad". **Grupo de archivos de Storage CERRADO** (5–6 sep 2026), en tres tandas: policies finas por agencia, borrado de archivos en los caminos que no lo hacían, y una herramienta de línea de comandos que audita y limpia huérfanos. El bucket quedó en **9 objetos y 707 kB, sin un solo huérfano**; venía de 24 objetos y 6,4 MB con el 89 % del peso en basura. Ver "Imágenes y Storage". **Grupo de blindaje CERRADO** (7 sep 2026, última de sus cinco tandas): una agencia **ya no puede existir sin fila de suscripción** —lo garantiza un trigger en la base— y el choque de matrícula duplicada al aprobar **se explica**, con la matrícula en conflicto y la regla, en vez de un "no se pudo" genérico. Ver "Suscripciones y límites" y "Aprobación de agencias". **La consulta sobrevive al agente** (7 sep 2026): borrar un agente con consultas a su nombre **antes fallaba siempre** contra una clave foránea; ahora la consulta se **desvincula** y conserva el nombre de quien la atendió en una **copia congelada que escribe la base**, no el cliente. En la misma tanda: el registro de una consulta **ya no falla en silencio** en el mapa público, y el aviso previo al borrado de un agente **dice también qué pasa con sus consultas**. Ver "La consulta sobrevive al agente". **Cada propiedad tiene su página pública propia** (7–8 sep 2026): `/propiedades/[slug]`, renderizada en el servidor e indexable, con vista previa enriquecida al compartir el enlace, botón de compartir, mapa del sitio y archivo de instrucciones para buscadores. Y **el modal dice quién publica**: logo y nombre de la inmobiliaria más el nombre del agente que atiende. Ver "Página pública de la propiedad" y "Quién publica". **Grupo de captación y difusión CERRADO** (10 sep 2026, con su tercera y última pieza): el enlace del encabezado público que decía **"Ingresar"** —sin decir para quién era— es ahora una **puerta de captación**: un llamado a sumar la inmobiliaria que lleva al registro, más el ingreso como enlace secundario. La pieza además **desduplicó** ese enlace, que estaba escrito en dos archivos y cuyas copias ya habían empezado a divergir, y le puso al encabezado de la home las **guardas de ancho** que tenía el del sitio de marca y a él le faltaban enteras. Ver "El encabezado público". **Grupo de coherencia del panel CERRADO** (10–11 sep 2026, cinco tandas): era un grupo chico —un cartel, un banner y una ruta— y **destapó el bug más caro medido hasta ahora**: pedir un plan mayor **sacaba a la agencia del mapa** hasta que el dueño se lo activara a mano, porque el pedido escribía `status: 'pending'` y la regla de visibilidad exige `'active'`. **Una agencia que quería pagar más se apagaba sola.** De ahí salió la regla que gobierna el modelo de planes: **un pedido abierto se detecta por `pending_plan`, NUNCA por el estado** (ver "Un pedido de plan abierto"). En la misma tanda: el panel ahora **dice cuándo una agencia no se está viendo** (cartel de tres motivos, nunca dos a la vez, con un helper nuevo espejo de la regla de visibilidad), el **banner de error** se extrajo de las cuatro copias que ya habían divergido, `/register/plan` entró a la lista de rutas protegidas, y **dos mensajes dejaron de prometer lo que el cupo del aterrizaje no permite**. Ver "El cartel de visibilidad del panel" y "El estado de aterrizaje y su cupo". **Grupo del sitio de marca CERRADO** (12–13 sep 2026, cuatro tandas), y con él las dos sub-piezas que llevaban meses en pausa. **(1)** La dirección del sitio **ya se puede editar** —antes se generaba del nombre y no se cambiaba desde ningún lado—, y antes hubo que cerrar un agujero que ya existía: **no había NINGUNA lista de direcciones reservadas**, así que una agencia podía quedarse con `admin` o `precios` y dejar su propio sitio inalcanzable en silencio. **(2)** El sitio apagado **le habla a su administrador**: seis motivos distintos, con botón solo en los tres que él puede resolver, y un descarte por cookie para que el visitante anónimo no pague nada. **(3)** El cambio de nombre quedó completo: dos columnas de rastro, la distinción en el panel y **dos formas de rechazo**, porque rechazar un nombre no es lo mismo que rechazar una agencia que venía funcionando y pagando. **(4) Y recién en la cuarta tanda se descubrió que las tres anteriores se habían construido sin que existiera el campo para pedir el cambio**: una capacidad entera en el servidor sin punta en la interfaz. De ahí salió la regla de método más cara del grupo (ver "Método de Diagnóstico" → recorrer de punta a punta). Ver "La dirección del sitio de marca", "El sitio apagado le habla a su dueño" y "El cambio de nombre de la agencia". **El contador de visitas cuenta** (14 sep 2026, tres tandas): la columna `views_count` valía **0 en todas las propiedades** porque la función que la incrementa existía en la base y **ningún camino del código la llamaba**, y era lo primero que una inmobiliaria iba a mirar en su panel. **(1)** El listado del panel muestra **visitas y consultas por propiedad**, separadas y en todos los planes, con los contactos traídos en **una sola consulta agregada**. **(2)** La visita se cuenta desde **tres lugares** —pin, tarjeta de la lista y ficha pública—, **una vez por propiedad por visitante**, y en la ficha **con la primera interacción, nunca al montar**. **(3)** Contar una visita **movía la fecha de modificación que el mapa del sitio le informa a los buscadores**; se cerró con una guarda en la base que acopla dos funciones por una variable de transacción. **Y el primer intento de esa guarda falló por una trampa de PostgreSQL** que quedó escrita en "Método de Diagnóstico": dentro de un trigger BEFORE, la columna generada todavía no tiene su valor. Ver "Visitas y consultas por propiedad" y "Base de Datos" → la guarda de `updated_at`.
+**Estado:** Deployado en Vercel, **sin datos reales todavía** (lo cargado es de prueba; el lanzamiento con inmobiliarias fundadoras se apunta a octubre). MVP + multi-agente completos. **Fase White-label cerrada** en lo esencial: Sub-pieza A (ruta `/[slug]` + mapa filtrado + gate de plan), B1 (subir logo) y B2a (mostrar logo + nombre + "powered by Marka." en el header) hechas y probadas. **B2b (variante admin en `disabled`) y C (slug editable) estuvieron EN PAUSA meses y se cerraron el 12–13 sep 2026** — ver el grupo del sitio de marca, al final de este párrafo. **Fase de modelo de agencias CERRADA** (ago 2026): solo-agencias, matrícula + aprobación manual, bloqueo de publicación en la base, sesión unificada. Ver "Aprobación de agencias" abajo. **Fase de cobrabilidad CERRADA** (31 ago – 1 sep 2026): la visibilidad pública ahora depende de que la agencia esté al día (ver "Visibilidad pública de las propiedades") y el panel `/admin` dejó de ser de una sola vía —cancelar solicitud, vencimiento, baja/reactivación, eliminación y cambio de plan (ver "Panel de plataforma")—. **Ese era el bloqueante para poder cobrar y ya no lo es.** **Fase de modelo de la propiedad CERRADA** (3 sep 2026): una propiedad puede ofrecerse en **varias operaciones a la vez** con precio y moneda propios por operación, el **precio es opcional** ("a convenir") y las propiedades en alquiler llevan **requisitos para el inquilino**. Ver "Operaciones, precios y requisitos de la propiedad". **Grupo de archivos de Storage CERRADO** (5–6 sep 2026), en tres tandas: policies finas por agencia, borrado de archivos en los caminos que no lo hacían, y una herramienta de línea de comandos que audita y limpia huérfanos. El bucket quedó en **9 objetos y 707 kB, sin un solo huérfano**; venía de 24 objetos y 6,4 MB con el 89 % del peso en basura. Ver "Imágenes y Storage". **Grupo de blindaje CERRADO** (7 sep 2026, última de sus cinco tandas): una agencia **ya no puede existir sin fila de suscripción** —lo garantiza un trigger en la base— y el choque de matrícula duplicada al aprobar **se explica**, con la matrícula en conflicto y la regla, en vez de un "no se pudo" genérico. Ver "Suscripciones y límites" y "Aprobación de agencias". **La consulta sobrevive al agente** (7 sep 2026): borrar un agente con consultas a su nombre **antes fallaba siempre** contra una clave foránea; ahora la consulta se **desvincula** y conserva el nombre de quien la atendió en una **copia congelada que escribe la base**, no el cliente. En la misma tanda: el registro de una consulta **ya no falla en silencio** en el mapa público, y el aviso previo al borrado de un agente **dice también qué pasa con sus consultas**. Ver "La consulta sobrevive al agente". **Cada propiedad tiene su página pública propia** (7–8 sep 2026): `/propiedades/[slug]`, renderizada en el servidor e indexable, con vista previa enriquecida al compartir el enlace, botón de compartir, mapa del sitio y archivo de instrucciones para buscadores. Y **el modal dice quién publica**: logo y nombre de la inmobiliaria más el nombre del agente que atiende. Ver "Página pública de la propiedad" y "Quién publica". **Grupo de captación y difusión CERRADO** (10 sep 2026, con su tercera y última pieza): el enlace del encabezado público que decía **"Ingresar"** —sin decir para quién era— es ahora una **puerta de captación**: un llamado a sumar la inmobiliaria que lleva al registro, más el ingreso como enlace secundario. La pieza además **desduplicó** ese enlace, que estaba escrito en dos archivos y cuyas copias ya habían empezado a divergir, y le puso al encabezado de la home las **guardas de ancho** que tenía el del sitio de marca y a él le faltaban enteras. Ver "El encabezado público". **Grupo de coherencia del panel CERRADO** (10–11 sep 2026, cinco tandas): era un grupo chico —un cartel, un banner y una ruta— y **destapó el bug más caro medido hasta ahora**: pedir un plan mayor **sacaba a la agencia del mapa** hasta que el dueño se lo activara a mano, porque el pedido escribía `status: 'pending'` y la regla de visibilidad exige `'active'`. **Una agencia que quería pagar más se apagaba sola.** De ahí salió la regla que gobierna el modelo de planes: **un pedido abierto se detecta por `pending_plan`, NUNCA por el estado** (ver "Un pedido de plan abierto"). En la misma tanda: el panel ahora **dice cuándo una agencia no se está viendo** (cartel de tres motivos, nunca dos a la vez, con un helper nuevo espejo de la regla de visibilidad), el **banner de error** se extrajo de las cuatro copias que ya habían divergido, `/register/plan` entró a la lista de rutas protegidas, y **dos mensajes dejaron de prometer lo que el cupo del aterrizaje no permite**. Ver "El cartel de visibilidad del panel" y "El estado de aterrizaje y su cupo". **Grupo del sitio de marca CERRADO** (12–13 sep 2026, cuatro tandas), y con él las dos sub-piezas que llevaban meses en pausa. **(1)** La dirección del sitio **ya se puede editar** —antes se generaba del nombre y no se cambiaba desde ningún lado—, y antes hubo que cerrar un agujero que ya existía: **no había NINGUNA lista de direcciones reservadas**, así que una agencia podía quedarse con `admin` o `precios` y dejar su propio sitio inalcanzable en silencio. **(2)** El sitio apagado **le habla a su administrador**: seis motivos distintos, con botón solo en los tres que él puede resolver, y un descarte por cookie para que el visitante anónimo no pague nada. **(3)** El cambio de nombre quedó completo: dos columnas de rastro, la distinción en el panel y **dos formas de rechazo**, porque rechazar un nombre no es lo mismo que rechazar una agencia que venía funcionando y pagando. **(4) Y recién en la cuarta tanda se descubrió que las tres anteriores se habían construido sin que existiera el campo para pedir el cambio**: una capacidad entera en el servidor sin punta en la interfaz. De ahí salió la regla de método más cara del grupo (ver "Método de Diagnóstico" → recorrer de punta a punta). Ver "La dirección del sitio de marca", "El sitio apagado le habla a su dueño" y "El cambio de nombre de la agencia". **El contador de visitas cuenta** (14 sep 2026, tres tandas): la columna `views_count` valía **0 en todas las propiedades** porque la función que la incrementa existía en la base y **ningún camino del código la llamaba**, y era lo primero que una inmobiliaria iba a mirar en su panel. **(1)** El listado del panel muestra **visitas y consultas por propiedad**, separadas y en todos los planes, con los contactos traídos en **una sola consulta agregada**. **(2)** La visita se cuenta desde **tres lugares** —pin, tarjeta de la lista y ficha pública—, **una vez por propiedad por visitante**, y en la ficha **con la primera interacción, nunca al montar**. **(3)** Contar una visita **movía la fecha de modificación que el mapa del sitio le informa a los buscadores**; se cerró con una guarda en la base que acopla dos funciones por una variable de transacción. **Y el primer intento de esa guarda falló por una trampa de PostgreSQL** que quedó escrita en "Método de Diagnóstico": dentro de un trigger BEFORE, la columna generada todavía no tiene su valor. Ver "Visitas y consultas por propiedad" y "Base de Datos" → la guarda de `updated_at`. **Panel y destacadas** (16 sep 2026): permisos de escritura de `agents` y `properties` cerrados en la base; el panel **se usa bien en un celular** (barra superior en el flujo, cajón accesible); las dos hojas comparten el gesto de arrastre y el mismo alto en `dvh`; contador de visitas, URLs de archivos y teléfonos **blindados en la base**; y las **destacadas pasaron a ser un cupo por plan** que hace cumplir la base, con su marca en el menú del listado. Ver "Permisos de escritura del usuario", "Blindaje de columnas", "Cupo de destacadas", "El panel en celular" y "Las hojas que suben desde abajo".
 
-**Baseline de calidad medido (no documentado de memoria; última medición: 14 sep 2026):** `npx tsc --noEmit` 0 errores (exit 0), `npm run lint` **0 errores y 1 warning** (`PropertyForm.tsx:814`, exit 0), `npx next build` verde (exit 0) con **22 rutas**. *(Re-medido el 15 sep 2026 al cerrar el grupo de pulido: sin cambios salvo el número de línea del warning.)* Cualquier error nuevo, un warning distinto del único conocido, o una ruta que aparezca sin motivo, es una regresión.
+**Baseline de calidad medido (no documentado de memoria; última medición: 14 sep 2026):** `npx tsc --noEmit` 0 errores (exit 0), `npm run lint` **0 errores y 1 warning** (`PropertyForm.tsx:919`, exit 0), `npx next build` verde (exit 0) con **22 rutas**. *(Re-medido el 15 sep 2026 al cerrar el grupo de pulido, y el 16 sep 2026 al cerrar el panel y las destacadas: sin cambios salvo el número de línea del warning, que no es parte del baseline.)* Cualquier error nuevo, un warning distinto del único conocido, o una ruta que aparezca sin motivo, es una regresión.
 
 > ⚠ **Las rutas pasaron de 19 a 22, y es la ÚNICA vez que el número se movió.** Las tres nuevas son de la página pública de la propiedad: **`/propiedades/[slug]`** (la página, dinámica), **`/sitemap.xml`** (dinámica: ver "Infraestructura de buscadores") y **`/robots.txt`** (estática). Las dos últimas no son código de aplicación sino **archivos de convención de Next**, que cuentan como ruta en ese listado igual que `/apple-icon.png`, que ya estaba. Las 19 anteriores siguen las 19, con el mismo nombre y el mismo tipo (`○`/`ƒ`).
 >
-> ⚠ **Y un ruido de medición que ya mordió una vez:** `tsconfig.json` incluye `".next/types/**/*.ts"` y `".next/dev/types/**/*.ts"`, o sea **artefactos generados**. Si se mezclan los de `next dev` con los de `next build` (por ejemplo corriendo `next start` entre medio), `npx tsc --noEmit` escupe decenas de errores en `.next/**/validator.ts` que **no son del proyecto**. Ante una corrida así: borrar `.next` y `tsconfig.tsbuildinfo` y repetir. Si los errores no están en `src/` ni en `scripts/`, no son tuyos. Ver "ESLint". ⚠ El chequeo de tipos y el lint **también cubren `scripts/`** (el `include` de `tsconfig.json` es `**/*.ts` y ESLint no lo ignora): una herramienta rota ahí rompe el baseline igual que el código de la app.
+> ⚠ **Y un ruido de medición que ya mordió una vez:** `tsconfig.json` incluye `".next/types/**/*.ts"` y `".next/dev/types/**/*.ts"`, o sea **artefactos generados**. Si se mezclan los de `next dev` con los de `next build` (por ejemplo corriendo `next start` entre medio), `npx tsc --noEmit` escupe decenas de errores en `.next/**/validator.ts` que **no son del proyecto**. Ante una corrida así: borrar `.next` y `tsconfig.tsbuildinfo` y repetir. ⚠ **Pasa también al cambiar de rama** (16 sep 2026: `tsc` falló por una ruta de otra rama que seguía en `.next/types`) **y después de agregar tokens al `@theme`** (el servidor de desarrollo siguió sirviendo el CSS viejo). Remedio: `rm -rf .next` y reiniciar `npm run dev`. Si los errores no están en `src/` ni en `scripts/`, no son tuyos. Ver "ESLint". ⚠ El chequeo de tipos y el lint **también cubren `scripts/`** (el `include` de `tsconfig.json` es `**/*.ts` y ESLint no lo ignora): una herramienta rota ahí rompe el baseline igual que el código de la app.
 
 > **⚠️ Hoja de ruta de modelo (tras validación con el rubro y el colegio de corredores).** **Ya aplicado:** los particulares se eliminaron (la app es solo-agencias); las agencias requieren **número de matrícula + aprobación manual** del dueño de la plataforma (ver "Aprobación de agencias"); y el formulario de propiedad tiene el **atajo de sugerencia de ubicación desde la dirección** (ver "Ubicación de la propiedad"), que era el ítem D1 de la hoja de ruta; y **el mapa público ya filtra por agencia habilitada** (era el bloqueante para cobrar: ver "Visibilidad pública de las propiedades"); y **una propiedad puede estar en venta y en alquiler a la vez**, con **precio opcional** ("a convenir") y **requisitos de alquiler** (ver "Operaciones, precios y requisitos de la propiedad"); y **cada propiedad tiene su página propia con enlace compartible** (era el ítem C2, ver "Página pública de la propiedad"); y el encabezado público **le habla a las inmobiliarias** en vez de ofrecer un "Ingresar" mudo (era C3, ver "El encabezado público"). **Pendiente:** solo el registro opcional de visitantes (C1). Ver PENDIENTES.md → "Nueva fase".
 
@@ -388,7 +388,7 @@ prometer lo que la base va a rechazar si alguna vez alguien borra una fila a man
 │   │   │   ├── FilterPanel.tsx          ← Filtros (checkboxes shadcn, commit on-blur). Operación es
 │   │   │   │                              MÚLTIPLE; el rango de precio solo se habilita con UNA marcada.
 │   │   │   │                              ⚠ Se monta DOS VECES: panel lateral en escritorio y HOJA desde
-│   │   │   │                              abajo en celular (`h-[85vh]`), que cierra con ✕, velo, Escape
+│   │   │   │                              abajo en celular (`h-[85dvh]`), que cierra con ✕, velo, Escape
 │   │   │   │                              y arrastre. Ver "Las hojas que suben desde abajo"
 │   │   │   ├── CityPicker.tsx           ← Selector de ciudad (lee cityStore). Es el slot ELÁSTICO del
 │   │   │   │                              encabezado: `min-w-0` afuera y el nombre en un `<span>` con
@@ -440,15 +440,21 @@ prometer lo que la base va a rechazar si alguna vez alguien borra una fila a man
 │   │   │   │                              cada una con su precio+moneda opcionales, y la sección de
 │   │   │   │                              requisitos (solo si hay alquiler). Todo con Controller, sin watch()
 │   │   │   ├── AddressSearchButton.tsx  ← Botón "Buscar esta dirección en el mapa": llama a /api/geocode y emite una SUGERENCIA. Nunca busca al tipear (política de Nominatim). No puede bloquear el guardado
-│   │   │   ├── LocationPicker.tsx       ← Pin manual: CONTROLADO (la posición vive en el form), tiles compartidos. Emite la causa del cambio ("drag" confirma / "center" desconfirma)
+│   │   │   ├── LocationPicker.tsx       ← Pin manual: CONTROLADO (la posición vive en el form), tiles compartidos. Emite la causa del cambio ("drag" confirma / "center" desconfirma). ⚠ El contenedor del mapa lleva `isolate`: ver "El panel en celular"
+│   │   │   ├── FeaturedStarIcon.tsx     ← Estrella de destacada en SVG (nunca el carácter ★). Dorada por
+│   │   │   │                              defecto (visitante); en el panel se usa con `text-current`
 │   │   │   └── ImageUploader.tsx        ← Drag&drop, progreso por imagen, máx 10
 │   │   ├── dashboard/
-│   │   │   ├── Sidebar.tsx              ← Wordmark + avatar + nav
+│   │   │   ├── DashboardShell.tsx       ← Estructura del panel (Server): columna en celular, fila en escritorio,
+│   │   │   │                              `main` scrolleable. Lo usan dashboard/layout y admin/layout
+│   │   │   ├── Sidebar.tsx              ← Wordmark + avatar + nav. En celular: barra superior en el flujo +
+│   │   │   │                              cajón (Escape, `inert` cerrado, foco devuelto al botón)
 │   │   │   ├── StatsCard.tsx            ← tabular-nums, count-up, acento en métrica clave
 │   │   │   ├── PropertiesTable.tsx      ← Tabla desktop + cards mobile + skeleton. Columnas "Visitas" y
 │   │   │   │                              "Consultas" separadas (en mobile, "N visitas · M consultas").
 │   │   │   │                              `lead_count` null = no se pudo contar → "—", nunca un 0
 │   │   │   ├── PlanBadge.tsx            ← Plan + micro-barra de uso
+│   │   │   ├── FeaturedBadge.tsx        ← Chip "Destacadas usadas/límite" del listado, con las clases de PlanBadge
 │   │   │   ├── ProfileForm.tsx           ← Perfil del agente: avatar (upload client-side, upsert) + nombre + teléfono
 │   │   │   ├── AgencyPhoneForm.tsx       ← Teléfono de la agencia (solo admin). Sub-pieza B1
 │   │   │   ├── AgencyLogoForm.tsx        ← Logo de la agencia (solo admin): upload client-side + updateAgencyLogoAction. Valida tipo/tamaño, cache-buster en preview. Sub-pieza B1
@@ -488,6 +494,8 @@ prometer lo que la base va a rechazar si alguna vez alguien borra una fila a man
 │   │   ├── hooks/
 │   │   │   ├── useProperties.ts         ← Fetch reactivo con debounce + diff + SELECT acotado. Params: (cityId, bounds, agencyId?). Con agencyId filtra a una sola agencia (white-label)
 │   │   │   ├── useFavorites.ts          ← Favoritos en localStorage (sync entre instancias)
+│   │   │   ├── useSheetDragToClose.ts   ← Arrastre hacia abajo para cerrar las dos hojas de celular (Pointer
+│   │   │   │                              Events, `style.translate`). Ver "Las hojas que suben desde abajo"
 │   │   │   └── useVisitedProperties.ts  ← Propiedades vistas en localStorage. `markVisited` DEVUELVE si
 │   │   │                                  la propiedad era nueva, con lectura SÍNCRONA del almacenamiento:
 │   │   │                                  es la deduplicación del contador. ⚠ SIN sync entre instancias
@@ -512,6 +520,12 @@ prometer lo que la base va a rechazar si alguna vez alguien borra una fila a man
 │   │       │                              unicidad: la base no la exige y hay dos nombres repetidos
 │   │       ├── waMessage.ts             ← generateWaUrl(): string | null
 │   │       ├── getPlanUsage.ts          ← Helper server: cuenta por agency_id
+│   │       ├── getFeaturedUsage.ts      ← Cupo de destacadas { limit, used, available }: cuenta como el trigger
+│   │       │                              (todas las destacadas de la agencia, cualquier status y agente)
+│   │       ├── storagePublicUrl.ts      ← Prefijo público del bucket + isStoragePublicUrl (falla cerrada).
+│   │       │                              Espejo de los CHECK de URL de la base
+│   │       ├── dbFormatErrors.ts        ← translateFormatCheckError: traduce los CHECK de URL y teléfono y
+│   │       │                              el 42501 del contador, por NOMBRE de constraint
 │   │       ├── resolveAgentSession.ts   ← ÚNICO lugar donde vive "traer el agente logueado + su agencia". Unión de 3 estados, cacheado por request. requireAgentSession() corta; resolveAgentSession() devuelve
 │   │       ├── getPublishBlock.ts       ← Espejo en la interfaz de los TRES triggers de properties:
 │   │       │                              ¿se puede PUBLICAR, y si no, por qué? Fuente única del
@@ -606,8 +620,8 @@ prometer lo que la base va a rechazar si alguna vez alguien borra una fila a man
 
 ### ESLint
 - El patrón `setIsLoading(true)` al inicio de efectos: usar IIFE async dentro del efecto. No bajar la regla globalmente.
-- **Baseline medido: 0 errores y 1 warning.** El único warning es `react-hooks/incompatible-library` en `PropertyForm.tsx:814` (`watch("amenities")`): el React Compiler detecta que el `watch()` de react-hook-form no se puede memoizar y renuncia a memoizar el componente. Es inherente a la librería, no un defecto del código; no bloquea el build. **Cualquier otro warning es una regresión.**
-- **La regla señala UNA sola llamada: la primera `watch()` del componente.** `PropertyForm.tsx` tiene cuatro (`amenities`, `lat`, `lng`, `address`) y el warning es uno solo, así que **al agregar campos nuevos no hay que usar `watch()`: hay que usar `Controller`**. Es lo que hacen el bloque de operaciones y precios y la sección de requisitos, y por eso ninguno de los dos sumó un warning. (Histórico: el warning apuntaba antes a `watch("currency")` y a un segundo idéntico en `RegisterForm.tsx`; los dos desaparecieron con sus campos, y el señalamiento se corrió a la `watch()` siguiente.) ⚠ **El NÚMERO DE LÍNEA se mueve con cualquier edición del archivo** —fue `:269`, `:808`, `:804` y hoy es **`:814`**—, así que **no es parte del baseline**: lo que hay que verificar es que siga siendo **un solo warning, de esa regla, sobre `watch()`**. Un número distinto acá no es una regresión; dos warnings sí.
+- **Baseline medido: 0 errores y 1 warning.** El único warning es `react-hooks/incompatible-library` en `PropertyForm.tsx:919` (`watch("amenities")`): el React Compiler detecta que el `watch()` de react-hook-form no se puede memoizar y renuncia a memoizar el componente. Es inherente a la librería, no un defecto del código; no bloquea el build. **Cualquier otro warning es una regresión.**
+- **La regla señala UNA sola llamada: la primera `watch()` del componente.** `PropertyForm.tsx` tiene cuatro (`amenities`, `lat`, `lng`, `address`) y el warning es uno solo, así que **al agregar campos nuevos no hay que usar `watch()`: hay que usar `Controller`**. Es lo que hacen el bloque de operaciones y precios y la sección de requisitos, y por eso ninguno de los dos sumó un warning. (Histórico: el warning apuntaba antes a `watch("currency")` y a un segundo idéntico en `RegisterForm.tsx`; los dos desaparecieron con sus campos, y el señalamiento se corrió a la `watch()` siguiente.) ⚠ **El NÚMERO DE LÍNEA se mueve con cualquier edición del archivo** —fue `:269`, `:808`, `:804`, `:814` y hoy es **`:919`**—, así que **no es parte del baseline**: lo que hay que verificar es que siga siendo **un solo warning, de esa regla, sobre `watch()`**. Un número distinto acá no es una regresión; dos warnings sí.
 
 ### Estilos
 - Tailwind, sin CSS-in-JS ni módulos CSS. shadcn/ui para componentes base
@@ -631,7 +645,7 @@ prometer lo que la base va a rechazar si alguna vez alguien borra una fila a man
 | **Marca chica** | se lee, no se toca | `rounded-sm` | **4** | chips, badges, etiquetas de estado, **casillas** |
 | **Tocable / rellenable** | se toca, o se escribe adentro | `rounded-md` | **6** | botones, campos con caja, selectores, segmentados, **ítems de menú y de desplegable** |
 | **Contenedor** | contiene a lo anterior | `rounded-lg` | **8** | tarjetas, secciones, paneles, avisos, **diálogos, menús, desplegables** |
-| **Circular** | circular por naturaleza | `rounded-full` | — | avatares, interruptor, puntos del carrusel, barras de progreso, botones de solo ícono sobre fotos y mapa |
+| **Circular** | circular por naturaleza | `rounded-full` | — | avatares, interruptor, barras de progreso, botones de solo ícono sobre fotos y mapa |
 | **Sin caja** | el campo subrayado | `rounded-none` | **0** | `Input`, `Textarea`, `SelectTrigger` |
 
 **⚠ QUE UN COMPONENTE VENGA DEL PRESET "Sera" NO LO EXIME.** El preset trae sus propios radios —varios en `rounded-none`— y **se sobreescriben en `components/ui/`**. Al agregar un componente nuevo con `npx shadcn add`, lo primero es mirar qué radio trae y llevarlo a la tabla.
@@ -684,6 +698,14 @@ Es el recurso que **`ui/checkbox.tsx` ya usaba** (`after:-inset-x-3 after:-inset
 **El motivo es de legibilidad, no de gusto:** las mayúsculas espaciadas ordenan un rótulo corto y **empeoran una frase**, que además se vuelve bastante más ancha — y el ancho es justo lo que no sobra en un teléfono. Un botón puede crecer a una frase en cualquier momento; un ítem de menú, no.
 
 ⚠ **Quien "unifique" los dos casos va a empeorar el que hoy está bien.** Si alguna vez se decide que los ítems de menú bajen a minúsculas, es una decisión de diseño con su motivo, no una corrección de coherencia.
+
+### Las casillas — `ui/checkbox.tsx` (16 sep 2026)
+
+- **El color marcado vive SOLO en el componente** (`data-checked:border-terracota data-checked:bg-terracota data-checked:text-paper`). `CHECKBOX_TERRACOTA` y los overrides por pantalla **se eliminaron**: no volver a pisar el color desde afuera.
+- **El foco es un contorno terracota de 2 px separado 2 px, y NO cambia el borde.** Motivo: la variante `data-checked` va dentro de `:where()` y pesa (0,1,0), así que un `focus-visible:border-*` (0,2,0) le ganaba y la casilla marcada perdía su borde terracota al enfocarla.
+- ⚠ **TRAMPA de Tailwind v4: `focus-visible:outline-solid` NO sobra.** `outline-2` solo lee `--tw-outline-style`, y `outline-none` la pone en `none`: sin fijar el estilo, el contorno no se dibuja.
+- `aria-invalid` usa el token `error`.
+- **En `PropertyForm`, la franja superior de cada operación (`OperationField`) es un `<label>` de ancho completo**: tocar cualquier punto de la franja marca la casilla. El bloque de precio queda **afuera** del `<label>`, o tocar un campo de precio alternaría la operación.
 
 ---
 
@@ -1667,11 +1689,11 @@ La página pública de la propiedad nació con `min-h-dvh` y **sin contenedor pr
 
 #### ⚠ TRAMPA 2 — EL PRESUPUESTO DE ALTO DE LA ZONA INFERIOR DEL MODAL
 
-El bottom sheet de celular tiene **alto FIJO** (`h-[82vh]`), el carrusel es `shrink-0` y la zona inferior también: **el único que cede es el cuerpo**. O sea que **cada píxel que se le agrega a la zona inferior se lo resta al área que scrollea**.
+El bottom sheet de celular tiene **alto FIJO** (`h-[85dvh]`, antes `h-[82vh]`), el carrusel es `shrink-0` y la zona inferior también: **el único que cede es el cuerpo**. O sea que **cada píxel que se le agrega a la zona inferior se lo resta al área que scrollea**.
 
 Zona inferior hoy, con el input de nombre colapsado: `py-4`×2 (32) + borde (1) + bloque "quién publica" (32,5) + `space-y-2.5` (10) + input colapsado (0) + `space-y-2.5` (10) + botón `h-11` (44) = **129,5 px**.
 
-En un iPhone SE (375×667), `82vh` = 546,9 px:
+En un iPhone SE (375×667), con el `82vh` de entonces = 546,9 px (con `85dvh` sobre 667 px de alto dinámico serían ≈ 20 px más: cálculo, no medición; ver "Las hojas que suben desde abajo"):
 
 | | Área que scrollea |
 |---|---|
@@ -1700,6 +1722,16 @@ El `<Link>` lleva además `relative z-10`: sin eso, el enlace y el fondo de la t
 ⚠ **Deuda conocida y anotada:** un `<a>` dentro de un `role="button"` no es estrictamente válido. El componente **ya era así** (el botón de favorito está en la misma situación) y arreglarlo de raíz es decidir si la tarjeta sigue siendo un botón o pasa a ser un contenedor con enlace principal. Ver PENDIENTES.md.
 - Tailwind v4 trae `h-dvh`/`min-h-dvh` nativas (no hace falta el arbitrario `h-[100dvh]`).
 - Los `fixed`/`sticky` (bottom sheets, FABs, marco editorial, sidebar mobile) se reanclan bien y NO se tocan; el problema era solo el chrome en flujo normal sobre wrappers `100vh`.
+
+### El panel en celular — `DashboardShell` + `Sidebar` (16 sep 2026)
+
+- **`src/components/dashboard/DashboardShell.tsx`** (Server Component) es la estructura que usan `dashboard/layout.tsx` y `admin/layout.tsx`: `flex h-dvh flex-col … md:flex-row`, con `<main className="relative flex-1 min-h-0 overflow-y-auto">`. **Columna en celular, fila en escritorio.** Ya **no hay `pt-14`**: antes el botón de menú era `fixed` y el contenido pasaba por debajo al scrollear.
+- **`Sidebar` en celular: barra superior EN EL FLUJO** (`h-14`, negra, botón de menú de 44 px + `Wordmark` claro). El `min-h-0` del `main` es lo que lo deja scrollear en la columna.
+- **El cajón:** cierra con **Escape** y **al cambiar de ruta** (estado derivado durante el render: se compara `pathname` contra el último renderizado, sin efecto); cerrado es **`inert`**; al cerrar con ✕ o Escape **el foco vuelve al botón de menú**; el botón lleva `aria-expanded`/`aria-controls`; la ✕ tiene área de toque de 44 px (`after:-inset-2`).
+
+#### ⚠ TRAMPA — Los paneles de Leaflet se pintan encima del cajón
+
+Leaflet pone `z-index` propios a sus capas (400/401, y el botón "Centrar" 500), y sin un contexto de apilamiento **escapan al contexto raíz y se pintaban encima del cajón y del velo** del menú en celular (bug encontrado al hacer esta pieza). `LocationPicker` lo corta con **`isolate`** en el contenedor del mapa. **Todo mapa nuevo dentro del panel necesita `isolate`.**
 
 ### El campo con caja — UNA definición, en `src/components/forms/fieldStyles.ts`
 
@@ -1746,7 +1778,7 @@ O sea **una caja de cuatro lados con el relleno cero del subrayado**: el texto p
 
 ### Las hojas que suben desde abajo
 
-Son **DOS**, y son hermanas pero no gemelas: la de **filtros** (`FilterPanel.tsx:607`, `h-[85vh]`) y la del **detalle de propiedad** (`PropertyModal.tsx:782`, `h-[82vh]`). Las dos: `fixed bottom-0 inset-x-0 z-[610]`, `rounded-t-xl` arriba y 0 abajo, y se mueven con una transición de 220 ms.
+Son **DOS**: la de **filtros** (`FilterPanel.tsx`) y la del **detalle de propiedad** (`PropertyModal.tsx`). Las dos: `md:hidden fixed bottom-0 inset-x-0 z-[610]`, **`h-[85dvh]`** (antes `85vh` y `82vh`, sin motivo escrito para la diferencia), `rounded-t-xl` arriba y 0 abajo, y se mueven con una transición de 220 ms. Sus velos también llevan `md:hidden`: sin eso, abrir la hoja en celular y agrandar la ventana la dejaba encima del panel lateral.
 
 #### Cómo se cierran
 
@@ -1754,41 +1786,46 @@ Son **DOS**, y son hermanas pero no gemelas: la de **filtros** (`FilterPanel.tsx
 |---|---|---|
 | Botón ✕ | sí | sí |
 | Tocar el velo | sí | sí |
-| **Tecla Escape** | **sí** (`FilterPanel.tsx:189-196`) | ⚠ **NO** — no tiene ningún listener |
-| **Arrastrar hacia abajo** | **sí, desde la franja y el encabezado** | sí, **desde cualquier parte de la hoja** |
+| **Tecla Escape** | sí | **sí, desde el 16 sep 2026** (un solo listener, en `PropertyModal`, no en `ModalContent`, que se monta dos veces) |
+| **Arrastrar hacia abajo** | desde la franja y el encabezado | desde la franja y **el bloque de la foto**. ⚠ **El cuerpo ya NO cierra** |
 
-⚠ **La franja gris de arriba PROMETE un gesto, así que tiene que cumplirlo.** Antes estaba dibujada en las dos hojas y solo la del detalle arrastraba: en la de filtros era decorativa (su propio comentario decía *"Handle visual"*). Una affordance que no responde se lee como una app rota, no como una app sin esa función.
+⚠ **La franja gris de arriba PROMETE un gesto, así que tiene que cumplirlo.** Una affordance que no responde se lee como una app rota, no como una app sin esa función.
 
-#### ⚠ POR QUÉ EL GESTO ESCUCHA SOLO LA ZONA QUE NO SCROLLEA
+⚠ **El detalle antes se cerraba arrastrando desde cualquier parte, cuerpo incluido.** Se cambió **antes del lanzamiento porque no hay visitantes que usen el gesto viejo**: después, quitarlo le habría sacado un gesto a quien ya lo usa.
 
-**Arrastrar para cerrar y scrollear son dos gestos verticales en el mismo lugar.** Si la hoja entera escucha el arrastre, un visitante que vuelve al principio del texto **cierra la ficha sin querer**.
+#### El gesto: `src/lib/hooks/useSheetDragToClose.ts`, compartido por las dos
 
-**La solución es ESTRUCTURAL, no una condición sobre `scrollTop`:** los manejadores viven **solo en la franja y en el encabezado** (`FilterPanel.tsx:305`, `:377`, `:616`), y el cuerpo scrolleable es **hermano** del encabezado, no descendiente — así que un `pointerdown` en el cuerpo **nunca llega** a ellos. No hay ninguna condición que se pueda olvidar ni ningún caso borde que revisar.
+Devuelve `{ sheetRef, dragZoneProps }`. Quien lo usa pone `sheetRef` en la hoja y reparte `dragZoneProps` (Pointer Events) **solo en las zonas que no scrollean**, con `touch-none`.
 
-Las tres piezas finas del gesto, todas necesarias:
+**Arrastrar para cerrar y scrollear son dos gestos verticales en el mismo lugar.** Si la hoja entera escuchara el arrastre, un visitante que vuelve al principio del texto **cerraría la ficha sin querer**. **La garantía es ESTRUCTURAL, no una condición sobre `scrollTop`:** el cuerpo scrolleable no es descendiente de ninguna zona de arrastre, así que un `pointerdown` en el cuerpo **nunca llega** a los manejadores.
 
 | Pieza | Para qué |
 |---|---|
-| **Umbral de 8 px** (`DRAG_SLOP_PX`) | Hasta ahí sigue siendo un toque: la hoja no se mueve y al soltar no pasa nada, así que el click llega a la ✕ |
-| **Captura de puntero diferida sobre un botón** | Si el gesto empieza sobre la ✕, capturar de entrada redirigiría el `pointerup` y el click dejaría de caer en el botón |
-| **Anulación del click posterior a un arrastre** | Un arrastre no termina en click; se apaga en cada `pointerdown`, para no comerse el click de un toque siguiente |
-| **`touch-none` en las dos zonas** | Sin eso el navegador puede reclamar el gesto antes que nosotros |
+| **Umbral de 8 px** (`DRAG_SLOP_PX`) | Hasta ahí es un toque: la hoja no se mueve y el click llega a su botón |
+| **Cierre a 120 px** (`DRAG_CLOSE_PX`) | Al soltar pasado ese desplazamiento se cierra; si no, vuelve. No se mira la velocidad |
+| **Captura de puntero diferida sobre elementos interactivos** (`button, a, input, textarea, select, [role="button"]`) | Capturar de entrada redirigiría el `pointerup` y el click dejaría de caer en la ✕, en "Ver ficha completa" o en el campo de compartir |
+| **Anulación del click posterior a un arrastre** | Se apaga en cada `pointerdown`, para no comerse el click de un toque siguiente |
+| **`touch-none` en las zonas** | Sin eso el navegador puede reclamar el gesto y cancelarlo con `pointercancel` |
 
-⚠ **La del detalle NO sigue esta regla y es la excepción abierta** (anotada en `PENDIENTES.md`): escucha `onTouchStart/Move/End` en la raíz de la hoja (`PropertyModal.tsx:788-790`), sin mirar el scroll. **No se tocó** porque cambiarlo le saca un gesto a quien ya lo usa. Si alguna vez se extrae una hoja compartida, es la decisión que hay que tomar primero.
+⚠ **La hoja se mueve con `style.translate`, NUNCA con `style.transform`.** En Tailwind v4 `translate-y-*` escribe la propiedad `translate` (medido: `transform` da `none` con la hoja abierta y cerrada), así que `transform` en línea **se sumaba** al desplazamiento de la clase. El detalle lo hacía, y al cerrar por gesto **saltaba sin animar**.
 
-⚠ **Y las dos mueven la superficie con propiedades CSS DISTINTAS:** la de filtros escribe `style.translate` —la **misma** propiedad que usa la clase `translate-y-full`, así que la reemplaza—, y la del detalle escribe `style.transform`, que **se suma** a la de la clase en vez de reemplazarla. En Tailwind v4 `translate-y-*` escribe `translate`, no `transform` (medido: con la hoja abierta y cerrada, `transform` da `none`). Quien toque el gesto del detalle tiene que saber que ahí se componen dos desplazamientos.
+⚠ **Primero se limpia el estilo en línea y después se cierra.** Con `transition: none` todavía puesto, el cambio de clase a `translate-y-full` sería instantáneo.
 
-#### El presupuesto de alto — medido en 375×667
+**Carrusel del detalle: se sacaron los puntos.** Quedaban tapados por "Ver ficha completa" (con 10 fotos, 2 tapados a 390 px y 5 a 320 px) y medían 4 px de alto. Quedan las flechas y el contador `n/N`.
+
+#### El presupuesto de alto
 
 **Las dos hojas tienen alto FIJO y su cuerpo es lo ÚNICO que cede**, así que cada píxel que se le agrega a una zona fija se lo resta al área que se puede leer.
 
-| | Filtros (85vh = 566,94) | Detalle (82vh = 546,94) |
+⚠ **Los números de esta tabla se midieron en 375×667 cuando las hojas eran `85vh` y `82vh`.** Con `85dvh` el alto depende de la barra del navegador: en un Samsung A21s con Chrome, `100dvh` = 771,43 px y `100vh` = 827,43 (56 px de barra). Las zonas fijas no cambiaron; la fila del detalle con `85dvh` sobre 667 px es un **cálculo, no una medición**.
+
+| | Filtros (85vh = 566,94, medido) | Detalle (82vh = 546,94, medido) |
 |---|---|---|
 | Franja | 20 | 20 |
 | Zona fija | encabezado 57 · pie "Limpiar filtros" 75 **solo si hay filtros activos** | carrusel 220 · zona inferior 129,5 |
-| **Cuerpo scrolleable** | **489,94** sin filtros · **414,94** con filtros | **177,44** |
+| **Cuerpo scrolleable** | **489,94** sin filtros · **414,94** con filtros | **177,44** (con `85dvh` sobre 667 px: **≈ 197,4**, calculado) |
 
-⚠ **177 px es contra lo que juega quien quiera agregar algo a la zona inferior del detalle** — menos de dos párrafos. Por eso los cuatro botones flotantes (cerrar, compartir, favorito y "Ver ficha completa") van **sobre la foto**, en `absolute`: cuestan **cero** píxeles de alto. Es el primer lugar a mirar antes de sumar una fila.
+⚠ **Menos de 200 px es contra lo que juega quien quiera agregar algo a la zona inferior del detalle** — un par de párrafos. Por eso los botones flotantes (cerrar, compartir, favorito y "Ver ficha completa") van **sobre la foto**, en `absolute`: cuestan **cero** píxeles de alto. ⚠ **Y en horizontal casi no queda nada:** en el A21s con Chrome el alto útil es **331 px** y la foto sola se lleva 220 (ver PENDIENTES.md).
 
 #### ⚠⚠ TRAMPA — UN CONTENEDOR AL 100 % DEL ALTO CON UN HERMANO ARRIBA DESBORDA
 
@@ -2304,6 +2341,11 @@ hosted). Está **acotado a este proyecto** (`project_ref`) y en **modo solo lect
   schema documentado y el archivo se borra.** Que la carpeta esté **vacía** es el estado
   sano: un archivo ahí significa que la base y el schema no coinciden (y que el schema, a
   propósito, todavía no afirma lo que la base no tiene).
+- ⚠ **El usuario de solo lectura NO ve permisos por `information_schema`**: `role_table_grants` y
+  `column_privileges` devuelven vacío, y tampoco puede ejecutar `agency_is_publicly_visible` (`42501`).
+  **Quien audite permisos así va a concluir que no hay ninguno.** Medir con `pg_class.relacl`,
+  `pg_attribute.attacl` o `has_*_privilege` con el rol explícito (`has_table_privilege('anon', …)`).
+  Es una limitación de la herramienta, no del proyecto.
 - Grupos de tools habilitados: `database`, `debugging`, `development`, `docs`. Storage,
   branching, edge functions y gestión de cuenta están deshabilitados a propósito.
 
@@ -2411,6 +2453,24 @@ Y un texto sin "Límite", "suscripción" ni "no está aprobada". **Un traductor 
 ##### ⚠ TRAMPA 10 — Vendida o alquilada apaga la estrella en la base
 
 `enforce_featured_quota()` pone `is_featured := false` cuando el status es `sold` o `rented`. Cualquier camino que cambie el status —el menú del listado, el select "Estado" del formulario de edición, o uno futuro— lo hereda sin escribir nada. Pausar no la apaga.
+
+##### Cupo de destacadas: la decisión de producto y la interfaz
+
+- **Cupos: free 0, inicial 0, profesional 3, premium 10.** 3 y 10 (y no 10 y 20) porque **una destacada vale por ser escasa** y premium tiene que diferenciarse; profesional las incluye para que las agencias las prueben desde el principio.
+- **`has_featured` se conserva** y la base lo obliga a coincidir con `featured_limit > 0`. `PLANS[plan].featuredLimit` reemplazó al viejo flag `featured` del catálogo.
+- **Bajar el cupo:** a 0 apaga todas (`trg_clear_featured_on_zero_quota`); si baja sin llegar a 0, las que sobran quedan. **Subir el cupo no las vuelve a encender.**
+- **Formulario:** la casilla "Destacada" aparece solo con cupo > 0, con el contador *"Destacadas: X de Y"*; se deshabilita con el cupo lleno (salvo que la propiedad ya fuera destacada) y en vendida/alquilada. **No hay descarte silencioso**: con el cupo lleno la action devuelve el error.
+- **Textos de plan** por `featuredQuotaFeatureLabel` (registro, suscripción, `/admin`); `/admin` muestra el cambio de cupo al cambiar de plan; `/dashboard/suscripcion` muestra *"Destacadas: X de Y"*.
+- **Listado del panel:** estrella junto al título, chip `FeaturedBadge` con las clases de `PlanBadge` y, para un agente común, la nota *"El cupo de destacadas es de toda la inmobiliaria."*
+
+##### El menú de tres puntos del listado
+
+- **"Marcar como vendida/alquilada" solo en `active`/`paused`, y con `AlertDialog`.** Antes se marcaba con un toque y la agencia **no podía deshacerlo desde el menú**.
+- **"Volver a publicar"** en vendida/alquilada (`activatePropertyAction`): respeta el límite de propiedades, y **la estrella no vuelve**.
+- **"Destacar" / "Quitar destacada"** (`setPropertyFeaturedAction`); con el cupo lleno, deshabilitada con *"Cupo completo"*.
+- `markAsSold`/`markAsRented` traducen el error de la base; el botón de tres puntos tiene área de toque de 44 px.
+- **La estrella es SIEMPRE SVG** (`FeaturedStarIcon`; `STAR_SVG` en el pin), **nunca el carácter ★**, que DM Sans no cubre. En el pin, el círculo de la estrella se trata como el del corazón. ⚠ **Dorado para lo que ve el visitante** (pin, modal, ficha); **en el panel la estrella hereda el color del texto** (`text-current`), también en foco y deshabilitada. Ver DESIGN §2.
+- **El pin destacado conserva su anillo `paper` de 2 px** y los círculos de estrella y corazón lo heredan: distingue el pin destacado **de lejos**, cuando la estrella de 9 px no se ve.
 
 **Query principal:**
 ```sql
@@ -2599,6 +2659,8 @@ npm run storage:huerfanos:borrar   # ⚠ destructivo. Ver "Auditoría y limpieza
 ## Método de Diagnóstico
 
 Cuando el usuario reporta un síntoma visual, **inspeccionar el estado real del DOM y las clases aplicadas antes de teorizar sobre el pipeline de build**. La causa más simple (un elemento en otro estado, una clase pisada) es más probable que una corrupción de caché. No verificar en entornos aislados (headless, build paralelo) cuando el síntoma aparece en la app corriendo — la evidencia está en el DOM real.
+
+**⚠ REGLA DE TRABAJO: NO verificar en la app corriendo nada que ESCRIBA en la base.** Tampoco abrir propiedades del mapa: cada apertura cuenta una visita (`increment_views`). Una verificación del 16 sep 2026 sumó visitas a **17 propiedades de prueba**. Lo que escribe se verifica con el MCP de solo lectura o se le pide al usuario.
 
 **⚠ Y un patrón propio de este repo, que ya costó cinco veces: los comentarios que afirman que un caso ESTÁ CUBIERTO son los más peligrosos, porque desactivan la sospecha.** El ejemplo que lo cerró: `getPlanUsage` decía *"ese caso ya lo bloquea el límite 0"* mientras el límite que ese mismo archivo calculaba era **1**. Nadie volvió a mirar el caso justamente porque el comentario decía que estaba resuelto. Los otros cuatro fueron de la misma familia: dos cláusulas `ON DELETE` que la base no tenía; un *"el único código que borra logos y avatares"* que había dejado de ser único; y un **"Estado consistente"** en `deleteAgentAction` que describía un estado que **no lo era** —las propiedades ya reasignadas y el avatar ya borrado, sobre un agente todavía vivo—. **Un comentario que afirma una propiedad de la base o de otro archivo hay que medirlo antes de creerle**, sobre todo si es la razón por la que algo no se está revisando.
 
