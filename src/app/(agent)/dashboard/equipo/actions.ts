@@ -62,7 +62,14 @@ export async function createAgentAction(
     return { error: translateAuthError(authError?.message ?? "") };
   }
 
-  // 5) Fila en agents (service role: la policy de INSERT solo deja id = auth.uid()).
+  // 5) Fila en agents. VA CON SERVICE ROLE porque `authenticated` NO TIENE
+  // PERMISO DE INSERT sobre la tabla (medido el 17 sep 2026 con pg_class.relacl,
+  // desde el endurecimiento del 16 sep): con el client normal esto rebotaría con
+  // 42501 "permission denied for table agents" antes de llegar a ninguna policy.
+  // ⚠ Acá decía "la policy de INSERT solo deja id = auth.uid()", que era
+  // `Agent creates own profile`: esa policy YA NO EXISTE — se eliminó porque
+  // dejaba que un usuario de Auth sin fila en agents se insertara como 'admin'
+  // de cualquier agencia. La barrera de hoy es el permiso, y es más fuerte.
   // role 'agent': el creado es un miembro común, no admin. agency_id heredado del admin.
   const { error: agentError } = await admin.from("agents").insert({
     id: created.user.id,

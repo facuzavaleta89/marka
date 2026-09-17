@@ -42,10 +42,12 @@ Terracota sigue siendo el **único acento**. El dorado **no es un segundo acento
 
 | Token | Hex | Cuándo |
 |---|---|---|
-| `gold` | `#E3B341` | Estrella sobre fondos oscuros o terracota: el pin del mapa (9,70:1 sobre black; 2,89:1 sobre terracota, dentro de su círculo con borde) |
+| `gold` | `#E3B341` | Estrella sobre fondos oscuros o **terracota**: el **pin del mapa** (9,70:1 sobre black; 2,89:1 sobre terracota, dentro de su círculo con borde) y el **badge "Destacada" de la tarjeta** (`PropertyCard`), que también es terracota sólido |
 | `gold-deep` | `#A07A14` | Estrella sobre fondos claros: detalle (modal) y ficha pública (3,78:1 sobre paper, 3,97:1 sobre blanco, 3,14:1 sobre mist) |
 
-**El dorado es para lo que ve el VISITANTE** (pin, modal, ficha pública). **En el panel la estrella no es dorada:** hereda el color del texto que la acompaña (`text-current`): negro junto al título en el listado, y el color de la opción en el menú de tres puntos, también en foco y deshabilitada.
+⚠ **CUÁL DE LOS DOS SE ELIGE LO DECIDE EL FONDO, NO LA PANTALLA.** Es la misma marca en los cuatro lugares y el tono cambia solo para que se vea: `gold-deep` donde la estrella se apoya sobre `paper` o `mist`, `gold` donde se apoya sobre terracota o negro. Quien agregue una superficie nueva mira contra qué fondo va a quedar, no si es pública o del panel.
+
+**El dorado es para lo que ve el VISITANTE** (pin, tarjeta, modal, ficha pública). **En el panel la estrella no es dorada:** hereda el color del texto que la acompaña (`text-current`): negro junto al título en el listado, y el color de la opción en el menú de tres puntos, también en foco y deshabilitada.
 
 La estrella es siempre un **SVG** (lucide `Star` rellena: `FeaturedStarIcon`, o `STAR_SVG` en el pin), nunca el carácter `★`: DM Sans no lo cubre y cada dispositivo lo dibujaba distinto.
 
@@ -237,6 +239,12 @@ En mobile el mapa no es el punto de entrada. Los visitantes en mobile navegan po
 
 **Regla que se mantiene:** nunca `rounded-full` en cards, botones grandes o contenedores. Reservado para avatares y elementos circulares por naturaleza.
 
+#### ⚠ Un componente de shadcn recién agregado NO cumple esta tabla
+
+**`npx shadcn add <componente>` trae los radios del preset "Sera", que no son los de acá** —varios vienen en `rounded-none` y otros en valores propios—, así que **antes de usarlo hay que llevarlo a la tabla de arriba**. Es un paso del alta del componente, no una limpieza posterior: en cuanto se monta en una pantalla, el desvío ya se ve.
+
+⚠ El 17 sep 2026 se eliminaron `ui/badge.tsx`, `ui/card.tsx`, `ui/slider.tsx` y `ui/dialog.tsx` — **cuatro componentes del preset sin un solo consumidor**, y dos de ellos (`Badge` y `Card`) todavía en `rounded-none`. El riesgo no era que se vieran mal: era que alguien los importara **creyendo que ya seguían el diseño**. Si alguno vuelve a hacer falta, se re-agrega y se adecua primero. (`AlertDialog`, que sí se usa, no dependía de `Dialog`.)
+
 ### Sombras
 
 El diseño editorial prefiere bordes sobre sombras. Las sombras se usan solo en elementos flotantes.
@@ -426,7 +434,7 @@ Identifica a la inmobiliaria y a la persona que va a atender la consulta. Sin é
 
 | Tamaño | Variante | Alto | Relleno | Para qué |
 |---|---|---|---|---|
-| **L** | `default` (y `lg`, igual de alto pero más ancho) | **44px** | 16px (32 en `lg`) | La acción principal de una pantalla o de un formulario: CTAs, WhatsApp, FABs, botones de diálogo |
+| **L** | `default` | **44px** | 16px | La acción principal de una pantalla o de un formulario: CTAs, WhatsApp, FABs, botones de diálogo |
 | **M** | `sm` | **36px** | 12px | Contexto denso, donde 44 px rompen el ritmo: filas de tabla, encabezados, panel de filtros |
 | **S** | `xs` | **28px** | 10px | Sobre una imagen o un mapa, donde el botón compite con el contenido. ⚠ **Por debajo del mínimo táctil** |
 | Íconos | `icon` / `icon-sm` / `icon-xs` | 44 / 36 / 28 | — | Los mismos tres, cuadrados |
@@ -490,7 +498,7 @@ Hay **DOS familias de campo, y las dos son deliberadas**:
 
 | Tipo | Background | Texto | Uso |
 |---|---|---|---|
-| Destacado | `terracota` | `paper` | Badge de texto "Destacada" de la tarjeta pública (`PropertyCard`). En el detalle y la ficha la marca es la **estrella** `gold-deep` + el texto "Destacada"; en el listado del panel, la estrella en el color del texto (ver §2, "Dorado") |
+| Destacado | `terracota` | `paper` | Badge de la tarjeta pública (`PropertyCard`): **estrella `gold` + el texto "Destacada"**. ⚠ La tarjeta era la única de las cinco superficies que marcaba una destacada **sin estrella**, y se alineó el 17 sep 2026; la estrella va en el dorado CLARO porque el fondo del badge es terracota, igual que en el pin. En el detalle y la ficha la marca es la estrella `gold-deep` + el texto (fondo claro); en el listado del panel, la estrella en el color del texto (ver §2, "Dorado") |
 | Tipo operación | `mist` | `graphite` | "Venta", "Alquiler" |
 | Amenity | `mist` | `graphite` | Chips en el modal |
 | Amenity activo | `terracota-subtle` | `terracota` | Amenity seleccionado en filtros |

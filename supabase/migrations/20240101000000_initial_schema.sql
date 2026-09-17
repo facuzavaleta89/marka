@@ -143,6 +143,15 @@
 --         (AFTER UPDATE OF featured_limit ON subscriptions): cupo a 0 apaga todas
 --         las destacadas de la agencia.
 --     Ver la sección "CUPO DE DESTACADAS", con las trampas de cada pieza.
+--   * leads.contact_phone, leads.contact_email y leads.message: ELIMINADAS
+--     (17 sep 2026, DROP COLUMN a mano en el SQL Editor, con una guarda previa
+--     que verificó que ninguna fila tenía datos en las tres). Eran columnas
+--     MUERTAS: ningún camino del código las escribía —la consulta la crea
+--     registerLead(), que no las nombra—, ninguna policy, función, trigger,
+--     vista ni índice las mencionaba, y las 13 filas existentes las tenían todas
+--     en NULL. La conversación con el visitante ocurre en WhatsApp, fuera de la
+--     app: de la consulta solo se guarda QUE EXISTIÓ, con quién la atendió y
+--     sobre qué propiedad. La tabla quedó en ocho columnas (ver abajo).
 --   * ⚠ DISCREPANCIA CONOCIDA Y NO RESUELTA en UNA clave foránea
 --     (properties.agent_id: NOT NULL + ON DELETE CASCADE, cuando el modelo
 --     escrito pretendía nullable + SET NULL): ver la nota en esa tabla. Este
@@ -656,9 +665,13 @@ CREATE TABLE leads (
   agent_id       UUID REFERENCES agents(id) ON DELETE SET NULL,
   agency_id      UUID NOT NULL REFERENCES agencies(id) ON DELETE CASCADE,
   contact_name   TEXT NOT NULL,
-  contact_phone  TEXT,
-  contact_email  TEXT,
-  message        TEXT,
+  -- ⚠ NO HAY contact_phone, contact_email NI message. Existieron hasta el
+  -- 17 sep 2026 y se eliminaron por DROP COLUMN: ningún camino del código las
+  -- escribía (registerLead() no las nombra) y las 13 filas de entonces las
+  -- tenían todas en NULL. La conversación ocurre en WhatsApp, fuera de la app,
+  -- así que de la consulta solo se guarda que existió, con quién y sobre qué.
+  -- Volver a agregarlas exige antes decidir QUIÉN las escribe: el insert es
+  -- público y anónimo y la tabla no tiene un solo CHECK.
   source         TEXT NOT NULL DEFAULT 'whatsapp',
   created_at     TIMESTAMPTZ DEFAULT now(),
   -- ⚠ COPIA CONGELADA DEL NOMBRE DEL AGENTE, NO COPIA DE LECTURA. Registra cómo
@@ -2106,70 +2119,15 @@ CREATE POLICY "Agency deletes own storage files"
 -- Ver CLAUDE.md → "Auditoría y limpieza de huérfanos".
 
 -- ─── SEED: datos de prueba ────────────────────────────────────
--- Después de crear un usuario con Supabase Auth, reemplazar el UUID:
-
-/*
--- 1. Ciudad (mercado)
-INSERT INTO cities (name, slug, province, center_lat, center_lng, default_zoom)
-VALUES ('Santiago del Estero', 'santiago-del-estero', 'Santiago del Estero',
-        -27.7951, -64.2615, 13);
-
--- 2. Agencia (pertenece a la ciudad). tenant_type cae en 'agency' por DEFAULT;
--- NO sembrar 'individual': la app es solo-agencias y ese valor es legacy.
--- ⚠ Dos cosas al usar este seed tal cual: phone_wa es NOT NULL sin default (hay
--- que agregarlo a la lista de columnas), y approval_status cae en 'pending' por
--- DEFAULT, así que la agencia sembrada NO va a tener sitio white-label hasta
--- aprobarla. Para una demo usable conviene sembrarla con
--- approval_status = 'approved' explícito.
-INSERT INTO agencies (city_id, name, slug)
-VALUES (
-  (SELECT id FROM cities WHERE slug = 'santiago-del-estero'),
-  'Inmobiliaria Demo', 'inmobiliaria-demo'
-);
-
--- 3. Suscripción de la agencia (free por defecto: límite 1)
-INSERT INTO subscriptions (agency_id, plan, property_limit)
-VALUES (
-  (SELECT id FROM agencies WHERE slug = 'inmobiliaria-demo'),
-  'free', 1
-);
-
--- 4. Agente (id = UUID de Supabase Auth).
--- role 'admin': es el único agente de la agencia y la creó, así que la gestiona.
-INSERT INTO agents (id, agency_id, role, full_name, phone_wa, email)
-VALUES (
-  'TU-UUID-DE-AUTH-AQUI',
-  (SELECT id FROM agencies WHERE slug = 'inmobiliaria-demo'),
-  'admin',
-  'Juan Pérez',
-  '5491112345678',
-  'juan@inmobiliaria-demo.com'
-);
-
--- 5. Propiedad
--- Esta casa está en venta Y en alquiler a la vez: cada operación lleva su
--- propio precio. Para publicarla "a convenir" en alguna de las dos, se dejan
--- NULL su precio y su moneda (las dos juntas), manteniendo el flag en true.
-INSERT INTO properties (agent_id, agency_id, city_id, title, slug,
-  property_type,
-  for_sale, sale_price, sale_currency,
-  for_rent, rent_price, rent_currency,
-  rent_requirements, rent_requirements_other,
-  area_covered_m2,
-  bedrooms, bathrooms, address, neighborhood, city, lat, lng)
-VALUES (
-  'TU-UUID-DE-AUTH-AQUI',
-  (SELECT id FROM agencies WHERE slug = 'inmobiliaria-demo'),
-  (SELECT id FROM cities WHERE slug = 'santiago-del-estero'),
-  'Casa 3 ambientes en el centro',
-  'casa-3-amb-centro-001',
-  'casa',
-  true, 85000, 'USD',
-  true, 350000, 'ARS',
-  '["recibo_de_sueldo","garantia_propietaria","deposito"]',
-  '["Garante con propiedad en la ciudad","No se aceptan mascotas"]',
-  120, 3, 2,
-  'Av. Belgrano 1234', 'Centro', 'Santiago del Estero',
-  -27.7951, -64.2615
-);
-*/
+--
+-- ⚠ NO VIVE ACÁ. El seed está en supabase/seed.sql, y es el ÚNICO.
+--
+-- Hasta el 17 sep 2026 había DOS: este bloque comentado y ese archivo, y habían
+-- DIVERGIDO — este decía `free, 1` y avisaba del phone_wa; aquel decía `free, 5`
+-- y no lo nombraba, o sea que el que la convención de Supabase manda ejecutar
+-- era justamente el que no podía correr. Un seed comentado no se ejecuta nunca,
+-- así que nadie se entera de que quedó viejo.
+--
+-- Ese archivo, además, ya no siembra la suscripción: la crea el trigger
+-- trg_ensure_agency_subscription (ver la sección de ese trigger, arriba), y el
+-- INSERT que había era un no-op por su ON CONFLICT.

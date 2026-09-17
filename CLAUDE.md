@@ -665,11 +665,18 @@ prometer lo que la base va a rechazar si alguna vez alguien borra una fila a man
 
 ### La escala de altos de botón
 
-`ui/button.tsx` tiene **tres alturas y nada más**, y la escala está comentada en el propio archivo. El mínimo táctil de accesibilidad es **44 px**, así que ése es el tamaño por defecto:
+`ui/button.tsx` tiene **tres alturas y nada más**, y la escala está comentada en el propio archivo. El mínimo táctil de accesibilidad es **44 px**, así que ése es el tamaño por defecto.
+
+⚠ **Eran cinco nombres para tres alturas hasta el 17 sep 2026**: el preset traía además `lg`
+(la misma altura que `default`, solo con más relleno horizontal) e `icon-lg` (`size-11`, **byte a
+byte idéntico** a `icon`). Los dos con **cero usos**, y los dos eliminados. Un CTA más ancho se pide
+con `className="w-full"` o `px-*`, que es lo que ya hacen los botones de ancho completo del
+proyecto. Si alguien vuelve a agregar un tamaño, que sea por una altura que no exista.
+
 
 | Tamaño | Variante | Alto | Relleno | Para qué |
 |---|---|---|---|---|
-| **L** | `default` (y `lg`: igual de alto, más ancho) | **44** | 16px (32 en `lg`) | Acción principal de una pantalla o un formulario: CTAs, WhatsApp, FABs, botones de diálogo |
+| **L** | `default` | **44** | 16px | Acción principal de una pantalla o un formulario: CTAs, WhatsApp, FABs, botones de diálogo |
 | **M** | `sm` | **36** | 12px | Contexto denso donde 44 px rompen el ritmo: filas de tabla, encabezados, filtros |
 | **S** | `xs` | **28** | 10px | Sobre una imagen o un mapa, donde el botón compite con el contenido |
 | Íconos | `icon` / `icon-sm` / `icon-xs` | 44 / 36 / 28 | — | Los mismos tres, cuadrados |
@@ -911,11 +918,15 @@ cuyo resultado se le informe a una persona.
 
 ### ⚠ La guarda contra el cero de las barras de uso es VESTIGIAL, y hoy es load-bearing
 
-Dos componentes calculan el porcentaje de uso del plan **dividiendo por el límite**, y los dos
+**TRES** componentes calculan un porcentaje de uso **dividiendo por el límite**, y los tres
 tienen la misma guarda:
 
-- `src/components/dashboard/PlanBadge.tsx:14` — `const pct = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;`
-- `src/components/dashboard/SubscriptionContent.tsx:191` — `const usagePercent = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;`
+- `src/components/dashboard/PlanBadge.tsx` — `const pct = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;`
+- `src/components/dashboard/SubscriptionContent.tsx` — `const usagePercent = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;`
+- `src/components/dashboard/FeaturedBadge.tsx` — la misma línea para el **cupo de destacadas**, que
+  llegó con la tanda del 16 sep 2026 y cuyo comentario apunta a `PlanBadge`. ⚠ Acá decía "dos
+  componentes" y "si se toca una, se toca la otra": **son tres, y si se toca una se tocan las
+  tres.**
 
 **Esa guarda NO se escribió para el límite 0.** Quedó del modelo anterior de planes, cuando
 existía uno "Ilimitado" — el propio comentario de `PlanBadge` lo dice: *"En el modelo de 4
@@ -923,7 +934,11 @@ planes todos tienen un límite finito … Ya no hay 'Ilimitado'"*. O sea que **p
 
 **No lo está: desde que `getPlanUsage` reporta 0 sin fila, es lo único que evita una división
 por cero.** Borrarla por prolija reintroduce el problema, y el síntoma aparecería en una
-pantalla que nadie relacionaría con las suscripciones. Si se toca una, se toca la otra.
+pantalla que nadie relacionaría con las suscripciones. **Si se toca una, se tocan las tres.**
+
+⚠ En `FeaturedBadge` el caso es además **alcanzable hoy**: ese chip se monta solo con `limit > 0`,
+pero `getFeaturedUsage` devuelve `limit: 0` cuando la agencia no tiene fila de suscripción, así que
+la guarda es lo que sostiene la promesa de su propio llamador.
 
 ### Etiquetas UI — labels.ts
 - Nunca definir mapas de etiquetas inline. Usar `PROPERTY_TYPE_LABELS`, `OPERATION_TYPE_LABELS`, `PROPERTY_STATUS_LABELS`, `AMENITY_LABELS`, `CURRENCY_LABELS`.

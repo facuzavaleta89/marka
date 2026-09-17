@@ -284,6 +284,7 @@ function ModalContent({
           heightClass="h-[220px] md:h-[260px]"
         />
         <button
+          type="button"
           onClick={onClose}
           className="absolute top-3 left-3 flex items-center justify-center w-9 h-9 rounded-full bg-paper/85 backdrop-blur-sm text-graphite shadow-sm transition-colors hover:bg-paper hover:text-black"
           aria-label="Cerrar"

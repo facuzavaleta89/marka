@@ -43,9 +43,20 @@ const agencyLogoSchema = z.object({
 // FORMATO: el de lib/utils/phoneWa, el mismo que el formulario y que los otros
 // tres caminos que escriben un teléfono. ⚠ Acá decía "mismo formato que en el
 // resto (perfil, alta de agente)", y perfil no validaba nada en el servidor.
+//
+// ⚠ DEVUELVE `{ changed }`, NO `undefined`, Y ESE BOOLEANO ES LA PIEZA. Este
+// formulario guarda UNA sola cosa, y su mensaje la nombra ("Teléfono de la
+// agencia actualizado"). Con un número guardado en un formato inesperado,
+// `resolvePhoneWaForSave` lo devuelve TAL CUAL —a propósito: corregirlo sería
+// cambiarle el teléfono a alguien sin que lo pida—, así que guardar sin tocar
+// nada terminaba escribiendo el mismo valor y afirmando "actualizado" a dos
+// dedos del aviso que dice "No lo cambiamos por vos". Ahora, si el número que
+// llega es el que ya está guardado, NO SE ESCRIBE y el formulario lo dice.
+// (ProfileForm no comparte el problema: su submit guarda tres campos, así que
+// "Perfil actualizado" puede ser cierto aunque el teléfono no haya cambiado.)
 export async function updateAgencyPhoneAction(input: {
   phone_wa: string;
-}): Promise<ActionResult> {
+}): Promise<{ error: string } | { changed: boolean }> {
   if (typeof input?.phone_wa !== "string") {
     return { error: PHONE_WA_ERROR };
   }
@@ -77,6 +88,13 @@ export async function updateAgencyPhoneAction(input: {
   const phone_wa = resolvePhoneWaForSave(input.phone_wa, current.phone_wa ?? null);
   if (phone_wa === null) return { error: PHONE_WA_ERROR };
 
+  // Sin cambios: no se escribe y se sale temprano. La comparación va contra la
+  // fila REAL (`current`, releída con service role arriba), nunca contra un
+  // valor que mande el cliente — mismo criterio que la comparación de nombre de
+  // updateAgencyIdentityAction. No se revalida la ruta: no hay nada que
+  // refrescar.
+  if (phone_wa === current.phone_wa) return { changed: false };
+
   const { error } = await admin
     .from("agencies")
     .update({ phone_wa })
@@ -91,6 +109,7 @@ export async function updateAgencyPhoneAction(input: {
   }
 
   revalidatePath("/dashboard/preferencias");
+  return { changed: true };
 }
 
 // Persiste la URL del logo de la agencia del admin logueado. El archivo ya se subió

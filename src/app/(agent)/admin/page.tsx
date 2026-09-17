@@ -42,6 +42,13 @@ type AgencySubscriptionEmbed = {
   status: string;
   activated_at: string | null;
   current_period_end: string | null;
+  // Límites y entitlements REALES de la fila (no los del catálogo del plan).
+  // Los consume el panel de cambio de plan para armar el "antes" de cada
+  // consecuencia. Ver AgencySubscription en AgenciesTable.tsx.
+  property_limit: number;
+  featured_limit: number;
+  has_white_label: boolean;
+  has_metrics: boolean;
 };
 
 // Normaliza un embed to-one que PostgREST puede devolver como objeto o array.
@@ -91,8 +98,17 @@ export default async function AdminPage() {
       // llega, y llegaría como `undefined` sin que nada falle — el panel
       // mostraría "alta nueva" para TODA agencia pendiente, que es exactamente
       // el problema que estas columnas vienen a resolver, y en silencio.
+      // ⚠ EL EMBED TRAE LOS LÍMITES Y LOS ENTITLEMENTS REALES DE LA FILA, no
+      // solo el nombre del plan. Hasta el 17 sep 2026 traía cinco columnas y el
+      // panel de "Cambiar de plan" armaba el ANTES de cada consecuencia
+      // (propiedades, destacadas, sitio propio, métricas) desde PLANS[plan] —el
+      // catálogo—, o sea desde lo que ese plan DEBERÍA tener, no desde lo que
+      // esa agencia TIENE. Mientras las dos cosas coincidan no se nota; en
+      // cuanto se ajuste un número del catálogo o se toque una fila a mano, el
+      // panel muestra un antes falso justo en la pantalla donde se decide un
+      // cambio irreversible para el cliente.
       .select(
-        "id, name, slug, license_number, approval_status, previous_name, name_change_requested_at, subscription:subscriptions(plan, pending_plan, status, activated_at, current_period_end), city:cities(name)"
+        "id, name, slug, license_number, approval_status, previous_name, name_change_requested_at, subscription:subscriptions(plan, pending_plan, status, activated_at, current_period_end, property_limit, featured_limit, has_white_label, has_metrics), city:cities(name)"
       )
       .order("created_at", { ascending: false }),
 
@@ -276,6 +292,10 @@ export default async function AdminPage() {
               status: subscription.status as SubscriptionStatus,
               activated_at: subscription.activated_at,
               current_period_end: subscription.current_period_end,
+              property_limit: subscription.property_limit,
+              featured_limit: subscription.featured_limit,
+              has_white_label: subscription.has_white_label,
+              has_metrics: subscription.has_metrics,
             }
           : null,
       };

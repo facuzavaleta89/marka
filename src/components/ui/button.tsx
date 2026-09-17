@@ -21,12 +21,20 @@ const buttonVariants = cva(
         link: "text-primary underline underline-offset-4 hover:underline",
       },
       size: {
-        // ESCALA DE ALTOS (DESIGN §6: 44px es el mínimo táctil):
+        // ESCALA DE ALTOS (DESIGN §6: 44px es el mínimo táctil). Son TRES, y
+        // nada más:
         //   default  L  44 · acción principal de una pantalla o un formulario
         //   sm       M  36 · contexto denso (filas, encabezados, filtros)
         //   xs       S  28 · sobre una imagen o un mapa; ⚠ bajo el mínimo
         //                    táctil, por eso lleva área de toque extendida
-        //   lg          44 · misma altura, más ancho (CTA de ancho completo)
+        //
+        // ⚠ EL PRESET TRAÍA ADEMÁS `lg` E `icon-lg`, Y SE ELIMINARON (17 sep
+        // 2026). `icon-lg` era `size-11`, byte a byte idéntico a `icon`; `lg`
+        // tenía el MISMO alto que `default` (h-11) y solo cambiaba el relleno
+        // horizontal. Los dos con CERO usos medidos en src/. Una escala de tres
+        // alturas con cinco nombres es una invitación a elegir mal: quien
+        // necesite un CTA más ancho usa `className="w-full"` o `px-*`, que es
+        // lo que ya hacen los cuatro botones de ancho completo del proyecto.
         default:
           "h-11 gap-1.5 px-4 has-data-[icon=inline-end]:pr-3 has-data-[icon=inline-start]:pl-3",
         // ⚠ 28px de alto: por debajo del mínimo táctil, así que el
@@ -34,11 +42,9 @@ const buttonVariants = cva(
         // dibujo. Mismo recurso que ya usa ui/checkbox.tsx.
         xs: "h-7 gap-1 px-2.5 after:absolute after:-inset-x-2 after:-inset-y-2 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 [&_svg:not([class*='size-'])]:size-3",
         sm: "h-9 gap-1 px-3 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
-        lg: "h-11 gap-1.5 px-8 has-data-[icon=inline-end]:pr-5 has-data-[icon=inline-start]:pl-5",
         icon: "size-11",
         "icon-xs": "size-7 after:absolute after:-inset-2 [&_svg:not([class*='size-'])]:size-3",
         "icon-sm": "size-9",
-        "icon-lg": "size-11",
       },
     },
     defaultVariants: {

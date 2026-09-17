@@ -255,7 +255,7 @@ export function ProfileForm({ agentId, agent }: ProfileFormProps) {
                     describedBy="phone_wa_help"
                   />
                   {preservedPhone !== null && field.value === preservedPhone && (
-                    <PhoneWaReviewNotice stored={preservedPhone} />
+                    <PhoneWaReviewNotice stored={preservedPhone} target="agent" />
                   )}
                 </>
               )}

@@ -30,7 +30,10 @@ type Values = z.infer<ReturnType<typeof makeSchema>>;
 // admin (la página lo gatea); la action revalida el rol server-side igual.
 export function AgencyPhoneForm({ initialPhone }: { initialPhone: string }) {
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  // Mensaje de éxito como TEXTO y no como booleano: guardar tiene dos
+  // desenlaces buenos distintos (se escribió / no había nada que escribir).
+  // Mismo molde que AgencyIdentityForm, la pantalla hermana.
+  const [success, setSuccess] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   // ⚠ Un número guardado sin el formato esperado se muestra TAL CUAL y no se
@@ -46,15 +49,23 @@ export function AgencyPhoneForm({ initialPhone }: { initialPhone: string }) {
 
   function onSubmit(values: Values) {
     setError(null);
-    setSuccess(false);
+    setSuccess(null);
     startTransition(async () => {
       // `values.phone_wa` ya es el número COMPLETO: lo armó el esquema.
       const result = await updateAgencyPhoneAction({ phone_wa: values.phone_wa });
-      if (result?.error) {
+      if ("error" in result) {
         setError(result.error);
-      } else {
-        setSuccess(true);
+        return;
       }
+      // ⚠ "Actualizado" SOLO si de verdad se escribió. Un número guardado en un
+      // formato inesperado se conserva tal cual (ver PhoneWaReviewNotice), así
+      // que guardar sin tocarlo no cambia nada — y decir "actualizado" ahí
+      // contradice al aviso de al lado, que dice "No lo cambiamos por vos".
+      setSuccess(
+        result.changed
+          ? "Teléfono de la agencia actualizado"
+          : "No hubo cambios: el número es el que ya estaba guardado."
+      );
     });
   }
 
@@ -96,7 +107,7 @@ export function AgencyPhoneForm({ initialPhone }: { initialPhone: string }) {
                   describedBy="agency_phone_wa_help"
                 />
                 {preservedPhone !== null && field.value === preservedPhone && (
-                  <PhoneWaReviewNotice stored={preservedPhone} />
+                  <PhoneWaReviewNotice stored={preservedPhone} target="agency" />
                 )}
               </>
             )}
@@ -115,11 +126,7 @@ export function AgencyPhoneForm({ initialPhone }: { initialPhone: string }) {
         </div>
 
         {error && <p className="font-sans text-sm text-error">{error}</p>}
-        {success && (
-          <p className="font-sans text-sm text-success">
-            Teléfono de la agencia actualizado
-          </p>
-        )}
+        {success && <p className="font-sans text-sm text-success">{success}</p>}
 
         <button
           type="submit"

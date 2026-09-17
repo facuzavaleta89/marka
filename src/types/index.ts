@@ -452,9 +452,10 @@ export interface Lead {
   agent_id: string | null;
   agency_id: string;     // incluido para queries del dashboard por agencia
   contact_name: string;
-  contact_phone: string | null;
-  contact_email: string | null;
-  message: string | null;
+  // ⚠ NO HAY contact_phone, contact_email NI message, y no es un olvido: las
+  // tres columnas se ELIMINARON de la base el 17 sep 2026 porque ningún camino
+  // las escribía y ninguna fila tenía datos. La consulta se sigue por WhatsApp,
+  // fuera de la app: lo único que se guarda acá es que existió.
   source: string;
   created_at: string;
   // ⚠ COPIA CONGELADA, NO COPIA DE LECTURA. Registra cómo se llamaba el agente
@@ -657,8 +658,13 @@ export interface PlanUsage {
   available: number;     // Math.max(0, limit - used). Saneado: NUNCA negativo (0 si used > limit)
   over: number;          // Math.max(0, used - limit). 0 si dentro del límite; > 0 si se excedió (ej. tras downgrade)
   canCreate: boolean;    // used < limit
-  hasFeatured: boolean;     // = subscription.has_featured (= featuredLimit > 0, lo obliga la base)
-  featuredLimit: number;    // = subscription.featured_limit (sin fila → 0)
+  // ⚠ NO HAY hasFeatured NI featuredLimit, y sacarlos fue deliberado (17 sep
+  // 2026): se calculaban y NADIE los leía (0 usos medidos). El cupo de
+  // destacadas se sirve por FeaturedUsage / getFeaturedUsage, que además trae
+  // cuántas hay encendidas — que es el dato que el chip, el listado y el
+  // formulario necesitan. Dos campos muertos acá sugerían, además, que el gate
+  // de destacadas seguía siendo el booleano, cuando desde el 16 sep 2026 es un
+  // cupo que hace cumplir la base.
   hasWhiteLabel: boolean;   // = subscription.has_white_label
   hasMetrics: boolean;      // = subscription.has_metrics
 }

@@ -67,60 +67,60 @@ export function LoginForm({ notice }: { notice?: string }) {
       )}
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
-            <div className="space-y-1.5">
-              <Label
-                htmlFor="email"
-                className="font-sans text-sm font-medium text-black"
-              >
-                Email
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                autoComplete="email"
-                placeholder="tu@email.com"
-                {...register("email")}
-                className={cn(errors.email && FIELD_UNDERLINE_ERROR)}
-              />
-              {errors.email && (
-                <p className="font-sans text-xs text-error">{errors.email.message}</p>
-              )}
-            </div>
+        <div className="space-y-1.5">
+          <Label
+            htmlFor="email"
+            className="font-sans text-sm font-medium text-black"
+          >
+            Email
+          </Label>
+          <Input
+            id="email"
+            type="email"
+            autoComplete="email"
+            placeholder="tu@email.com"
+            {...register("email")}
+            className={cn(errors.email && FIELD_UNDERLINE_ERROR)}
+          />
+          {errors.email && (
+            <p className="font-sans text-xs text-error">{errors.email.message}</p>
+          )}
+        </div>
 
-            <div className="space-y-1.5">
-              <Label
-                htmlFor="password"
-                className="font-sans text-sm font-medium text-black"
-              >
-                Contraseña
-              </Label>
-              <Input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                placeholder="••••••••"
-                {...register("password")}
-                className={cn(errors.password && FIELD_UNDERLINE_ERROR)}
-              />
-              {errors.password && (
-                <p className="font-sans text-xs text-error">
-                  {errors.password.message}
-                </p>
-              )}
-            </div>
+        <div className="space-y-1.5">
+          <Label
+            htmlFor="password"
+            className="font-sans text-sm font-medium text-black"
+          >
+            Contraseña
+          </Label>
+          <Input
+            id="password"
+            type="password"
+            autoComplete="current-password"
+            placeholder="••••••••"
+            {...register("password")}
+            className={cn(errors.password && FIELD_UNDERLINE_ERROR)}
+          />
+          {errors.password && (
+            <p className="font-sans text-xs text-error">
+              {errors.password.message}
+            </p>
+          )}
+        </div>
 
-            {serverError && (
-              <p className="font-sans text-sm text-error bg-terracota-subtle rounded-md px-3 py-2">
-                {serverError}
-              </p>
-            )}
+        {serverError && (
+          <p className="font-sans text-sm text-error bg-terracota-subtle rounded-md px-3 py-2">
+            {serverError}
+          </p>
+        )}
 
-            <Button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-terracota hover:bg-terracota-hover text-paper border-0"
-            >
-              {loading ? "Ingresando..." : "Ingresar"}
+        <Button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-terracota hover:bg-terracota-hover text-paper border-0"
+        >
+          {loading ? "Ingresando..." : "Ingresar"}
         </Button>
       </form>
 

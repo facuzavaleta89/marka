@@ -13,6 +13,7 @@ import {
   OPERATION_TYPE_LABELS,
   FEATURED_PROPERTY_LABEL,
 } from "@/lib/utils/labels";
+import { FeaturedStarIcon } from "@/components/properties/FeaturedStarIcon";
 import { cn } from "@/lib/utils";
 import type { OperationType, Property } from "@/types";
 
@@ -147,9 +148,18 @@ export function PropertyCard({
           />
         </button>
 
-        {/* Badge "Destacada" — esquina superior derecha */}
+        {/* Badge "Destacada" — esquina superior derecha.
+            ⚠ LA ESTRELLA VA EN `gold` (el dorado CLARO), NO en `gold-deep`. La
+            regla de DESIGN §2 es por FONDO, no por pantalla: `gold-deep` es para
+            fondos claros (el modal y la ficha, donde la marca va sobre `paper`)
+            y `gold` para fondos oscuros o terracota — que es exactamente este
+            caso y el del pin del mapa, los dos únicos lugares donde la estrella
+            se dibuja sobre terracota.
+            Esta tarjeta era la única de las cinco superficies que marcaba una
+            destacada SIN estrella: mismo concepto, dos dibujos distintos. */}
         {property.is_featured && (
-          <span className="absolute top-2.5 right-2.5 rounded-sm bg-terracota px-2 py-1 font-sans text-[11px] font-semibold uppercase tracking-wide text-paper">
+          <span className="absolute top-2.5 right-2.5 inline-flex items-center gap-1 rounded-sm bg-terracota px-2 py-1 font-sans text-[11px] font-semibold uppercase tracking-wide text-paper">
+            <FeaturedStarIcon className="size-3 text-gold" />
             {FEATURED_PROPERTY_LABEL}
           </span>
         )}

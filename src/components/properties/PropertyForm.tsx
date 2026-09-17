@@ -33,6 +33,7 @@ import {
 import { cn } from "@/lib/utils";
 import { FIELD_BOX, FIELD_BOX_ERROR } from "@/components/forms/fieldStyles";
 import {
+  AMENITIES_SECTION_LABEL,
   AMENITY_LABELS,
   RENT_REQUIREMENT_LABELS,
   FEATURED_CLOSED_STATUS_MESSAGE,
@@ -1324,7 +1325,7 @@ export function PropertyForm({
       </Section>
 
       {/* ── Amenities ── */}
-      <Section title="Amenities">
+      <Section title={AMENITIES_SECTION_LABEL}>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {ALL_AMENITIES.map((amenity) => (
             <div key={amenity} className="flex items-center gap-2">
