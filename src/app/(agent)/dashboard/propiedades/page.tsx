@@ -2,14 +2,12 @@ import { requireAgentSession } from "@/lib/utils/resolveAgentSession";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PlanBadge } from "@/components/dashboard/PlanBadge";
+import { FeaturedBadge } from "@/components/dashboard/FeaturedBadge";
 import { NewPropertyButton } from "@/components/dashboard/NewPropertyButton";
 import { PropertiesTable, type PropertyRow } from "@/components/dashboard/PropertiesTable";
 import { getPlanUsage } from "@/lib/utils/getPlanUsage";
 import { getFeaturedUsage } from "@/lib/utils/getFeaturedUsage";
-import {
-  FEATURED_QUOTA_AGENCY_NOTE,
-  featuredUsageLabel,
-} from "@/lib/utils/labels";
+import { FEATURED_QUOTA_AGENCY_NOTE } from "@/lib/utils/labels";
 import { getPublishBlock } from "@/lib/utils/getPublishBlock";
 
 // PostgREST devuelve el conteo embebido como `[{ count: N }]` (una relación
@@ -162,10 +160,16 @@ export default async function PropiedadesPage() {
               con una sola estrella a la vista parecería un error. El admin ve
               todas, así que no la necesita. */}
           {featuredUsage.limit > 0 && (
-            <p className="mt-2 font-sans text-xs text-graphite">
-              {featuredUsageLabel(featuredUsage.used, featuredUsage.limit)}
-              {!isAgencyAdmin && ` · ${FEATURED_QUOTA_AGENCY_NOTE}`}
-            </p>
+            <>
+              <div className="mt-2">
+                <FeaturedBadge featuredUsage={featuredUsage} />
+              </div>
+              {!isAgencyAdmin && (
+                <p className="mt-1 font-sans text-xs text-graphite">
+                  {FEATURED_QUOTA_AGENCY_NOTE}
+                </p>
+              )}
+            </>
           )}
         </div>
 
@@ -181,6 +185,7 @@ export default async function PropiedadesPage() {
         properties={rows}
         showAgent={isAgencyAdmin}
         publishBlockMessage={publishBlock?.message}
+        featuredUsage={featuredUsage}
       />
     </div>
   );

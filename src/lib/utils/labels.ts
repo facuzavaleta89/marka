@@ -136,11 +136,17 @@ export function featuredUsageLabel(used: number, limit: number): string {
 }
 
 // Aclaración del contador para un agente común: su listado muestra solo sus
-// propiedades, pero el cupo se comparte con toda la inmobiliaria.
-export const FEATURED_QUOTA_AGENCY_NOTE = "el cupo es de toda la inmobiliaria";
+// propiedades, pero el cupo se comparte con toda la inmobiliaria. Va en una línea
+// propia debajo del chip de destacadas.
+export const FEATURED_QUOTA_AGENCY_NOTE =
+  "El cupo de destacadas es de toda la inmobiliaria.";
 
-// Texto accesible del indicador de propiedad destacada (la estrella del listado).
+// "Destacada": texto de la marca de propiedad destacada (accesible junto a la
+// estrella del listado, visible en el detalle, la ficha y la tarjeta pública).
 export const FEATURED_PROPERTY_LABEL = "Destacada";
+
+// Opción del menú del listado cuando el cupo de destacadas está lleno.
+export const FEATURED_QUOTA_FULL_SHORT = "Cupo completo";
 
 // Cupo completo: la agencia ya tiene encendidas todas las destacadas de su plan.
 export const FEATURED_QUOTA_FULL_MESSAGE =

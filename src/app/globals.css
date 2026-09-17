@@ -74,6 +74,16 @@
   --color-terracota: #A0522D;
   --color-terracota-hover: #8B4526;
   --color-terracota-subtle: #F5EDE8;
+  /* ⚠ DORADO: color EXCLUSIVO de la marca de propiedad destacada (la estrella).
+     No es un segundo acento: no va en CTAs, textos ni estados. Dos tonos:
+       · gold      #E3B341 → sobre fondos oscuros o terracota (el pin del mapa).
+         9,70:1 sobre black; 2,89:1 sobre terracota (en el pin el círculo lleva
+         además su borde).
+       · gold-deep #A07A14 → sobre fondos claros (modal, ficha, panel). Misma
+         familia (tono 44°), 3,78:1 sobre paper, 3,97:1 sobre blanco y 3,14:1
+         sobre mist: supera el 3:1 de WCAG 1.4.11 para un ícono. */
+  --color-gold: #E3B341;
+  --color-gold-deep: #A07A14;
   --color-whatsapp: #25D366;
   --color-whatsapp-hover: #1EBE57;
   --color-success: #2D6A4F;
@@ -216,6 +226,7 @@ body {
   --pin-border: #a0522d;
   --pin-fg: #fbf9f6; /* paper */
   --pin-fav: #fbf9f6; /* color del corazón de favorito (contrasta con el fondo) */
+  --pin-star: #e3b341; /* gold — estrella de destacada */
   --pin-bw: 1.5px;
   position: absolute;
   left: 0;
@@ -270,7 +281,12 @@ body {
     background-color 120ms ease-out,
     border-color 120ms ease-out;
 }
-/* Badge de destacada (★) — esquina superior IZQUIERDA */
+/* Badge de destacada (★) — esquina superior IZQUIERDA. Mismo tratamiento que
+   el corazón de favorito, espejado: el círculo hereda fondo y borde del pin y
+   la estrella usa --pin-star (dorado; terracota sobre el stone del visitado).
+   ⚠ La estrella es un SVG (STAR_SVG en PropertyMarker.tsx), NO el carácter ★:
+   DM Sans no cubre U+2605 y cada dispositivo lo dibujaba con otra fuente, con
+   otra forma y otro centrado. */
 .marka-pin__star {
   position: absolute;
   top: -7px;
@@ -280,13 +296,15 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #fbf9f6; /* paper — resalta sobre el pin terracota */
-  color: #a0522d; /* terracota */
-  border: 1.5px solid #a0522d;
+  background: var(--pin-bg);
+  border: var(--pin-bw) solid var(--pin-border);
   border-radius: 50%;
-  font-size: 9px;
-  font-weight: 700;
-  line-height: 1;
+  color: var(--pin-star);
+}
+.marka-pin__star svg {
+  width: 9px;
+  height: 9px;
+  display: block;
 }
 /* Indicador de favorito (♥) — esquina superior DERECHA. Capa encima, no
    reemplaza el fondo. El badge hereda el color del pin (se ve "pegado" a él)
@@ -334,6 +352,7 @@ body {
   --pin-border: #4e4a46; /* graphite — borde definido */
   --pin-fg: #4e4a46; /* graphite */
   --pin-fav: #a0522d; /* terracota — resalta sobre el stone */
+  --pin-star: #a0522d; /* terracota — el dorado no se ve sobre stone (1,08:1) */
   box-shadow: 0 2px 6px -3px rgba(17, 17, 17, 0.18);
 }
 /* Activa (seleccionada) — negro, para distinguirse del terracota normal.
@@ -348,10 +367,6 @@ body {
   box-shadow:
     0 8px 18px -4px rgba(17, 17, 17, 0.45),
     0 3px 6px -2px rgba(17, 17, 17, 0.22);
-}
-.marka-pin--active .marka-pin__star {
-  background: #fbf9f6;
-  color: #a0522d;
 }
 
 /* ─── Clusters ──────────────────────────────────────────────── */

@@ -11,6 +11,7 @@ import {
 import {
   PROPERTY_TYPE_LABELS,
   OPERATION_TYPE_LABELS,
+  FEATURED_PROPERTY_LABEL,
 } from "@/lib/utils/labels";
 import { cn } from "@/lib/utils";
 import type { OperationType, Property } from "@/types";
@@ -149,7 +150,7 @@ export function PropertyCard({
         {/* Badge "Destacada" — esquina superior derecha */}
         {property.is_featured && (
           <span className="absolute top-2.5 right-2.5 rounded-sm bg-terracota px-2 py-1 font-sans text-[11px] font-semibold uppercase tracking-wide text-paper">
-            Destacada
+            {FEATURED_PROPERTY_LABEL}
           </span>
         )}
       </div>

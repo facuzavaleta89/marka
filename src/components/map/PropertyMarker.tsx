@@ -18,6 +18,11 @@ interface PinState {
 
 // Corazón relleno (lucide Heart) para el indicador de favorito. fill heredado
 // del color del badge (var(--pin-fav)) vía currentColor.
+// Estrella rellena (lucide Star) para el badge de destacada. Mismo patrón que el
+// corazón: SVG con fill currentColor, así el color sale de var(--pin-star). No
+// el carácter ★: DM Sans no lo cubre y cada dispositivo lo dibujaba distinto.
+const STAR_SVG = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></svg>`;
+
 const HEART_SVG = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>`;
 
 // ─── Tamaño y ancla del ícono ─────────────────────────────────
@@ -43,7 +48,7 @@ function pinHtml(
 
   // ★ solo si es destacada; ♥ siempre presente (oculto por CSS salvo .marka-pin--fav)
   // para poder mostrarlo/ocultarlo en vivo sin recrear el marker.
-  const star = isFeatured ? `<span class="marka-pin__star">★</span>` : "";
+  const star = isFeatured ? `<span class="marka-pin__star">${STAR_SVG}</span>` : "";
   const fav = `<span class="marka-pin__fav">${HEART_SVG}</span>`;
 
   return `<div class="${classes.join(" ")}">

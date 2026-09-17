@@ -23,7 +23,9 @@ import {
   OPERATION_TYPE_LABELS,
   AMENITY_LABELS,
   RENT_REQUIREMENT_LABELS,
+  FEATURED_PROPERTY_LABEL,
 } from "@/lib/utils/labels";
+import { FeaturedStarIcon } from "@/components/properties/FeaturedStarIcon";
 
 // ─── Página pública de una propiedad ──────────────────────────
 //
@@ -223,7 +225,10 @@ export default async function PropertyPage({
             </span>
           ))}
           {property.is_featured && (
-            <span className="ml-2 text-terracota">★ Destacada</span>
+            <span className="ml-2 inline-flex items-center gap-1 align-middle text-terracota">
+              <FeaturedStarIcon className="size-3" />
+              {FEATURED_PROPERTY_LABEL}
+            </span>
           )}
         </p>
 

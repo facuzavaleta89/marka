@@ -238,7 +238,17 @@ export async function markAsSoldAction(id: string): Promise<ActionResult> {
     .update({ status: "sold" })
     .eq("id", id);
 
-  if (dbError) return { error: "No se pudo marcar la propiedad como vendida" };
+  // Traducido: un rechazo de la base no puede leerse como un texto genérico. El
+  // mensaje de siempre queda como fallback.
+  if (dbError) {
+    return {
+      error: translatePropertyWriteError(
+        dbError,
+        "No se pudo marcar la propiedad como vendida",
+        "No se pudo marcar la propiedad como vendida"
+      ),
+    };
+  }
   revalidatePath("/dashboard/propiedades");
 }
 
@@ -251,7 +261,65 @@ export async function markAsRentedAction(id: string): Promise<ActionResult> {
     .update({ status: "rented" })
     .eq("id", id);
 
-  if (dbError) return { error: "No se pudo marcar la propiedad como alquilada" };
+  if (dbError) {
+    return {
+      error: translatePropertyWriteError(
+        dbError,
+        "No se pudo marcar la propiedad como alquilada",
+        "No se pudo marcar la propiedad como alquilada"
+      ),
+    };
+  }
+  revalidatePath("/dashboard/propiedades");
+}
+
+// Enciende o apaga la estrella de destacada de UNA propiedad, desde el menú del
+// listado. Solo toca `is_featured`.
+//
+// Mismo reparto de permisos que las acciones de estado (authorizePropertyAccess):
+// el dueño escribe con su sesión; el admin de la agencia, con service role.
+//
+// Al ENCENDER se verifica el cupo antes de escribir, sobre la agencia de la
+// PROPIEDAD (el cupo es por agencia) y con el mismo conteo que el trigger
+// (getFeaturedUsage). La base sigue siendo la barrera real: trg_featured_quota
+// rechaza con MKF01, que translatePropertyWriteError traduce. Apagar no se
+// controla nunca. Una vendida o alquilada no se destaca: la base le apaga la
+// estrella igual, y el menú no ofrece la opción en esos estados.
+export async function setPropertyFeaturedAction(
+  id: string,
+  featured: boolean
+): Promise<ActionResult> {
+  const { ok, error, supabase, db } = await authorizePropertyAccess(id);
+  if (!ok) return { error: error! };
+
+  if (featured === true) {
+    const { data: prop } = await supabase
+      .from("properties")
+      .select("agency_id, is_featured")
+      .eq("id", id)
+      .single();
+    if (!prop) return { error: "Propiedad no encontrada" };
+
+    if (
+      prop.is_featured !== true &&
+      (await featuredQuotaBlocks(supabase, prop.agency_id))
+    ) {
+      return { error: FEATURED_QUOTA_FULL_MESSAGE };
+    }
+  }
+
+  const { error: dbError } = await db
+    .from("properties")
+    .update({ is_featured: featured === true })
+    .eq("id", id);
+
+  if (dbError) {
+    const fallback = featured
+      ? "No se pudo destacar la propiedad"
+      : "No se pudo quitar la destacada";
+    return { error: translatePropertyWriteError(dbError, fallback, fallback) };
+  }
+
   revalidatePath("/dashboard/propiedades");
 }
 
