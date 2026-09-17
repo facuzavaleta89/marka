@@ -36,6 +36,19 @@ El diseño comunica que esta es una herramienta seria para profesionales del rea
 | `terracota-hover` | `#8B4526` | Hover sobre elementos terracota |
 | `terracota-subtle` | `#F5EDE8` | Backgrounds de alertas, chips seleccionados, highlight suave |
 
+### Dorado: exclusivo de la propiedad destacada
+
+Terracota sigue siendo el **único acento**. El dorado **no es un segundo acento**: se usa **solo** para la estrella que marca una propiedad destacada, nunca en CTAs, textos ni estados.
+
+| Token | Hex | Cuándo |
+|---|---|---|
+| `gold` | `#E3B341` | Estrella sobre fondos oscuros o terracota: el pin del mapa (9,70:1 sobre black; 2,89:1 sobre terracota, dentro de su círculo con borde) |
+| `gold-deep` | `#A07A14` | Estrella sobre fondos claros: detalle (modal) y ficha pública (3,78:1 sobre paper, 3,97:1 sobre blanco, 3,14:1 sobre mist) |
+
+**El dorado es para lo que ve el VISITANTE** (pin, modal, ficha pública). **En el panel la estrella no es dorada:** hereda el color del texto que la acompaña (`text-current`): negro junto al título en el listado, y el color de la opción en el menú de tres puntos, también en foco y deshabilitada.
+
+La estrella es siempre un **SVG** (lucide `Star` rellena: `FeaturedStarIcon`, o `STAR_SVG` en el pin), nunca el carácter `★`: DM Sans no lo cubre y cada dispositivo lo dibujaba distinto.
+
 ### Colors funcionales (no modificar)
 
 | Token | Hex | Uso |
@@ -60,6 +73,10 @@ El diseño comunica que esta es una herramienta seria para profesionales del rea
   --color-terracota:        #A0522D;
   --color-terracota-hover:  #8B4526;
   --color-terracota-subtle: #F5EDE8;
+
+  /* Exclusivo de la estrella de destacada (ver "Dorado") */
+  --color-gold:             #E3B341;
+  --color-gold-deep:        #A07A14;
 
   /* Funcionales */
   --color-whatsapp:       #25D366;
@@ -282,15 +299,15 @@ Atenuado pero claramente un pin (no parece sin estilo). Persiste en localStorage
 
 **Propiedad destacada (`is_featured: true`):**
 - Mantiene el fondo terracota normal
-- Badge `★` en la esquina superior **izquierda** del pin
 - Anillo `paper` de 2px que la diferencia
+- Badge de estrella en la esquina superior **izquierda**, con el **mismo tratamiento que el corazón** espejado: círculo de 16px que hereda fondo y borde del pin, estrella SVG de 9px centrada. Color `gold` (`--pin-star`); `terracota` sobre el stone del visitado, donde el dorado no se ve (1,08:1)
 
 **Propiedad favorita (`useFavorites`):**
 - Indicador agregado: corazón pequeño en la esquina superior **derecha** del pin (capa encima, no cambia el fondo)
 - Color del corazón con contraste según el fondo: `paper` sobre terracota/negro, `terracota` sobre el stone del visitado
 - Se actualiza en vivo: marcar/desmarcar el favorito desde el modal o una card lo refleja al instante en el pin (sin recrear markers)
 
-**Coexistencia de estados:** una propiedad puede ser favorita Y visitada Y/O destacada a la vez. El color de fondo lo determina el estado (normal/visitado/activo); los badges (★ izquierda, ♥ derecha) son capas encima que conviven sin encimarse.
+**Coexistencia de estados:** una propiedad puede ser favorita Y visitada Y/O destacada a la vez. El color de fondo lo determina el estado (normal/visitado/activo); los badges (★ izquierda, ♥ derecha) son capas encima que conviven sin encimarse, y los dos toman el fondo y el borde del pin.
 
 | Combinación | Fondo | Badges |
 |---|---|---|
@@ -298,8 +315,11 @@ Atenuado pero claramente un pin (no parece sin estilo). Persiste en localStorage
 | visitado | stone | — |
 | favorito | terracota | ♥ paper |
 | visitado + favorito | stone | ♥ terracota |
-| destacado + favorito | terracota | ★ izq + ♥ der |
+| destacado | terracota (anillo paper) | ★ gold |
+| destacado + favorito | terracota (anillo paper) | ★ gold izq + ♥ paper der |
+| visitado + destacado | stone | ★ terracota |
 | activo + favorito | black | ♥ paper |
+| activo + destacado | black | ★ gold |
 
 **Formato de precio en el pin:**
 - USD < 1.000.000 → `USD 250k`
@@ -470,7 +490,7 @@ Hay **DOS familias de campo, y las dos son deliberadas**:
 
 | Tipo | Background | Texto | Uso |
 |---|---|---|---|
-| Destacado | `terracota` | `paper` | Propiedad con `is_featured: true` |
+| Destacado | `terracota` | `paper` | Badge de texto "Destacada" de la tarjeta pública (`PropertyCard`). En el detalle y la ficha la marca es la **estrella** `gold-deep` + el texto "Destacada"; en el listado del panel, la estrella en el color del texto (ver §2, "Dorado") |
 | Tipo operación | `mist` | `graphite` | "Venta", "Alquiler" |
 | Amenity | `mist` | `graphite` | Chips en el modal |
 | Amenity activo | `terracota-subtle` | `terracota` | Amenity seleccionado en filtros |

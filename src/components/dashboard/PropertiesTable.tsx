@@ -10,8 +10,10 @@ import {
   Play,
   CheckCircle2,
   KeyRound,
+  RotateCcw,
   Trash2,
 } from "lucide-react";
+import { FeaturedStarIcon } from "@/components/properties/FeaturedStarIcon";
 import { ErrorBanner } from "@/components/feedback/ErrorBanner";
 import {
   DropdownMenu,
@@ -36,6 +38,7 @@ import {
   OPERATION_TYPE_LABELS,
   PROPERTY_STATUS_LABELS,
   FEATURED_PROPERTY_LABEL,
+  FEATURED_QUOTA_FULL_SHORT,
 } from "@/lib/utils/labels";
 import {
   pausePropertyAction,
@@ -43,9 +46,15 @@ import {
   markAsSoldAction,
   markAsRentedAction,
   deletePropertyAction,
+  setPropertyFeaturedAction,
 } from "@/app/(agent)/dashboard/propiedades/actions";
 import { getActiveOperations } from "@/lib/utils/propertyOperations";
-import type { Property, PropertyImage, PropertyStatus } from "@/types";
+import type {
+  FeaturedUsage,
+  Property,
+  PropertyImage,
+  PropertyStatus,
+} from "@/types";
 
 // Operaciones activas de una fila, en orden de prioridad. Alias local para no
 // repetir el import largo en cada celda.
@@ -92,7 +101,14 @@ interface PropertiesTableProps {
   // lleno), ya resuelto en el server. Si viene, el estado vacío explica en vez
   // de invitar a un formulario que la base va a rechazar.
   publishBlockMessage?: string;
+  // Uso del cupo de destacadas de la AGENCIA (getFeaturedUsage). Gobierna las
+  // opciones "Destacar" / "Quitar destacada" del menú: sin cupo (limit 0) no se
+  // ofrecen.
+  featuredUsage?: Pick<FeaturedUsage, "limit" | "used">;
 }
+
+// Estados de cierre que se confirman con un diálogo.
+type ClosedStatus = Extract<PropertyStatus, "sold" | "rented">;
 
 // ─── Constantes ──────────────────────────────────────────────
 
@@ -108,14 +124,19 @@ const STATUS_CLASSNAME: Record<PropertyStatus, string> = {
 
 // ─── Sub-componentes ──────────────────────────────────────────
 
-// Estrella de propiedad destacada, junto al título. Mismo signo y mismo color
-// que el pin destacado del mapa y el "★ Destacada" del detalle: la agencia
-// reconoce acá las que ocupan su cupo. El texto accesible va aparte (sr-only)
-// porque la estrella sola no le dice nada a un lector de pantalla.
+// Estrella de propiedad destacada, junto al título. Mismo signo que el pin
+// destacado del mapa y el "Destacada" del detalle, pero NO el mismo color: en el
+// panel la estrella hereda el color del texto (`text-current`, acá el negro del
+// título). El dorado queda para lo que ve el visitante (pin, modal, ficha). El
+// texto accesible va aparte (sr-only) porque la estrella sola no le dice nada a
+// un lector de pantalla.
 function FeaturedMark() {
   return (
-    <span className="mr-1 text-terracota" title={FEATURED_PROPERTY_LABEL}>
-      <span aria-hidden="true">★</span>
+    <span
+      className="mr-1 inline-flex align-[-2px]"
+      title={FEATURED_PROPERTY_LABEL}
+    >
+      <FeaturedStarIcon className="text-current" />
       <span className="sr-only">{FEATURED_PROPERTY_LABEL}</span>
     </span>
   );
@@ -166,10 +187,17 @@ export function PropertiesTable({
   properties,
   showAgent = false,
   publishBlockMessage,
+  featuredUsage,
 }: PropertiesTableProps) {
   const [toDelete, setToDelete] = useState<{
     id: string;
     title: string;
+  } | null>(null);
+  // Propiedad a marcar como vendida o alquilada, esperando confirmación.
+  const [toClose, setToClose] = useState<{
+    id: string;
+    title: string;
+    status: ClosedStatus;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -191,6 +219,11 @@ export function PropertiesTable({
   const handleDelete = (id: string) => {
     setToDelete(null);
     handleAction(id, deletePropertyAction);
+  };
+
+  const handleClose = (id: string, status: ClosedStatus) => {
+    setToClose(null);
+    handleAction(id, status === "sold" ? markAsSoldAction : markAsRentedAction);
   };
 
   if (properties.length === 0) {
@@ -343,6 +376,10 @@ export function PropertiesTable({
                       loading={loading}
                       onAction={handleAction}
                       onDeleteRequest={(id, title) => setToDelete({ id, title })}
+                      onCloseRequest={(id, title, status) =>
+                        setToClose({ id, title, status })
+                      }
+                      featuredUsage={featuredUsage}
                     />
                   </td>
                 </tr>
@@ -394,6 +431,10 @@ export function PropertiesTable({
                     loading={loading}
                     onAction={handleAction}
                     onDeleteRequest={(id, title) => setToDelete({ id, title })}
+                    onCloseRequest={(id, title, status) =>
+                      setToClose({ id, title, status })
+                    }
+                    featuredUsage={featuredUsage}
                   />
                 </div>
               </div>
@@ -444,6 +485,43 @@ export function PropertiesTable({
               className="bg-error text-paper hover:bg-error/90 border-0"
             >
               Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* AlertDialog de confirmación de vendida / alquilada. Mismo patrón que el
+          de eliminar, pero con el tratamiento de acción principal: no destruye
+          nada y se puede deshacer desde el mismo menú ("Volver a publicar"). */}
+      <AlertDialog
+        open={!!toClose}
+        onOpenChange={(open) => !open && setToClose(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {toClose?.status === "rented"
+                ? "¿Marcar como alquilada?"
+                : "¿Marcar como vendida?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Vas a marcar{" "}
+              <strong className="text-black">&quot;{toClose?.title}&quot;</strong>{" "}
+              como {toClose?.status === "rented" ? "alquilada" : "vendida"}. Deja
+              de verse en el mapa. Si estaba destacada, pierde la estrella y
+              libera un lugar del cupo. Podés volver a publicarla desde este mismo
+              menú.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => toClose && handleClose(toClose.id, toClose.status)}
+              className="bg-terracota text-paper hover:bg-terracota-hover border-0"
+            >
+              {toClose?.status === "rented"
+                ? "Marcar como alquilada"
+                : "Marcar como vendida"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -505,6 +583,8 @@ function ActionMenu({
   loading,
   onAction,
   onDeleteRequest,
+  onCloseRequest,
+  featuredUsage,
 }: {
   property: PropertyRow;
   loading: boolean;
@@ -513,27 +593,41 @@ function ActionMenu({
     action: (id: string) => Promise<{ error: string } | undefined>
   ) => void;
   onDeleteRequest: (id: string, title: string) => void;
+  onCloseRequest: (id: string, title: string, status: ClosedStatus) => void;
+  featuredUsage?: Pick<FeaturedUsage, "limit" | "used">;
 }) {
   // Una propiedad puede estar en venta Y en alquiler a la vez, así que puede
   // ofrecer las dos opciones de cierre. El STATUS sigue siendo uno solo: cerrar
   // cualquiera de las operaciones cierra la ficha entera.
   const isVenta = property.for_sale;
   const isAlquiler = property.for_rent || property.for_temp_rent;
-  const canToggle =
-    property.status === "active" || property.status === "paused";
+  // Publicada o pausada: se puede pausar/activar, destacar y cerrar.
+  const isOpen = property.status === "active" || property.status === "paused";
+  // Vendida o alquilada: solo se puede volver a publicar (o editar/eliminar).
+  const isClosed = property.status === "sold" || property.status === "rented";
+
+  // Destacar desde el menú: solo con cupo en el plan y en propiedades abiertas.
+  // Con el cupo lleno, "Destacar" se muestra deshabilitada con el motivo; quitar
+  // la estrella siempre se puede.
+  const canFeature = (featuredUsage?.limit ?? 0) > 0 && isOpen;
+  const featuredQuotaFull =
+    !!featuredUsage && featuredUsage.used >= featuredUsage.limit;
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
+        {/* 36px de dibujo; el pseudo-elemento extiende el área táctil a 44px
+            (DESIGN §6), mismo recurso que ui/checkbox.tsx. `relative` es lo que
+            ancla el `after:absolute`. */}
         <button
           disabled={loading}
-          className="inline-flex size-9 items-center justify-center rounded-md text-graphite hover:text-black hover:bg-mist transition-colors disabled:opacity-40"
+          className="relative inline-flex size-9 items-center justify-center rounded-md text-graphite hover:text-black hover:bg-mist transition-colors disabled:opacity-40 after:absolute after:-inset-1"
           aria-label="Acciones"
         >
           <MoreHorizontal size={16} />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-52">
+      <DropdownMenuContent align="end" className="w-56">
         {/* Editar */}
         <DropdownMenuItem asChild>
           <Link
@@ -546,7 +640,7 @@ function ActionMenu({
         </DropdownMenuItem>
 
         {/* Pausar / Activar */}
-        {canToggle && (
+        {isOpen && (
           <>
             {property.status === "active" ? (
               <DropdownMenuItem
@@ -568,20 +662,67 @@ function ActionMenu({
           </>
         )}
 
-        {/* Marcar como vendida / alquilada */}
-        {(isVenta || isAlquiler) && <DropdownMenuSeparator />}
-        {isVenta && (
+        {/* Volver a publicar — solo vendidas o alquiladas. Sin diálogo: no
+            destruye nada. La base controla el límite de propiedades
+            (check_property_limit) y el error ya llega traducido. La estrella de
+            destacada no vuelve sola: la base la apagó al cerrar. */}
+        {isClosed && (
           <DropdownMenuItem
-            onSelect={() => onAction(property.id, markAsSoldAction)}
+            onSelect={() => onAction(property.id, activatePropertyAction)}
+            className="flex items-center gap-2"
+          >
+            <RotateCcw size={14} />
+            Volver a publicar
+          </DropdownMenuItem>
+        )}
+
+        {/* Destacar / Quitar destacada */}
+        {canFeature &&
+          (property.is_featured ? (
+            <DropdownMenuItem
+              onSelect={() =>
+                onAction(property.id, (id) => setPropertyFeaturedAction(id, false))
+              }
+              className="flex items-center gap-2"
+            >
+              {/* Color heredado de la opción (reposo, foco y deshabilitada). */}
+              <FeaturedStarIcon className="text-current" />
+              Quitar destacada
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem
+              disabled={featuredQuotaFull}
+              onSelect={() =>
+                onAction(property.id, (id) => setPropertyFeaturedAction(id, true))
+              }
+              className="flex items-center gap-2"
+            >
+              {/* Color heredado de la opción (reposo, foco y deshabilitada). */}
+              <FeaturedStarIcon className="text-current" />
+              Destacar
+              {featuredQuotaFull && (
+                <span className="ml-auto text-[10px] text-graphite">
+                  {FEATURED_QUOTA_FULL_SHORT}
+                </span>
+              )}
+            </DropdownMenuItem>
+          ))}
+
+        {/* Marcar como vendida / alquilada — solo propiedades abiertas, y con
+            confirmación (el diálogo vive en PropertiesTable). */}
+        {isOpen && (isVenta || isAlquiler) && <DropdownMenuSeparator />}
+        {isOpen && isVenta && (
+          <DropdownMenuItem
+            onSelect={() => onCloseRequest(property.id, property.title, "sold")}
             className="flex items-center gap-2"
           >
             <CheckCircle2 size={14} />
             Marcar como vendida
           </DropdownMenuItem>
         )}
-        {isAlquiler && (
+        {isOpen && isAlquiler && (
           <DropdownMenuItem
-            onSelect={() => onAction(property.id, markAsRentedAction)}
+            onSelect={() => onCloseRequest(property.id, property.title, "rented")}
             className="flex items-center gap-2"
           >
             <KeyRound size={14} />
