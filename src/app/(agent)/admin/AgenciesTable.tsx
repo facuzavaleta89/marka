@@ -80,6 +80,22 @@ export interface AgencySubscription {
   // PRECARGAR el campo: ahí el vacío borra, así que el dueño tiene que ver qué
   // hay antes de decidir si lo conserva.
   current_period_end: string | null;
+  // ─── Lo que la agencia TIENE hoy, no lo que su plan debería darle ───
+  //
+  // ⚠ Son los valores REALES de la fila, y existen para que el panel de cambio
+  // de plan arme el "antes" con ellos en vez de con PLANS[plan]. El catálogo
+  // describe lo que un plan incluye; la fila describe lo que esta agencia
+  // recibió cuando se lo activaron. Coinciden mientras nadie toque ninguno de
+  // los dos, y dejan de coincidir en dos casos reales: un UPDATE a mano en el
+  // SQL Editor —que es como se opera esta base— y un cambio de los números de
+  // PLANS, que NO reescribe ninguna fila.
+  //
+  // El "después" sí sale del catálogo, y corresponde: es lo que el plan destino
+  // va a escribir (changePlanAction copia PLANS[plan] tal cual).
+  property_limit: number;
+  featured_limit: number;
+  has_white_label: boolean;
+  has_metrics: boolean;
 }
 
 // Fila del listado de agencias. La agencia es la entidad principal (la query
@@ -752,6 +768,13 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
   const [toCancelPlan, setToCancelPlan] = useState<AgencyRow | null>(null);
   const [toSuspend, setToSuspend] = useState<AgencyRow | null>(null);
   const [toRestore, setToRestore] = useState<AgencyRow | null>(null);
+  // Cupo de destacadas que el plan guardado recupera al reactivarse (ver el
+  // diálogo, más abajo). Del CATÁLOGO y no de la fila: la baja dejó el cupo de
+  // la fila en 0, así que no sirve de memoria — es la misma fuente que usa
+  // restoreSubscriptionAction para reponerlo.
+  const restorableFeaturedLimit = toRestore?.subscription
+    ? PLANS[toRestore.subscription.plan].featuredLimit
+    : 0;
   // Paneles inline: los dos piden que el dueño ESCRIBA algo (el motivo del
   // rechazo, la fecha de vencimiento opcional, el nombre para confirmar el
   // borrado), así que no son confirmaciones sí/no y no van en el AlertDialog.
@@ -834,22 +857,22 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
             Aprobación
           </span>
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-          {APPROVAL_FILTERS.map(({ key, label }) => (
-            <label
-              key={key}
-              htmlFor={`filter-approval-${key}`}
-              className="flex items-center gap-2 cursor-pointer"
-            >
-              <Checkbox
-                id={`filter-approval-${key}`}
-                checked={activeApproval[key]}
-                onCheckedChange={() =>
-                  setActiveApproval((prev) => ({ ...prev, [key]: !prev[key] }))
-                }
-              />
-              <span className="font-sans text-sm text-black">{label}</span>
-            </label>
-          ))}
+            {APPROVAL_FILTERS.map(({ key, label }) => (
+              <label
+                key={key}
+                htmlFor={`filter-approval-${key}`}
+                className="flex items-center gap-2 cursor-pointer"
+              >
+                <Checkbox
+                  id={`filter-approval-${key}`}
+                  checked={activeApproval[key]}
+                  onCheckedChange={() =>
+                    setActiveApproval((prev) => ({ ...prev, [key]: !prev[key] }))
+                  }
+                />
+                <span className="font-sans text-sm text-black">{label}</span>
+              </label>
+            ))}
           </div>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-5">
@@ -857,22 +880,22 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
             Suscripción
           </span>
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-          {PLAN_FILTERS.map(({ key, label }) => (
-            <label
-              key={key}
-              htmlFor={`filter-plan-${key}`}
-              className="flex items-center gap-2 cursor-pointer"
-            >
-              <Checkbox
-                id={`filter-plan-${key}`}
-                checked={activePlan[key]}
-                onCheckedChange={() =>
-                  setActivePlan((prev) => ({ ...prev, [key]: !prev[key] }))
-                }
-              />
-              <span className="font-sans text-sm text-black">{label}</span>
-            </label>
-          ))}
+            {PLAN_FILTERS.map(({ key, label }) => (
+              <label
+                key={key}
+                htmlFor={`filter-plan-${key}`}
+                className="flex items-center gap-2 cursor-pointer"
+              >
+                <Checkbox
+                  id={`filter-plan-${key}`}
+                  checked={activePlan[key]}
+                  onCheckedChange={() =>
+                    setActivePlan((prev) => ({ ...prev, [key]: !prev[key] }))
+                  }
+                />
+                <span className="font-sans text-sm text-black">{label}</span>
+              </label>
+            ))}
           </div>
         </div>
       </div>
@@ -1308,6 +1331,20 @@ export function AgenciesTable({ rows }: AgenciesTableProps) {
               </strong>
               , con los beneficios que ese plan incluye. Sus propiedades vuelven
               a verse en el mapa y puede publicar de nuevo.
+              {/* ⚠ Las destacadas son la ÚNICA cosa que no vuelve sola, y el
+                  dueño tiene que saberlo ANTES de confirmar: la baja puso el
+                  cupo en 0 y eso apagó todas las estrellas de la agencia
+                  (trg_clear_featured_on_zero_quota). Reactivar repone el cupo,
+                  no las estrellas — el código de cancelSubscriptionAction ya lo
+                  decía, y este diálogo era el único lugar donde no. */}
+              {restorableFeaturedLimit > 0 && (
+                <span className="mt-2 block">
+                  Las propiedades que tenía destacadas <strong className="text-black">no
+                  vuelven a destacarse solas</strong>: la baja apagó las estrellas. El
+                  plan recupera su cupo de {restorableFeaturedLimit}, pero la agencia
+                  tiene que volver a marcar cuáles quiere destacar.
+                </span>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1764,9 +1801,19 @@ function DeleteAgencyPanel({
 // pierde) para que nadie lo toque sin saber qué cambia.
 // Las destacadas NO van en esta lista: son un CUPO, no un booleano, y su cambio
 // se muestra aparte (ver FeaturedQuotaChange, abajo).
+//
+// ⚠ CADA ENTITLEMENT NOMBRA DOS CAMPOS, Y NO SON INTERCAMBIABLES: `row` es la
+// columna real de la suscripción (lo que la agencia TIENE hoy) y `plan` es la
+// del catálogo (lo que el plan destino le VA a dar). El "antes" sale de la fila
+// y el "después" del catálogo; antes los dos salían del catálogo, o sea que el
+// panel mostraba lo que ese plan debería incluir y no lo que esa agencia tenía.
 const ENTITLEMENTS = [
-  { key: "whiteLabel", label: "Sitio propio (white-label)" },
-  { key: "metrics", label: "Métricas" },
+  {
+    row: "has_white_label",
+    plan: "whiteLabel",
+    label: "Sitio propio (white-label)",
+  },
+  { row: "has_metrics", plan: "metrics", label: "Métricas" },
 ] as const;
 
 // Cambio del cupo de destacadas entre el plan actual y el destino.
@@ -1816,6 +1863,23 @@ function ChangePlanPanel({
   const currentPlan = row.subscription?.plan ?? "free";
   const used = row.occupied_properties;
 
+  // ── El "ANTES" de cada consecuencia, de la FILA REAL ────────
+  //
+  // Sin fila de suscripción se cae al catálogo de `free`, que es exactamente lo
+  // que los DEFAULT de la tabla habrían escrito: es el mismo criterio que
+  // getPlanUsage para el resto del panel, y no inventa un estado que no existe.
+  const currentLimit =
+    row.subscription?.property_limit ?? PLANS.free.propertyLimit;
+  const currentFeaturedLimit =
+    row.subscription?.featured_limit ?? PLANS.free.featuredLimit;
+  const currentEntitlements: Record<
+    (typeof ENTITLEMENTS)[number]["row"],
+    boolean
+  > = {
+    has_white_label: row.subscription?.has_white_label ?? PLANS.free.whiteLabel,
+    has_metrics: row.subscription?.has_metrics ?? PLANS.free.metrics,
+  };
+
   const [target, setTarget] = useState<SubscriptionPlan | null>(null);
   // Precargado con el vencimiento vigente: acá el vacío BORRA, así que el dueño
   // tiene que ver qué hay antes de decidir si lo conserva, lo cambia o lo saca.
@@ -1851,13 +1915,20 @@ function ChangePlanPanel({
           <p className="mt-1 font-sans text-xs text-graphite">
             Hoy tiene el plan{" "}
             <strong className="text-black">{PLANS[currentPlan].name}</strong> y
-            usa {used} de {PLANS[currentPlan].propertyLimit} propiedades. El
-            cambio se aplica en el momento, sin pasar por una solicitud.
+            usa {used} de {currentLimit} propiedades. El cambio se aplica en el
+            momento, sin pasar por una solicitud.
           </p>
         </div>
+        {/* ⚠ `type="button"` es load-bearing ACÁ: este panel contiene controles
+            de formulario (los radios del plan destino y el <input type="date">
+            del vencimiento), así que un <button> sin tipo es un submit a la
+            espera de que alguien envuelva el panel en un <form>. El
+            `after:absolute` lleva el área táctil de los 26px que dibuja
+            (18 del ícono + `p-1`) a los 44 de DESIGN §6. */}
         <button
+          type="button"
           onClick={onCancel}
-          className="p-1 text-graphite hover:text-black transition-colors shrink-0"
+          className="relative p-1 text-graphite hover:text-black transition-colors shrink-0 after:absolute after:-inset-[9px]"
           aria-label="Cerrar"
         >
           <X size={18} />
@@ -1958,15 +2029,18 @@ function ChangePlanPanel({
               (hoy usa {used}).
             </li>
             <FeaturedQuotaChange
-              before={PLANS[currentPlan].featuredLimit}
+              before={currentFeaturedLimit}
               after={targetInfo.featuredLimit}
             />
-            {ENTITLEMENTS.map(({ key, label }) => {
-              const before = PLANS[currentPlan][key];
-              const after = targetInfo[key];
+            {ENTITLEMENTS.map(({ row: rowKey, plan: planKey, label }) => {
+              const before = currentEntitlements[rowKey];
+              const after = targetInfo[planKey];
               if (before === after) return null;
               return (
-                <li key={key} className={after ? "text-success" : "text-error"}>
+                <li
+                  key={rowKey}
+                  className={after ? "text-success" : "text-error"}
+                >
                   {after ? "Gana" : "Pierde"}: {label}
                 </li>
               );

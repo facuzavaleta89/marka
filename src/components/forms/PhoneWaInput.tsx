@@ -136,8 +136,29 @@ export function PhoneWaInput({
  * ⚠ Tono `warning` y no `error`: no falló nada, el número está guardado y se
  * sigue usando. Y dice explícitamente que NO se cambió, porque es lo primero
  * que la persona necesita saber al ver su número marcado.
+ *
+ * ⚠⚠ `target` ES OBLIGATORIA, Y NO ES UN DETALLE DE REDACCIÓN: los dos números
+ * que la app guarda NO hacen lo mismo.
+ *   · "agent"  → `agents.phone_wa`. Es el número con el que `generateWaUrl`
+ *     arma el enlace de WhatsApp de CADA propiedad (PropertyModal y
+ *     PropertyContact, los dos caminos de contacto). Si está mal, la consulta
+ *     no llega: por eso el aviso lo dice.
+ *   · "agency" → `agencies.phone_wa`. Hoy NINGÚN camino de la app lo usa para
+ *     contactar (medido: los dos leen el del agente), así que decirle a la
+ *     agencia que "el enlace puede no llegar a destino" es alarmarla por algo
+ *     que no pasa. El aviso se queda con lo único cierto: el formato no es el
+ *     esperado y no se lo tocamos.
+ *
+ * El día que la agencia se use como número de contacto —está abierto en
+ * PENDIENTES.md— este `target` es el único lugar que hay que tocar.
  */
-export function PhoneWaReviewNotice({ stored }: { stored: string }) {
+export function PhoneWaReviewNotice({
+  stored,
+  target,
+}: {
+  stored: string;
+  target: "agent" | "agency";
+}) {
   return (
     <Notice
       tone="warning"
@@ -147,8 +168,10 @@ export function PhoneWaReviewNotice({ stored }: { stored: string }) {
       <span className="block">
         El número guardado,{" "}
         <span className="font-medium text-black">{stored}</span>, no tiene el
-        formato de un celular argentino (+54 9, característica y número), así que
-        el enlace de WhatsApp puede no llegar a destino.
+        formato de un celular argentino (+54 9, característica y número)
+        {target === "agent"
+          ? ", así que el enlace de WhatsApp puede no llegar a destino."
+          : "."}
       </span>
       <span className="mt-1.5 block">
         No lo cambiamos por vos. Si está bien, dejalo como está; si no, borralo y

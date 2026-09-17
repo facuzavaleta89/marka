@@ -15,6 +15,7 @@ import { translateFormatCheckError } from "@/lib/utils/dbFormatErrors";
 import {
   RENT_REQUIREMENT_LABELS,
   FEATURED_QUOTA_FULL_MESSAGE,
+  PROPERTY_INVALID_DATA_MESSAGE,
 } from "@/lib/utils/labels";
 import {
   RENT_REQUIREMENTS_OTHER_MAX,
@@ -194,16 +195,61 @@ async function authorizePropertyAccess(id: string): Promise<{
   return { ok: false, error: "Propiedad no encontrada", supabase, db: supabase };
 }
 
+// Pausa una propiedad: la saca del mapa sin cerrarla ni perder nada.
+//
+// ⚠ SOLO DESDE 'active', Y EL CHEQUEO NO ES COSMÉTICO. El menú del listado
+// ofrece "Pausar" únicamente sobre una propiedad publicada, pero una server
+// action se invoca sin pasar por el render — la misma razón por la que /admin y
+// /register/plan revalidan todo del lado del servidor. Y sobre una propiedad
+// VENDIDA o ALQUILADA este UPDATE puede rebotar de verdad: check_property_limit()
+// dispara cuando la fila ENTRA al cupo (NEW en active/paused y OLD fuera), así
+// que 'sold' → 'paused' con el cupo lleno levanta "Límite de propiedades
+// alcanzado". Es un rechazo correcto con un mensaje incomprensible para quien
+// solo quiso pausar, así que directamente no se intenta.
+//
+// De 'paused' a 'paused' tampoco se escribe: no hay nada que cambiar.
 export async function pausePropertyAction(id: string): Promise<ActionResult> {
-  const { ok, error, db } = await authorizePropertyAccess(id);
+  const { ok, error, db, supabase } = await authorizePropertyAccess(id);
   if (!ok) return { error: error! };
+
+  // El status REAL, de la base y no del cliente. Se lee con el client de sesión
+  // (no con `db`): un admin es miembro de su agencia y la policy "Agency members
+  // read agency properties" ya lo deja leer esta fila.
+  const { data: current } = await supabase
+    .from("properties")
+    .select("status")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (!current) return { error: "Propiedad no encontrada" };
+  if (current.status !== "active") {
+    return {
+      error:
+        current.status === "paused"
+          ? "Esta propiedad ya está pausada."
+          : "Solo se puede pausar una propiedad publicada. Esta ya está cerrada: para sacarla del mapa no hace falta pausarla.",
+    };
+  }
 
   const { error: dbError } = await db
     .from("properties")
     .update({ status: "paused" })
     .eq("id", id);
 
-  if (dbError) return { error: "No se pudo pausar la propiedad" };
+  // Traducido, como las otras siete escrituras del archivo: un rechazo con
+  // motivo no puede leerse como un "no se pudo" genérico. El mensaje de siempre
+  // queda como fallback, y también como el del límite: una propiedad que ya
+  // estaba activa no puede chocar con el cupo al pausarse (ver arriba), así que
+  // hablarle de planes acá sería inventar un motivo.
+  if (dbError) {
+    return {
+      error: translatePropertyWriteError(
+        dbError,
+        "No se pudo pausar la propiedad",
+        "No se pudo pausar la propiedad"
+      ),
+    };
+  }
   revalidatePath("/dashboard/propiedades");
 }
 
@@ -418,7 +464,23 @@ export async function deletePropertyAction(id: string): Promise<ActionResult> {
   // Si la fila no se pudo borrar, NO se toca un solo archivo y se sale con el
   // error de siempre. Es exactamente el beneficio de este orden: la propiedad
   // queda intacta, con sus imágenes, y el agente puede reintentar.
-  if (dbError) return { error: "No se pudo eliminar la propiedad" };
+  // Traducido igual que el resto de las escrituras. Hoy ningún trigger ni
+  // ninguna FK puede frenar este DELETE —las dos que apuntan a `properties`
+  // (property_images y leads) son ON DELETE CASCADE, y los seis triggers de la
+  // tabla son BEFORE INSERT/UPDATE—, así que en la práctica solo llega acá un
+  // fallo de transporte o de RLS. Pasa por el traductor de todos modos: el día
+  // que una FK pase a RESTRICT o aparezca una tabla hija nueva, el motivo real
+  // tiene que poder salir en vez de quedar tapado. El mensaje de siempre es el
+  // fallback, y también el del límite: el cupo no interviene en un borrado.
+  if (dbError) {
+    return {
+      error: translatePropertyWriteError(
+        dbError,
+        "No se pudo eliminar la propiedad",
+        "No se pudo eliminar la propiedad"
+      ),
+    };
+  }
   revalidatePath("/dashboard/propiedades");
 
   // La propiedad ya no existe: a partir de acá nada puede romperse, solo
@@ -457,10 +519,24 @@ export async function deletePropertyAction(id: string): Promise<ActionResult> {
 // límite de tu plan" a alguien que no fue aprobado, o a alguien dado de baja, es
 // falso en los dos casos y lo manda a pagar un plan que no le destraba nada.
 //
-// ⚠ El último chequeo es un CAJÓN DE SASTRE: `code === "23514"` matchea
-// CUALQUIER check violation. Por eso los motivos específicos van ANTES; si se
-// agrega un trigger nuevo sobre properties, su rama va arriba de esa línea o se
-// va a reportar como límite de plan.
+// ⚠⚠ YA NO HAY CAJÓN DE SASTRE POR CÓDIGO, Y ESE ERA EL BUG. Hasta el 17 sep
+// 2026 la última rama era `code === "23514" || message.includes("Límite")`, o
+// sea que CUALQUIER check violation salía como "alcanzaste el límite de tu
+// plan". Y sobre `properties` hay CATORCE CHECK (medidos), todos de datos:
+// precio y moneda por operación (properties_<op>_price), al menos una operación
+// activa, el dominio de property_type y de status, la forma de los requisitos de
+// alquiler y location_source. Ninguno tiene nada que ver con el plan: un precio
+// en 0 o una moneda sin precio mandaban a la agencia a pagar un upgrade que no
+// la destrababa. Es la tercera vez que el proyecto tropieza con lo mismo
+// (CLAUDE.md → "antes de invitar a pagar más, verificar que pagar sea lo que
+// destraba").
+//
+// Ahora el límite de plan se reconoce POR SU TEXTO —"Límite de propiedades",
+// que es lo que levanta check_property_limit()— y todo otro 23514 sale como
+// dato inválido. Los dos matchers de texto que quedan (aprobación, suscripción,
+// límite) dependen del mensaje de las funciones de la base: si se edita el texto
+// de un trigger, hay que tocar este helper.
+//
 // `fallback` es el mensaje para cualquier otro error de base.
 type DbLikeError = { code?: string; message: string };
 
@@ -488,8 +564,15 @@ function translatePropertyWriteError(
   if (dbError.code === "MKF01") {
     return FEATURED_QUOTA_FULL_MESSAGE;
   }
-  if (dbError.code === "23514" || dbError.message.includes("Límite")) {
+  // Cupo del PLAN (trg_check_property_limit). Se reconoce por el texto exacto
+  // que levanta check_property_limit(), no por el código: los catorce CHECK de
+  // la tabla comparten ese 23514.
+  if (dbError.message.includes("Límite de propiedades")) {
     return limitMessage;
+  }
+  // Cualquier otro 23514 es un CHECK de datos de `properties`.
+  if (dbError.code === "23514") {
+    return PROPERTY_INVALID_DATA_MESSAGE;
   }
   return fallback;
 }
@@ -636,8 +719,19 @@ export async function createPropertyAction(
   const propertyAgentId = resolvedAgentId ?? callerId;
 
   // Si la propiedad nace a nombre de OTRO agente, el insert tiene que ir con
-  // service role: la RLS de properties (WITH CHECK implícito agent_id = auth.uid())
-  // rechazaría un agent_id distinto al del creador. Lo mismo para sus imágenes.
+  // service role. La policy `Agent manages own properties` tiene un WITH CHECK
+  // EXPLÍCITO (medido el 17 sep 2026, desde el endurecimiento del 16 sep) que
+  // exige TRES cosas sobre la fila resultante, no una:
+  //     agent_id = auth.uid()
+  //     AND agency_id = auth_agency_id()
+  //     AND city_id = (la ciudad de auth_agency_id())
+  // O sea que un agent_id distinto al del creador rebota por la primera, y de
+  // paso la agencia y la ciudad quedan clavadas a las del propio agente. Lo
+  // mismo para sus imágenes.
+  // ⚠ Acá decía "WITH CHECK implícito agent_id = auth.uid()": esa policy
+  // reusaba el USING como check y hoy no, y sobre todo el check ya NO se agota
+  // en el agente. La conclusión (hace falta service role) no cambió; el motivo
+  // escrito era el de antes.
   const usesServiceRole = propertyAgentId !== callerId;
   const db = usesServiceRole ? createAdminClient() : supabase;
 

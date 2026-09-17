@@ -119,8 +119,14 @@ function PlanCard({
             Pendiente
           </span>
         ) : isRecommended ? (
+          // ⚠ SIN ESTRELLA. Tenía un `★` literal, que era el último que quedaba
+          // en el código: DM Sans no cubre U+2605, así que cada dispositivo lo
+          // dibujaba con otra fuente del sistema. Y tampoco corresponde
+          // reemplazarlo por el SVG: la estrella y el dorado son EXCLUSIVOS de
+          // la marca de propiedad destacada (DESIGN §2), y esto es otra cosa —
+          // el plan sugerido. El badge ya se distingue por su fondo terracota.
           <span className="font-sans text-[11px] font-semibold uppercase tracking-wide bg-terracota text-paper rounded-sm px-2.5 py-1 shrink-0">
-            Recomendado ★
+            Recomendado
           </span>
         ) : null}
       </div>

@@ -21,6 +21,7 @@ import { AMENITY_ICONS, AMENITY_FALLBACK_ICON } from "@/lib/utils/amenityIcons";
 import {
   PROPERTY_TYPE_LABELS,
   OPERATION_TYPE_LABELS,
+  AMENITIES_SECTION_LABEL,
   AMENITY_LABELS,
   RENT_REQUIREMENT_LABELS,
   FEATURED_PROPERTY_LABEL,
@@ -246,7 +247,7 @@ export default async function PropertyPage({
           {/* ⚠ UN SOLO título para todo el bloque: cada línea ya dice su
               operación. Sin él, una propiedad sin precio mostraba solo "A
               convenir". Mismo tratamiento que los otros títulos de sección de
-              esta página ("Comodidades", "Requisitos para alquilar"). */}
+              esta página ("Amenities", "Requisitos para alquilar"). */}
           <h2 className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite">
             Precio
           </h2>
@@ -312,11 +313,14 @@ export default async function PropertyPage({
           </div>
         )}
 
-        {/* ── 8. Comodidades ────────────────────────────────────── */}
+        {/* ── 8. Amenities ──────────────────────────────────────────
+            ⚠ Esta sección decía "Comodidades" mientras el filtro del mapa y el
+            formulario decían "Amenities": el mismo concepto con dos nombres, en
+            dos pantallas públicas. El título sale ahora de labels.ts. */}
         {property.amenities.length > 0 && (
           <div className="mt-6 border-t border-stone pt-6">
             <h2 className="font-sans text-[11px] font-semibold uppercase tracking-wider text-graphite">
-              Comodidades
+              {AMENITIES_SECTION_LABEL}
             </h2>
             <div className="mt-3 flex flex-wrap gap-1.5">
               {property.amenities.map((a) => {

@@ -6,9 +6,11 @@ import { useMapFilters, selectActiveFiltersCount } from "@/store/mapFiltersStore
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { useSheetDragToClose } from "@/lib/hooks/useSheetDragToClose";
+import { parsePositiveIntegerInput } from "@/lib/utils/parseFilterNumber";
 import type { PropertyType, Amenity, OperationType } from "@/types";
 import {
   PROPERTY_TYPE_LABELS,
+  AMENITIES_SECTION_LABEL,
   AMENITY_LABELS,
   OPERATION_TYPE_LABELS,
 } from "@/lib/utils/labels";
@@ -19,9 +21,18 @@ import {
 const PROPERTY_TYPE_VALUES = Object.keys(PROPERTY_TYPE_LABELS) as PropertyType[];
 
 // Operaciones del filtro. La etiqueta de "alquiler_temporal" se acorta a
-// "Temporal" solo acá: los tres botones comparten una fila de 320px y
-// "Alquiler temporal" no entra. OPERATION_TYPE_LABELS sigue siendo la fuente
-// para todo el resto de la UI (kicker de la card, modal, tabla del dashboard).
+// "Temporal" solo acá: los tres botones son `flex-1` dentro de UNA fila de unos
+// 280px y "Alquiler temporal" no entra.
+//
+// ⚠ El número de antes (320) era el ancho del <aside> de escritorio (`w-80`), no
+// el de la fila. La fila mide bastante menos, y casi lo MISMO en los dos
+// contextos, que es lo que hace que una sola etiqueta corta sirva para ambos:
+//   · escritorio: 320 del aside − 1 del `border-r` − 40 del `px-5` = 279px;
+//   · hoja de celular de 320px: 320 − 40 del `px-5` = 280px.
+// Descontando los dos `gap-2` quedan ~88px por botón.
+//
+// OPERATION_TYPE_LABELS sigue siendo la fuente para todo el resto de la UI
+// (kicker de la card, modal, tabla del dashboard).
 const OPERATION_FILTERS: { value: OperationType; label: string }[] = [
   { value: "venta", label: OPERATION_TYPE_LABELS.venta },
   { value: "alquiler", label: OPERATION_TYPE_LABELS.alquiler },
@@ -190,14 +201,24 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
   // monta ni la ref ni las zonas.
   const { sheetRef, dragZoneProps } = useSheetDragToClose(() => onClose?.());
 
-  const commitPrice = (field: "price_min" | "price_max", raw: string) => {
-    const n = raw === "" ? null : parseFloat(raw);
-    setFilter(field, isNaN(n ?? NaN) ? null : n);
-  };
-
-  const commitArea = (field: "area_min" | "area_max", raw: string) => {
-    const n = raw === "" ? null : parseFloat(raw);
-    setFilter(field, isNaN(n ?? NaN) ? null : n);
+  // UNA sola función para los cuatro rangos (precio y superficie): eran dos
+  // copias idénticas salvo el tipo del campo.
+  //
+  // ⚠ ESCRIBE EL STORE **Y** EL INPUT LOCAL, y lo segundo no es redundante. El
+  // resync de más abajo solo corre cuando el valor del store CAMBIA, así que
+  // con el store ya en 12 y alguien escribiendo "12abc", la lectura daba 12
+  // otra vez —sin cambio— y el campo se quedaba mostrando "12abc" con el filtro
+  // aplicado en 12: la pantalla decía una cosa y el mapa hacía otra. Pisar el
+  // input con el valor efectivamente aplicado hace que después de confirmar el
+  // campo muestre SIEMPRE lo que rige (o vacío), haya cambiado el store o no.
+  const commitNumber = (
+    field: "price_min" | "price_max" | "area_min" | "area_max",
+    raw: string,
+    setLocal: (v: string) => void
+  ) => {
+    const value = parsePositiveIntegerInput(raw);
+    setFilter(field, value);
+    setLocal(value === null ? "" : String(value));
   };
 
   // El rango de precio solo se puede aplicar contra UNA columna de precio, y
@@ -258,7 +279,18 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
           className="flex items-center justify-between px-5 py-4 border-b border-stone shrink-0 touch-none"
         >
           <span className="font-sans text-base font-medium text-black">Filtros</span>
-          <button onClick={onClose} className="text-graphite hover:text-black">
+          {/* ⚠ `type="button"` NO sobra aunque hoy no haya <form> ancestro: el
+              default de un <button> es "submit", y el día que esta hoja gane un
+              campo dentro de un formulario cerrarla enviaría. Y el par
+              `relative` + `after:absolute` extiende el área táctil de los 20px
+              que DIBUJA a los 44 del mínimo de DESIGN §6, sin mover el dibujo:
+              mismo recurso que ui/checkbox.tsx y que el `xs` de ui/button.tsx. */}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Cerrar filtros"
+            className="relative text-graphite hover:text-black after:absolute after:-inset-3"
+          >
             <X size={20} />
           </button>
         </div>
@@ -332,7 +364,7 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
             <NumInput
               value={priceMin}
               onChange={setPriceMin}
-              onCommit={() => commitPrice("price_min", priceMin)}
+              onCommit={() => commitNumber("price_min", priceMin, setPriceMin)}
               placeholder="Desde"
               disabled={!priceEnabled}
             />
@@ -340,7 +372,7 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
             <NumInput
               value={priceMax}
               onChange={setPriceMax}
-              onCommit={() => commitPrice("price_max", priceMax)}
+              onCommit={() => commitNumber("price_max", priceMax, setPriceMax)}
               placeholder="Hasta"
               disabled={!priceEnabled}
             />
@@ -360,14 +392,14 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
             <NumInput
               value={areaMin}
               onChange={setAreaMin}
-              onCommit={() => commitArea("area_min", areaMin)}
+              onCommit={() => commitNumber("area_min", areaMin, setAreaMin)}
               placeholder="Desde"
             />
             <span className="text-stone">–</span>
             <NumInput
               value={areaMax}
               onChange={setAreaMax}
-              onCommit={() => commitArea("area_max", areaMax)}
+              onCommit={() => commitNumber("area_max", areaMax, setAreaMax)}
               placeholder="Hasta"
             />
           </div>
@@ -399,8 +431,9 @@ export function FilterPanel({ isOpen, onClose, mobile }: FilterPanelProps) {
           </div>
         </Section>
 
-        {/* Amenities */}
-        <Section title="Amenities">
+        {/* Amenities. El título sale de labels.ts: lo comparte con el formulario
+            de propiedad y con la ficha pública, que decía "Comodidades". */}
+        <Section title={AMENITIES_SECTION_LABEL}>
           <div className="grid grid-cols-2 gap-2.5">
             {FILTER_AMENITIES.map((value) => {
               const active = filters.amenities.includes(value);

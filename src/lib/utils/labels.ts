@@ -84,8 +84,26 @@ export const APPROVAL_STATUS_LABELS: Record<ApprovalStatus, string> = {
 // Estado de la SUSCRIPCIÓN, también para el panel del dueño. Es el eje
 // COMERCIAL ("¿paga?"), independiente del de aprobación ("¿es legítima?"): las
 // dos etiquetas conviven en la misma fila y no hay que leerlas como lo mismo.
-// ⚠ 'pending' acá significa "pidió un upgrade y espera que se lo activen", NO
-// "sin resolver": esa agencia está al día y publica normalmente.
+//
+// ⚠⚠ ACÁ DECÍA QUE 'pending' SIGNIFICABA "pidió un upgrade y espera que se lo
+// activen" Y QUE "esa agencia está al día y publica normalmente". LAS DOS
+// MITADES SON FALSAS, y era la CUARTA copia de la afirmación que escondió el bug
+// más caro medido del proyecto (CLAUDE.md → "Un pedido de plan abierto" y
+// "Método de Diagnóstico"; las otras tres se corrigieron el 11 sep 2026 y esta
+// sobrevivió acá, que es justo el archivo que alguien abre para entender qué
+// significa cada estado). Medido el 17 sep 2026:
+//   · `requestPlanUpgradeAction` (dashboard/suscripcion/actions.ts) escribe
+//     SOLO `pending_plan` — NO toca `status`. Así que pedir un upgrade no puede
+//     producir 'pending', y un pedido abierto se detecta por
+//     `pending_plan != null`, NUNCA por el estado.
+//   · Quien escribe 'pending' es `selectPlanAction` (register/plan/actions.ts):
+//     una agencia RECIÉN REGISTRADA que eligió su plan y espera la activación
+//     manual del dueño. O sea: "todavía no tenés nada activo".
+//   · Y esa agencia NO se ve en el mapa: `agency_is_publicly_visible()` exige
+//     `status = 'active'`. Lo que sí puede es PUBLICAR, porque el trigger
+//     check_agency_subscription() bloquea por lista negra
+//     ('canceled'/'past_due') y 'pending' no está en ella — la asimetría es
+//     deliberada, para que cargue su cartera mientras espera.
 export const SUBSCRIPTION_STATUS_LABELS: Record<SubscriptionStatus, string> = {
   active: "Activa",
   pending: "Pendiente",
@@ -159,3 +177,36 @@ export const FEATURED_QUOTA_FULL_HINT =
 // Vendida o alquilada: la base apaga la estrella (enforce_featured_quota).
 export const FEATURED_CLOSED_STATUS_MESSAGE =
   "Las propiedades vendidas o alquiladas no se destacan";
+
+// ─── Título de la sección de amenities ────────────────────────
+//
+// Una sola constante para las TRES pantallas que listan las comodidades de una
+// propiedad: el filtro del mapa, el formulario de alta/edición y la ficha
+// pública. Antes cada una lo escribía a mano y la ficha decía "Comodidades"
+// mientras las otras dos decían "Amenities": el mismo concepto con dos nombres,
+// en dos pantallas públicas.
+//
+// ⚠ DECISIÓN DEL DUEÑO, no una preferencia de estilo: en el rubro inmobiliario
+// se dice "amenities", en inglés, así que la palabra que usa una inmobiliaria al
+// hablar con un cliente es la que muestra la app. No "traducirla por prolijidad".
+//
+// Es el título del GRUPO. El nombre de cada amenity vive en AMENITY_LABELS.
+export const AMENITIES_SECTION_LABEL = "Amenities";
+
+// ─── Rechazos de la base al escribir una propiedad ────────────
+//
+// ⚠ Un 23514 que NO es ninguno de los tres gates de publicación es un CHECK de
+// `properties` (medidos el 17 sep 2026: CATORCE, todos de datos — precio y
+// moneda por operación, al menos una operación activa, dominio de
+// property_type y status, forma de los requisitos de alquiler, location_source).
+// Hasta hoy esos catorce caían en el cajón de sastre y salían como "alcanzaste
+// el límite de tu plan": un error de datos que mandaba a la agencia a pagar un
+// upgrade que no la destrababa. Es la tercera vez que el proyecto tropieza con
+// lo mismo (CLAUDE.md → "antes de invitar a pagar más, verificar que pagar sea
+// lo que destraba").
+//
+// El texto NO enumera los catorce: nombra los tres grupos que el agente puede
+// mirar en su formulario. Y no dice "intentá de nuevo": reintentar con los
+// mismos datos da siempre el mismo resultado.
+export const PROPERTY_INVALID_DATA_MESSAGE =
+  "Algún dato no es válido. Revisá los precios, las monedas y las operaciones.";
