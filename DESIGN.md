@@ -203,7 +203,7 @@ En mobile el mapa no es el punto de entrada. Los visitantes en mobile navegan po
 ├─────────────────────────┤
 │ [Filtros]    [Ver mapa] │  ← dos FABs, bottom-left y bottom-right
 └─────────────────────────┘
-        ↑ tocar "Filtros" levanta la HOJA desde abajo (85vh)
+        ↑ tocar "Filtros" levanta la HOJA desde abajo (85dvh)
 ```
 
 - Breakpoint mobile/desktop: `md` (768px). Bajo ese breakpoint, mostrar cards. Sobre ese, mostrar mapa.
@@ -221,7 +221,7 @@ En mobile el mapa no es el punto de entrada. Los visitantes en mobile navegan po
 | **Marca chica** | algo que se lee, no se toca | `rounded-sm` · **4px** | chips de comodidades y de requisitos, badges, etiquetas de estado, **casillas** |
 | **Tocable / rellenable** | algo que se toca o donde se escribe | `rounded-md` · **6px** | botones, campos con caja, selectores, segmentados, **ítems de menú y de desplegable** |
 | **Contenedor** | algo que contiene a lo anterior | `rounded-lg` · **8px** | tarjetas, secciones, paneles, avisos, **diálogos, menús y desplegables** |
-| **Circular** | circular por naturaleza | `rounded-full` | avatares, interruptor, puntos del carrusel, barras de progreso, botones de solo ícono sobre fotos y mapa |
+| **Circular** | circular por naturaleza | `rounded-full` | avatares, interruptor, barras de progreso, botones de solo ícono sobre fotos y mapa |
 | **Sin caja** | el campo subrayado | `rounded-none` · **0** | `Input`, `Textarea` y `SelectTrigger` de inicio de sesión y registro |
 
 **Los tres números son fijos y NO se derivan de `--radius`** (`globals.css:60-63`: `--radius-sm: .25rem` · `--radius-md: .375rem` · `--radius-lg: .5rem`). ⚠ Antes salían de `--radius` con multiplicadores (0,6 / 0,8 / 1) y daban **6 / 8 / 10**: o sea **2 px por encima de esta tabla, en toda la app**. Los números de acá eran los correctos y el código no los cumplía; desde el 15 sep 2026 sí.
@@ -299,7 +299,7 @@ Atenuado pero claramente un pin (no parece sin estilo). Persiste en localStorage
 
 **Propiedad destacada (`is_featured: true`):**
 - Mantiene el fondo terracota normal
-- Anillo `paper` de 2px que la diferencia
+- Anillo `paper` de 2px que la diferencia. **Se conserva a propósito:** distingue el pin destacado **de lejos**, cuando la estrella de 9px no se llega a ver
 - Badge de estrella en la esquina superior **izquierda**, con el **mismo tratamiento que el corazón** espejado: círculo de 16px que hereda fondo y borde del pin, estrella SVG de 9px centrada. Color `gold` (`--pin-star`); `terracota` sobre el stone del visitado, donde el dorado no se ve (1,08:1)
 
 **Propiedad favorita (`useFavorites`):**
@@ -382,7 +382,7 @@ Un solo rótulo para todo el bloque, con el tratamiento de los otros títulos de
 Identifica a la inmobiliaria y a la persona que va a atender la consulta. Sin él, el visitante ve fotos, precio y un botón verde, y con eso tiene que decidir si le escribe a un número desconocido.
 
 - **Va abajo, junto al CTA, nunca arriba:** arriba competiría con el precio, que es lo primero que el ojo tiene que encontrar (§1).
-- **Es UNA fila compacta (~33px), no una tarjeta.** El bottom sheet de mobile tiene alto fijo (`h-[82vh]`) y esta zona no se comprime, así que cada píxel del bloque se lo resta al área que scrollea. No engordarlo.
+- **Es UNA fila compacta (~33px), no una tarjeta.** El bottom sheet de mobile tiene alto fijo (`h-[85dvh]`, antes `h-[82vh]`) y esta zona no se comprime, así que cada píxel del bloque se lo resta al área que scrollea. No engordarlo.
 - **Logo:** `h-8 w-auto max-w-[96px] object-contain` — altura fija, ancho según la relación de aspecto, tolera cualquier proporción. Mismo tratamiento que el header de `AgencyMapView`, una talla más chico. Va con `alt=""`: el nombre está a 10px, en el mismo bloque, y repetirlo en el alt se lo haría decir dos veces a un lector de pantalla.
 - **⚠ Sin logo, el NOMBRE OCUPA EL LUGAR DEL LOGO** (el texto se corre solo a la izquierda). Sin hueco, sin caja vacía, sin cartel de "sin logo" — a diferencia de la preview de `AgencyLogoForm`, que sí lo dice porque ahí estás por subir un archivo. **Es el caso NORMAL: nueve de cada diez agencias no tienen logo**, así que un diseño que solo se vea bien con logo se va a ver mal casi siempre.
 - **El nombre de la agencia NO es un enlace.** Solo algunos planes tienen sitio propio y ese sitio se deshabilita por varios motivos, así que a veces llevaría a "no disponible": un nombre que a veces lleva a algún lado y a veces no es una inconsistencia visible.
@@ -399,9 +399,9 @@ Identifica a la inmobiliaria y a la persona que va a atender la consulta. Sin é
 **Tratamiento visual (refinado en el repaso editorial):**
 - Fondo del drawer/sheet en `paper`, nunca blanco puro. Los inputs internos sí van en white (legibilidad).
 - Fotos full-bleed con ratio consistente, gradiente inferior sutil para legibilidad, y crossfade entre fotos (no corte seco), 180–200ms.
-- Flechas de navegación finas (`paper`/85 + backdrop-blur, chevron graphite), se ocultan en los extremos. Dot indicators finos y discretos.
+- Flechas de navegación finas (`paper`/85 + backdrop-blur, chevron graphite), se ocultan en los extremos, y el contador `n/N`. ⚠ **Sin puntos indicadores desde el 16 sep 2026:** quedaban tapados por "Ver ficha completa" (con 10 fotos, 2 tapados a 390px y 5 a 320px) y medían 4px de alto.
 - Botones flotantes en `paper`/85 con backdrop-blur e ícono graphite — no círculos `bg-black/50`. Son **tres**: cerrar arriba a la izquierda, y **compartir + favorito apareados arriba a la derecha** (`gap-2`). El corazón favorito en terracota relleno (coherente con el mapa); el de compartir vira a `success` con un ✓ mientras confirma que copió.
-  > ⚠ **El de compartir va SOBRE LA FOTO, no en la zona inferior, y es una restricción de espacio, no un gusto.** Esa zona es `shrink-0` dentro de un sheet de alto fijo (`h-[82vh]`), así que todo lo que se le agrega se lo resta al área que scrollea — que después del bloque "quién publica" quedó en ~177 px en un teléfono chico. Otra fila de 44 px la dejaría en menos de dos párrafos. Los botones flotantes son `absolute` sobre el carrusel: no cuestan un solo píxel de alto.
+  > ⚠ **El de compartir va SOBRE LA FOTO, no en la zona inferior, y es una restricción de espacio, no un gusto.** Esa zona es `shrink-0` dentro de un sheet de alto fijo (hoy `h-[85dvh]`), así que todo lo que se le agrega se lo resta al área que scrollea — que después del bloque "quién publica" quedó en ~177 px en un teléfono chico, medido con el `82vh` de entonces. Otra fila de 44 px la dejaría en menos de dos párrafos. Los botones flotantes son `absolute` sobre el carrusel: no cuestan un solo píxel de alto.
 - Chips de amenities con ícono lucide 16px graphite a la izquierda (mapeo amenity→ícono: pileta→Waves, gym→Dumbbell, seguridad_24h→ShieldCheck, etc.).
 - Estado de carga: skeleton que imita el layout (no "Cargando..." en texto).
 - Apertura del modal: 220ms ease-out (DESIGN §8).
@@ -626,7 +626,7 @@ El área privada del agente mantiene la paleta pero con una distribución más f
 - Cards de contenido: background `paper`, border `stone`
 - Títulos de página: Noto Serif H1, `black`
 - Stats cards: número en Noto Serif 36px Bold con `tabular-nums`, label en DM Sans 13px, `graphite`
-- Layout y scroll: el dashboard usa `flex h-dvh overflow-hidden` en el wrapper (⚠ `h-dvh`, NO `h-screen`: ver la regla de viewport mobile en CLAUDE.md; este texto decía `h-screen` y el código dice `h-dvh` desde hace tiempo), con el `Sidebar` y el `main` (`flex-1 overflow-y-auto`) como hijos. El `main` es el contenedor scrolleable y **debe** llevar `relative` (load-bearing, no decorativo): así es el containing block de los descendientes `position: absolute` de los formularios (inputs ocultos internos de Radix/shadcn, p. ej. el `Checkbox`). Sin `relative`, esos absolutos se anclan al viewport (ICB) y en páginas altas (nueva/editar propiedad) aterrizan muy abajo, generando un segundo scroll fantasma en el documento por debajo del form. No quitar el `relative` del `main`.
+- Layout y scroll: `DashboardShell` usa `flex h-dvh flex-col overflow-hidden md:flex-row` en el wrapper (⚠ `h-dvh`, NO `h-screen`: ver la regla de viewport mobile en CLAUDE.md), con el `Sidebar` y el `main` (`relative flex-1 min-h-0 overflow-y-auto`) como hijos: **columna en celular, fila en escritorio**. En celular el `Sidebar` es una **barra superior en el flujo** (`h-14`, `black`, botón de menú de 44px + wordmark claro) que abre un cajón; ya no hay botón `fixed` ni `pt-14` en el contenido. El `main` es el contenedor scrolleable y **debe** llevar `relative` (load-bearing, no decorativo): así es el containing block de los descendientes `position: absolute` de los formularios (inputs ocultos internos de Radix/shadcn, p. ej. el `Checkbox`). Sin `relative`, esos absolutos se anclan al viewport (ICB) y en páginas altas (nueva/editar propiedad) aterrizan muy abajo, generando un segundo scroll fantasma en el documento por debajo del form. No quitar el `relative` del `main`.
 
 **StatsCard (refinado):**
 - Números con `tabular-nums` y count-up sutil al montar (ease-out ~600ms, respeta `prefers-reduced-motion`)
@@ -867,7 +867,7 @@ Barra de uso del plan actual + cards de planes en `flex flex-wrap justify-center
 - Card del plan actual: borde `terracota`, badge "Plan actual" en `terracota-subtle`
 - Primer upgrade: badge "Recomendado ★" en `terracota`, fondo `terracota-subtle`, borde 2px, shadow-lg
 - Lista de features derivada de `PLANS`: límite + destacados/white-label/métricas según el plan. DM Sans 14px, ícono `check` 16px en `success`
-- El CTA "Pasar a {plan}" abre un `AlertDialog` de confirmación y registra el pedido (`pending_plan` + `status: 'pending'`), sin tocar el plan que rige. La activación la hace el dueño desde `/admin`. La card del plan pedido pasa a "Pendiente" y los demás upgrades quedan deshabilitados mientras haya un pedido abierto
+- El CTA "Pasar a {plan}" abre un `AlertDialog` de confirmación y registra el pedido **solo en `pending_plan`** (antes decía `+ status: 'pending'`: desde el 11 sep 2026 pedir un upgrade no toca el estado), sin tocar el plan que rige. La activación la hace el dueño desde `/admin`. La card del plan pedido pasa a "Pendiente" y los demás upgrades quedan deshabilitados mientras haya un pedido abierto
 - Con la suscripción `canceled`/`past_due` **no se renderiza ninguna card de upgrade** ni la fecha de vencimiento: ver "Aviso de suscripción que no rige"
 
 ### Panel de plataforma (`/admin`) — acciones por fila
@@ -893,7 +893,10 @@ La app es instalable como PWA. Esto implica algunos detalles de diseño:
 - **Splash screen**: fondo `paper`, logo centrado, sin texto de carga
 - **Safe areas en mobile**: respetar `env(safe-area-inset-*)` para que el header y el FAB no queden bajo el notch o la barra de gestos
 - Los FABs respetan `padding-bottom: env(safe-area-inset-bottom)`
-- ⚠ **PERO HOY ESE `env()` VALE 0 EN TODOS LOS DISPOSITIVOS, así que la regla está escrita, aplicada… y no hace nada.** El `export const viewport` de `src/app/layout.tsx` declara solo `themeColor`: **sin `viewportFit: "cover"` el navegador no expone las zonas seguras** y las cuatro variables devuelven 0. Es una línea, y hasta que esté, cualquier ajuste de márgenes contra el notch se está midiendo contra cero. Anotado en `PENDIENTES.md`.
+- ⚠ **HOY ESE `env()` VALE 0, y la zona segura NO SE ACTIVA POR AHORA (decisión del 16 sep 2026).** El `export const viewport` de `src/app/layout.tsx` declara solo `themeColor`; sin `viewportFit: "cover"` las cuatro variables devuelven 0. Los usos de `env()` que ya existen **se quedan** (valen 0 y no molestan).
+  - **Medido en un Samsung A21s** (Android 10, Chrome 152, navegación por botones) con una sonda descartable: las cuatro zonas en **0 en los cuatro casos**. Chrome vertical: `100vh` = 827,43px y `100dvh` = 771,43px (56px de barra de direcciones). App instalada: `vh` = `dvh` y `display-mode: standalone` verdadero. Chrome horizontal: **331px** de alto útil.
+  - **Por qué no se activa:** en Android no cambia nada; en iPhone cambiaría todo lo que usa `env()` a la vez, y **no hay iPhone con qué probarlo**. Sin `viewportFit`, iOS deja el contenido dentro de la zona segura.
+  - **Queda pendiente** verificar en un iPhone, con la app instalada, que los FABs y los pies de las hojas no queden bajo la barra de inicio. Ver `PENDIENTES.md`.
 
 ---
 
